@@ -20,7 +20,7 @@ model User {
   password              String    // Hash with bcrypt
   fullName              String
   phoneNumber           String
-  nationalId            String?   @unique  // Should be encrypted in production
+  nationalId            String?            // Should be encrypted in production
   nationalIdType        String?   // CCCD, HCDC (Hộ chiếu)
   nationalIdExpiry      DateTime?
   address               String?
@@ -37,14 +37,14 @@ model User {
   loyaltyHistory        LoyaltyPoint[]
   adminLogs             AdminLog[]  // Track what this admin did
   securityLogs          SecurityLog[]  // Track login/access
+  selectedSeats         Seat[]
+  approvedCancellations CancellationRequest[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   isActive              Boolean   @default(true)
   deletedAt             DateTime?  // Soft delete
   lastLogin             DateTime?
   
-  @@index([email])
-  @@index([nationalId])
   @@index([phoneNumber])
   @@index([userType])
   @@index([deletedAt])
@@ -74,8 +74,6 @@ model Wallet {
   transactions          WalletTransaction[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-  
-  @@index([userId])
 }
 
 model WalletTransaction {
@@ -163,6 +161,7 @@ model Seat {
   blockReason           String?   // MAINTENANCE, DEFECT, SAFETY, RESERVED
   blockUntil            DateTime?
   bookings              BookingDetail[]
+  passengers            Passenger[]
   createdAt             DateTime  @default(now())
   
   @@unique([carriageId, seatNumber])
@@ -193,7 +192,6 @@ model Station {
   routesAsEnd           Route[]  @relation("routeEnd")
   createdAt             DateTime  @default(now())
   
-  @@index([stationCode])
   @@index([city])
 }
 
@@ -206,7 +204,6 @@ model Route {
   distance        Int       // km
   estimatedDuration Int    // minutes
   schedules       Schedule[]
-  promotions      Promotion[]
   popularity      Int       @default(0)  // Track booking count
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
@@ -231,7 +228,8 @@ model Schedule {
   distance              Int?      // kilometers
   duration              Int?      // minutes
   scheduleStops         ScheduleStop[]
-  bookings              Booking[]
+  bookings              Booking[] @relation("BookingSchedule")
+  returnBookings        Booking[] @relation("BookingReturnSchedule")
   pricing               PricingPolicy[]
   availabilitySnapshots AvailabilitySnapshot[]
   status                String    @default("ACTIVE") // ACTIVE, CANCELLED, DELAYED
@@ -303,7 +301,6 @@ model Voucher {
   bookings              Booking[]
   createdAt             DateTime  @default(now())
   
-  @@index([voucherCode])
   @@index([validFrom])
   @@index([validTo])
   @@index([active])
@@ -339,14 +336,14 @@ model Booking {
   userId                String    @db.ObjectId
   user                  User      @relation(fields: [userId], references: [id])
   scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation(fields: [scheduleId], references: [id])
+  schedule              Schedule  @relation("BookingSchedule", fields: [scheduleId], references: [id])
   passengers            Passenger[]
   bookingDetails        BookingDetail[]
   voucherId             String?   @db.ObjectId
   voucher               Voucher?  @relation(fields: [voucherId], references: [id])
   bookingType           String    // ONE_WAY, ROUND_TRIP
   returnScheduleId      String?   @db.ObjectId
-  returnSchedule        Schedule? @relation(fields: [returnScheduleId], references: [id])
+  returnSchedule        Schedule? @relation("BookingReturnSchedule", fields: [returnScheduleId], references: [id])
   
   // Pricing
   totalPassengers       Int
@@ -422,7 +419,7 @@ model Passenger {
   discountPercentage    Float     @default(0)
   discountReason        String?
   
-  ticketCode            String?   @unique
+  ticketCode            String?
   seat                  Seat?     @relation(fields: [seatId], references: [id])
   seatId                String?   @db.ObjectId
   carriageNumber        Int?
@@ -489,7 +486,7 @@ model CancellationRequest {
   id                    String    @id @default(auto()) @map("_id") @db.ObjectId
   bookingId             String    @unique @db.ObjectId
   booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  passengerId           String    @db.ObjectId
+  passengerId           String    @unique @db.ObjectId
   passenger             Passenger @relation(fields: [passengerId], references: [id])
   
   status                String    @default("PENDING") // PENDING, APPROVED, REJECTED
@@ -503,7 +500,6 @@ model CancellationRequest {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   
-  @@index([bookingId])
   @@index([status])
 }
 
@@ -528,7 +524,6 @@ model Refund {
   processedAt           DateTime?
   createdAt             DateTime  @default(now())
   
-  @@index([bookingId])
   @@index([status])
 }
 
