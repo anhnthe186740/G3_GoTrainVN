@@ -13,9 +13,17 @@ export async function loginUser(email, password) {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return null;
   const token = jwt.sign(
-    { id: user.id, role: user.role },
+    { id: user.id, role: user.userType },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
   );
-  return { user, token };
+  return {
+    user: {
+      id: user.id,
+      name: user.fullName,
+      email: user.email,
+      role: user.userType,
+    },
+    token,
+  };
 }

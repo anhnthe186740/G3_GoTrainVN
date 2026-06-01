@@ -8,9 +8,10 @@ export const authRoutes = Router();
 authRoutes.post(
   "/register",
   [
-    body("name").trim().notEmpty(),
+    body("fullName").trim().notEmpty(),
     body("email").isEmail(),
     body("password").isLength({ min: 8 }),
+    body("phoneNumber").trim().notEmpty(),
   ],
   validate,
   register,
