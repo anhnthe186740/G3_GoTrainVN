@@ -5,9 +5,9 @@ export async function register(req, res) {
   res.status(201).json({
     user: {
       id: user.id,
-      name: user.name,
+      name: user.fullName,
       email: user.email,
-      role: user.role,
+      role: user.userType,
     },
   });
 }
