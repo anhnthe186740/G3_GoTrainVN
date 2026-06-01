@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
-
-const isAuthenticated = false;
+import { useAuthStore } from "../store/authStore";
 
 export function PublicRoute({ children }) {
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+  const token = useAuthStore((state) => state.token);
+  return token ? <Navigate to="/dashboard" replace /> : children;
 }

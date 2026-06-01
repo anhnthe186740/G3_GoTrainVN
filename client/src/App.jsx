@@ -11,24 +11,24 @@ import { NotFound } from "./pages/NotFound";
 export default function App() {
   return (
     <Routes>
+      <Route
+        path="login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="register"
+        element={
+          <PublicRoute>
+            <Register />
+          </PublicRoute>
+        }
+      />
       <Route element={<AppLayout />}>
         <Route index element={<Home />} />
-        <Route
-          path="login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
         <Route
           path="dashboard"
           element={
