@@ -1,10 +1,22 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
+import { useAuth } from "../../hooks/useAuth";
 
 export function AppLayout() {
   const location = useLocation();
+  const { user } = useAuth();
   const isHomePage = location.pathname === "/";
+  const isAdminDashboard =
+    location.pathname === "/dashboard" && user?.role === "ADMIN";
+
+  if (isAdminDashboard) {
+    return (
+      <div className="min-h-screen bg-background text-on-surface font-body-md">
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
     <div

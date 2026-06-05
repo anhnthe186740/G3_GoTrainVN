@@ -67,7 +67,7 @@ export function Navbar() {
                     {user.fullName || user.name || "Khách"}
                   </span>
                   <span className="text-[10px] text-primary uppercase font-bold tracking-tighter">
-                    {user.userType === "ADMIN"
+                    {user.role === "ADMIN"
                       ? "Quản trị viên"
                       : "Thành viên Vàng"}
                   </span>
