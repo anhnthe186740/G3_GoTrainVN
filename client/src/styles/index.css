@@ -28,4 +28,57 @@ body {
   .card {
     @apply rounded-2xl bg-white shadow-soft border border-slate-200;
   }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .sidebar-item-active {
+    background: linear-gradient(
+      90deg,
+      rgba(0, 163, 255, 0.1) 0%,
+      rgba(0, 163, 255, 0) 100%
+    );
+    border-right: 3px solid #00629d;
+  }
+
+  .punch-hole-card {
+    position: relative;
+  }
+
+  .punch-hole-card::before,
+  .punch-hole-card::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    background: #f7f9fb;
+    border-radius: 50%;
+    transform: translateY(-50%);
+  }
+  .punch-hole-card::before {
+    left: -8px;
+  }
+  .punch-hole-card::after {
+    right: -8px;
+  }
+
+  @keyframes float {
+    0% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+    100% {
+      transform: translateY(0px);
+    }
+  }
+
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
 }
