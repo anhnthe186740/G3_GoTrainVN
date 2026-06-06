@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { toast } from "sonner";
+import { RouteScheduleMgmt } from "./RouteScheduleMgmt";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -16,6 +17,7 @@ export function AdminDashboard() {
   // Sidebar links definition
   const sidebarLinks = [
     { label: "Tổng Quan", icon: "dashboard" },
+    { label: "Quản Lý Tuyến", icon: "route" },
     { label: "Lịch Trình", icon: "calendar_month" },
     { label: "Quản Lý Tàu", icon: "train" },
     { label: "Giá Vé", icon: "payments" },
@@ -279,455 +281,467 @@ export function AdminDashboard() {
 
         {/* Dashboard Content */}
         <div className="p-8 space-y-8">
-          {/* Welcome Section */}
-          <section>
-            <h2 className="font-headline-lg text-2xl font-bold text-[#191c1e]">
-              Tổng Quan Hệ Thống
-            </h2>
-            <p className="text-[#3f4852] mt-1 text-sm">
-              Chào buổi sáng, cập nhật mới nhất từ hệ thống đường sắt ngày hôm
-              nay.
-            </p>
-          </section>
+          {/* UC-15: Quản Lý Tuyến Đường & Lịch Trình */}
+          {activeSidebar === "Quản Lý Tuyến" && <RouteScheduleMgmt />}
 
-          {/* Stats Grid */}
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Revenue Card */}
-            <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 relative overflow-hidden group">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="font-label-md text-[#3f4852] text-sm">
-                    Doanh Thu (Tháng này)
-                  </p>
-                  <p className="font-headline-lg text-2xl font-extrabold text-[#00629d] mt-1">
-                    1.240.000.000đ
-                  </p>
-                  <span className="text-xs text-green-600 font-bold flex items-center mt-2">
-                    <span className="material-symbols-outlined text-[14px] mr-0.5">
-                      trending_up
-                    </span>
-                    +12.5% so với tháng trước
-                  </span>
-                </div>
-                <div className="p-3 bg-[#cfe5ff]/40 rounded-xl text-[#00629d]">
-                  <span className="material-symbols-outlined">
-                    account_balance_wallet
-                  </span>
-                </div>
-              </div>
-              {/* Mini Chart Simulation */}
-              <div className="h-16 flex items-end gap-1.5 mt-4">
-                <div className="flex-1 bg-[#00a3ff]/20 h-[40%] rounded-t-sm"></div>
-                <div className="flex-1 bg-[#00a3ff]/30 h-[60%] rounded-t-sm"></div>
-                <div className="flex-1 bg-[#00a3ff]/40 h-[45%] rounded-t-sm"></div>
-                <div className="flex-1 bg-[#00a3ff]/50 h-[75%] rounded-t-sm"></div>
-                <div className="flex-1 bg-[#00a3ff]/60 h-[90%] rounded-t-sm"></div>
-                <div className="flex-1 bg-[#00a3ff] h-[100%] rounded-t-sm"></div>
-              </div>
-            </div>
-
-            {/* Bookings Card */}
-            <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 group flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="font-label-md text-[#3f4852] text-sm">
-                    Tổng Lượt Đặt Vé
-                  </p>
-                  <p className="font-headline-lg text-2xl font-extrabold text-[#191c1e] mt-1">
-                    8.432
-                  </p>
-                  <span className="text-xs text-green-600 font-bold flex items-center mt-2">
-                    <span className="material-symbols-outlined text-[14px] mr-0.5">
-                      arrow_upward
-                    </span>
-                    542 lượt mới hôm nay
-                  </span>
-                </div>
-                <div className="p-3 bg-[#bac9d3]/40 rounded-xl text-[#526069]">
-                  <span className="material-symbols-outlined">
-                    confirmation_number
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-[#bec7d4]/20 flex gap-6">
-                <div>
-                  <p className="text-[10px] uppercase text-[#3f4852]/60 font-bold">
-                    Thành Công
-                  </p>
-                  <p className="font-label-md text-sm font-semibold">98.2%</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-[#3f4852]/60 font-bold">
-                    Đã Hủy
-                  </p>
-                  <p className="font-label-md text-sm font-semibold">1.8%</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Active Trains Card */}
-            <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 group flex flex-col justify-between">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="font-label-md text-[#3f4852] text-sm">
-                    Tàu Đang Hoạt Động
-                  </p>
-                  <p className="font-headline-lg text-2xl font-extrabold text-[#191c1e] mt-1">
-                    42{" "}
-                    <span className="text-sm font-normal text-[#3f4852]">
-                      / 48
-                    </span>
-                  </p>
-                  <span className="text-xs text-[#00629d] font-bold flex items-center mt-2">
-                    <span className="material-symbols-outlined text-[14px] mr-0.5">
-                      sync
-                    </span>
-                    Cập nhật 2 phút trước
-                  </span>
-                </div>
-                <div className="p-3 bg-[#b4cbce]/40 rounded-xl text-[#4d6265]">
-                  <span className="material-symbols-outlined">
-                    settings_input_component
-                  </span>
-                </div>
-              </div>
-              <div className="w-full bg-[#eceef0] rounded-full h-2 mt-4">
-                <div
-                  className="bg-[#00629d] h-2 rounded-full"
-                  style={{ width: "85%" }}
-                ></div>
-              </div>
-              <p className="text-[11px] text-[#3f4852] mt-2">
-                85% công suất khai thác hiện tại
-              </p>
-            </div>
-          </section>
-
-          {/* Revenue Chart & Featured Info */}
-          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Chart */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="font-headline-md text-lg font-bold text-[#191c1e]">
-                    Biểu Đồ Doanh Thu Tuần
-                  </h3>
-                  <p className="text-xs text-[#3f4852]">
-                    Thống kê chi tiết từ Thứ Hai đến Chủ Nhật
-                  </p>
-                </div>
-                <select className="bg-[#f2f4f6] text-xs font-semibold py-1.5 px-3 border-none rounded-lg focus:ring-0 outline-none">
-                  <option>7 ngày qua</option>
-                  <option>30 ngày qua</option>
-                </select>
-              </div>
-
-              {/* Simulated Chart Canvas */}
-              <div className="relative h-64 w-full bg-gradient-to-t from-[#00629d]/5 to-transparent rounded-xl flex items-end px-6 pb-2">
-                {/* SVG Path for Line Chart Simulation */}
-                <svg
-                  className="absolute inset-0 w-full h-full p-4"
-                  preserveAspectRatio="none"
-                >
-                  <path
-                    className="opacity-80"
-                    d="M 0 180 Q 50 140 120 170 T 260 110 T 400 130 T 540 60 T 680 80 T 820 40 T 960 70"
-                    fill="none"
-                    stroke="#00629d"
-                    strokeWidth="3"
-                  ></path>
-                  <path
-                    className="opacity-10"
-                    d="M 0 180 Q 50 140 120 170 T 260 110 T 400 130 T 540 60 T 680 80 T 820 40 T 960 70 L 960 250 L 0 250 Z"
-                    fill="url(#grad1)"
-                  ></path>
-                  <defs>
-                    <linearGradient
-                      id="grad1"
-                      x1="0%"
-                      x2="0%"
-                      y1="0%"
-                      y2="100%"
-                    >
-                      <stop
-                        offset="0%"
-                        style={{ stopColor: "#00a3ff", stopOpacity: 0.3 }}
-                      ></stop>
-                      <stop
-                        offset="100%"
-                        style={{ stopColor: "#00a3ff", stopOpacity: 0 }}
-                      ></stop>
-                    </linearGradient>
-                  </defs>
-                </svg>
-
-                {/* Grid Lines */}
-                <div className="absolute inset-0 flex flex-col justify-between py-6 pointer-events-none">
-                  <div className="w-full border-b border-[#bec7d4]/10"></div>
-                  <div className="w-full border-b border-[#bec7d4]/10"></div>
-                  <div className="w-full border-b border-[#bec7d4]/10"></div>
-                  <div className="w-full border-b border-[#bec7d4]/10"></div>
-                </div>
-
-                {/* X-Axis Labels */}
-                <div className="flex justify-between w-full font-label-sm text-xs text-[#3f4852]/60 relative z-10">
-                  <span>T2</span>
-                  <span>T3</span>
-                  <span>T4</span>
-                  <span>T5</span>
-                  <span>T6</span>
-                  <span>T7</span>
-                  <span>CN</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Route Performance */}
-            <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 flex flex-col justify-between">
-              <h3 className="font-headline-md text-lg font-bold text-[#191c1e] mb-4">
-                Tuyến Phổ Biến
-              </h3>
-              <div className="space-y-4 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[#d3e2ed] flex items-center justify-center text-[#00629d] font-bold">
-                    1
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-label-md text-sm font-semibold">
-                      Hà Nội - Đà Nẵng
-                    </p>
-                    <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
-                      <div
-                        className="bg-[#00629d] h-1.5 rounded-full"
-                        style={{ width: "92%" }}
-                      ></div>
-                    </div>
-                  </div>
-                  <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
-                    92%
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
-                    2
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-label-md text-sm font-semibold">
-                      TP.HCM - Nha Trang
-                    </p>
-                    <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
-                      <div
-                        className="bg-[#00629d] h-1.5 rounded-full"
-                        style={{ width: "78%" }}
-                      ></div>
-                    </div>
-                  </div>
-                  <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
-                    78%
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
-                    3
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-label-md text-sm font-semibold">
-                      Hà Nội - Lào Cai
-                    </p>
-                    <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
-                      <div
-                        className="bg-[#00629d] h-1.5 rounded-full"
-                        style={{ width: "65%" }}
-                      ></div>
-                    </div>
-                  </div>
-                  <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
-                    65%
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
-                    4
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-label-md text-sm font-semibold">
-                      Huế - Quy Nhơn
-                    </p>
-                    <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
-                      <div
-                        className="bg-[#00629d] h-1.5 rounded-full"
-                        style={{ width: "42%" }}
-                      ></div>
-                    </div>
-                  </div>
-                  <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
-                    42%
-                  </p>
-                </div>
-              </div>
-              <button className="w-full mt-4 py-2 text-[#00629d] hover:bg-[#00629d]/10 rounded-xl font-label-md text-sm font-semibold transition-all">
-                Xem tất cả báo cáo
-              </button>
-            </div>
-          </section>
-
-          {/* Management Table */}
-          <section className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
-            <div className="p-6 border-b border-[#bec7d4]/10 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div>
-                <h3 className="font-headline-md text-lg font-bold text-[#191c1e]">
-                  Lịch Trình Sắp Tới
-                </h3>
-                <p className="text-xs text-[#3f4852]">
-                  Danh sách các chuyến tàu khởi hành trong 24h tới
+          {/* All other sections only shown on Tổng Quan */}
+          {activeSidebar !== "Quản Lý Tuyến" && (
+            <>
+              {/* Welcome Section */}
+              <section>
+                <h2 className="font-headline-lg text-2xl font-bold text-[#191c1e]">
+                  Tổng Quan Hệ Thống
+                </h2>
+                <p className="text-[#3f4852] mt-1 text-sm">
+                  Chào buổi sáng, cập nhật mới nhất từ hệ thống đường sắt ngày
+                  hôm nay.
                 </p>
-              </div>
-              <button
-                onClick={handleAddSchedule}
-                className="flex items-center gap-1.5 bg-[#00629d] hover:bg-[#00629d]/90 text-white px-5 py-2.5 rounded-xl font-label-md text-sm hover:shadow-lg active:scale-95 transition-all cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">
-                  add
-                </span>
-                Thêm Lịch Trình
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-[#f2f4f6]/50">
-                    <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
-                      Mã Tàu
-                    </th>
-                    <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
-                      Tuyến
-                    </th>
-                    <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
-                      Giờ Khởi Hành
-                    </th>
-                    <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
-                      Trạng Thái
-                    </th>
-                    <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm text-right">
-                      Thao Tác
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#bec7d4]/10">
-                  {scheduleData[currentPage].map((row, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-[#f7f9fb] transition-colors"
-                    >
-                      <td className="px-6 py-4 font-label-md text-sm text-[#00629d] font-bold">
-                        {row.id}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-body-md text-sm font-semibold">
-                            {row.from}
-                          </span>
-                          <span className="material-symbols-outlined text-[16px] text-[#6f7883]">
-                            arrow_forward
-                          </span>
-                          <span className="font-body-md text-sm font-semibold">
-                            {row.to}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-[#3f4852] text-sm">
-                        {row.time}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
-                            row.statusType === "success"
-                              ? "bg-green-100 text-green-700"
-                              : row.statusType === "danger"
-                                ? "bg-[#ffdad6] text-[#ba1a1a]"
-                                : "bg-[#eceef0] text-[#3f4852]"
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              row.statusType === "success"
-                                ? "bg-green-600"
-                                : row.statusType === "danger"
-                                  ? "bg-[#ba1a1a]"
-                                  : "bg-[#3f4852]/40"
-                            }`}
-                          ></span>
-                          {row.status}
+              </section>
+
+              {/* Stats Grid */}
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Revenue Card */}
+                <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="font-label-md text-[#3f4852] text-sm">
+                        Doanh Thu (Tháng này)
+                      </p>
+                      <p className="font-headline-lg text-2xl font-extrabold text-[#00629d] mt-1">
+                        1.240.000.000đ
+                      </p>
+                      <span className="text-xs text-green-600 font-bold flex items-center mt-2">
+                        <span className="material-symbols-outlined text-[14px] mr-0.5">
+                          trending_up
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-2">
-                        <button
-                          onClick={() => handleActionClick("Sửa", row.id)}
-                          className="p-2 text-[#00629d] hover:bg-[#cfe5ff]/50 rounded-lg transition-all cursor-pointer"
-                          title="Sửa"
+                        +12.5% so với tháng trước
+                      </span>
+                    </div>
+                    <div className="p-3 bg-[#cfe5ff]/40 rounded-xl text-[#00629d]">
+                      <span className="material-symbols-outlined">
+                        account_balance_wallet
+                      </span>
+                    </div>
+                  </div>
+                  {/* Mini Chart Simulation */}
+                  <div className="h-16 flex items-end gap-1.5 mt-4">
+                    <div className="flex-1 bg-[#00a3ff]/20 h-[40%] rounded-t-sm"></div>
+                    <div className="flex-1 bg-[#00a3ff]/30 h-[60%] rounded-t-sm"></div>
+                    <div className="flex-1 bg-[#00a3ff]/40 h-[45%] rounded-t-sm"></div>
+                    <div className="flex-1 bg-[#00a3ff]/50 h-[75%] rounded-t-sm"></div>
+                    <div className="flex-1 bg-[#00a3ff]/60 h-[90%] rounded-t-sm"></div>
+                    <div className="flex-1 bg-[#00a3ff] h-[100%] rounded-t-sm"></div>
+                  </div>
+                </div>
+
+                {/* Bookings Card */}
+                <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 group flex flex-col justify-between">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="font-label-md text-[#3f4852] text-sm">
+                        Tổng Lượt Đặt Vé
+                      </p>
+                      <p className="font-headline-lg text-2xl font-extrabold text-[#191c1e] mt-1">
+                        8.432
+                      </p>
+                      <span className="text-xs text-green-600 font-bold flex items-center mt-2">
+                        <span className="material-symbols-outlined text-[14px] mr-0.5">
+                          arrow_upward
+                        </span>
+                        542 lượt mới hôm nay
+                      </span>
+                    </div>
+                    <div className="p-3 bg-[#bac9d3]/40 rounded-xl text-[#526069]">
+                      <span className="material-symbols-outlined">
+                        confirmation_number
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-[#bec7d4]/20 flex gap-6">
+                    <div>
+                      <p className="text-[10px] uppercase text-[#3f4852]/60 font-bold">
+                        Thành Công
+                      </p>
+                      <p className="font-label-md text-sm font-semibold">
+                        98.2%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-[#3f4852]/60 font-bold">
+                        Đã Hủy
+                      </p>
+                      <p className="font-label-md text-sm font-semibold">
+                        1.8%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Trains Card */}
+                <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 group flex flex-col justify-between">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="font-label-md text-[#3f4852] text-sm">
+                        Tàu Đang Hoạt Động
+                      </p>
+                      <p className="font-headline-lg text-2xl font-extrabold text-[#191c1e] mt-1">
+                        42{" "}
+                        <span className="text-sm font-normal text-[#3f4852]">
+                          / 48
+                        </span>
+                      </p>
+                      <span className="text-xs text-[#00629d] font-bold flex items-center mt-2">
+                        <span className="material-symbols-outlined text-[14px] mr-0.5">
+                          sync
+                        </span>
+                        Cập nhật 2 phút trước
+                      </span>
+                    </div>
+                    <div className="p-3 bg-[#b4cbce]/40 rounded-xl text-[#4d6265]">
+                      <span className="material-symbols-outlined">
+                        settings_input_component
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-[#eceef0] rounded-full h-2 mt-4">
+                    <div
+                      className="bg-[#00629d] h-2 rounded-full"
+                      style={{ width: "85%" }}
+                    ></div>
+                  </div>
+                  <p className="text-[11px] text-[#3f4852] mt-2">
+                    85% công suất khai thác hiện tại
+                  </p>
+                </div>
+              </section>
+
+              {/* Revenue Chart & Featured Info */}
+              <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Main Chart */}
+                <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h3 className="font-headline-md text-lg font-bold text-[#191c1e]">
+                        Biểu Đồ Doanh Thu Tuần
+                      </h3>
+                      <p className="text-xs text-[#3f4852]">
+                        Thống kê chi tiết từ Thứ Hai đến Chủ Nhật
+                      </p>
+                    </div>
+                    <select className="bg-[#f2f4f6] text-xs font-semibold py-1.5 px-3 border-none rounded-lg focus:ring-0 outline-none">
+                      <option>7 ngày qua</option>
+                      <option>30 ngày qua</option>
+                    </select>
+                  </div>
+
+                  {/* Simulated Chart Canvas */}
+                  <div className="relative h-64 w-full bg-gradient-to-t from-[#00629d]/5 to-transparent rounded-xl flex items-end px-6 pb-2">
+                    {/* SVG Path for Line Chart Simulation */}
+                    <svg
+                      className="absolute inset-0 w-full h-full p-4"
+                      preserveAspectRatio="none"
+                    >
+                      <path
+                        className="opacity-80"
+                        d="M 0 180 Q 50 140 120 170 T 260 110 T 400 130 T 540 60 T 680 80 T 820 40 T 960 70"
+                        fill="none"
+                        stroke="#00629d"
+                        strokeWidth="3"
+                      ></path>
+                      <path
+                        className="opacity-10"
+                        d="M 0 180 Q 50 140 120 170 T 260 110 T 400 130 T 540 60 T 680 80 T 820 40 T 960 70 L 960 250 L 0 250 Z"
+                        fill="url(#grad1)"
+                      ></path>
+                      <defs>
+                        <linearGradient
+                          id="grad1"
+                          x1="0%"
+                          x2="0%"
+                          y1="0%"
+                          y2="100%"
                         >
-                          <span className="material-symbols-outlined text-[20px]">
-                            edit
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleActionClick("Xóa", row.id)}
-                          className="p-2 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all cursor-pointer"
-                          title="Xóa"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            delete
-                          </span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-6 flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#f2f4f6]/30">
-              <p className="font-label-sm text-xs text-[#3f4852]">
-                Hiển thị 4 trong số 12 lịch trình
-              </p>
-              <div className="flex gap-1">
-                <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(1, prev - 1))
-                  }
-                  disabled={currentPage === 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#bec7d4] hover:bg-white disabled:opacity-50 transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    chevron_left
-                  </span>
-                </button>
-                {[1, 2, 3].map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-8 h-8 flex items-center justify-center rounded-lg font-label-sm text-xs ${
-                      currentPage === page
-                        ? "bg-[#00629d] text-white"
-                        : "border border-[#bec7d4] hover:bg-white cursor-pointer"
-                    }`}
-                  >
-                    {page}
+                          <stop
+                            offset="0%"
+                            style={{ stopColor: "#00a3ff", stopOpacity: 0.3 }}
+                          ></stop>
+                          <stop
+                            offset="100%"
+                            style={{ stopColor: "#00a3ff", stopOpacity: 0 }}
+                          ></stop>
+                        </linearGradient>
+                      </defs>
+                    </svg>
+
+                    {/* Grid Lines */}
+                    <div className="absolute inset-0 flex flex-col justify-between py-6 pointer-events-none">
+                      <div className="w-full border-b border-[#bec7d4]/10"></div>
+                      <div className="w-full border-b border-[#bec7d4]/10"></div>
+                      <div className="w-full border-b border-[#bec7d4]/10"></div>
+                      <div className="w-full border-b border-[#bec7d4]/10"></div>
+                    </div>
+
+                    {/* X-Axis Labels */}
+                    <div className="flex justify-between w-full font-label-sm text-xs text-[#3f4852]/60 relative z-10">
+                      <span>T2</span>
+                      <span>T3</span>
+                      <span>T4</span>
+                      <span>T5</span>
+                      <span>T6</span>
+                      <span>T7</span>
+                      <span>CN</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Route Performance */}
+                <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 flex flex-col justify-between">
+                  <h3 className="font-headline-md text-lg font-bold text-[#191c1e] mb-4">
+                    Tuyến Phổ Biến
+                  </h3>
+                  <div className="space-y-4 flex-1 flex flex-col justify-center">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-[#d3e2ed] flex items-center justify-center text-[#00629d] font-bold">
+                        1
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-label-md text-sm font-semibold">
+                          Hà Nội - Đà Nẵng
+                        </p>
+                        <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
+                          <div
+                            className="bg-[#00629d] h-1.5 rounded-full"
+                            style={{ width: "92%" }}
+                          ></div>
+                        </div>
+                      </div>
+                      <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
+                        92%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
+                        2
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-label-md text-sm font-semibold">
+                          TP.HCM - Nha Trang
+                        </p>
+                        <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
+                          <div
+                            className="bg-[#00629d] h-1.5 rounded-full"
+                            style={{ width: "78%" }}
+                          ></div>
+                        </div>
+                      </div>
+                      <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
+                        78%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
+                        3
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-label-md text-sm font-semibold">
+                          Hà Nội - Lào Cai
+                        </p>
+                        <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
+                          <div
+                            className="bg-[#00629d] h-1.5 rounded-full"
+                            style={{ width: "65%" }}
+                          ></div>
+                        </div>
+                      </div>
+                      <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
+                        65%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center text-[#3f4852] font-bold">
+                        4
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-label-md text-sm font-semibold">
+                          Huế - Quy Nhơn
+                        </p>
+                        <div className="w-full bg-[#eceef0] h-1.5 rounded-full mt-1">
+                          <div
+                            className="bg-[#00629d] h-1.5 rounded-full"
+                            style={{ width: "42%" }}
+                          ></div>
+                        </div>
+                      </div>
+                      <p className="font-label-sm text-xs text-[#3f4852] font-semibold">
+                        42%
+                      </p>
+                    </div>
+                  </div>
+                  <button className="w-full mt-4 py-2 text-[#00629d] hover:bg-[#00629d]/10 rounded-xl font-label-md text-sm font-semibold transition-all">
+                    Xem tất cả báo cáo
                   </button>
-                ))}
-                <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.min(3, prev + 1))
-                  }
-                  disabled={currentPage === 3}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#bec7d4] hover:bg-white disabled:opacity-50 transition-all cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    chevron_right
-                  </span>
-                </button>
-              </div>
-            </div>
-          </section>
+                </div>
+              </section>
+
+              {/* Management Table */}
+              <section className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
+                <div className="p-6 border-b border-[#bec7d4]/10 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div>
+                    <h3 className="font-headline-md text-lg font-bold text-[#191c1e]">
+                      Lịch Trình Sắp Tới
+                    </h3>
+                    <p className="text-xs text-[#3f4852]">
+                      Danh sách các chuyến tàu khởi hành trong 24h tới
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleAddSchedule}
+                    className="flex items-center gap-1.5 bg-[#00629d] hover:bg-[#00629d]/90 text-white px-5 py-2.5 rounded-xl font-label-md text-sm hover:shadow-lg active:scale-95 transition-all cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">
+                      add
+                    </span>
+                    Thêm Lịch Trình
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-[#f2f4f6]/50">
+                        <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
+                          Mã Tàu
+                        </th>
+                        <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
+                          Tuyến
+                        </th>
+                        <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
+                          Giờ Khởi Hành
+                        </th>
+                        <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm">
+                          Trạng Thái
+                        </th>
+                        <th className="px-6 py-4 font-label-md text-[#3f4852] text-sm text-right">
+                          Thao Tác
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#bec7d4]/10">
+                      {scheduleData[currentPage].map((row, idx) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-[#f7f9fb] transition-colors"
+                        >
+                          <td className="px-6 py-4 font-label-md text-sm text-[#00629d] font-bold">
+                            {row.id}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-body-md text-sm font-semibold">
+                                {row.from}
+                              </span>
+                              <span className="material-symbols-outlined text-[16px] text-[#6f7883]">
+                                arrow_forward
+                              </span>
+                              <span className="font-body-md text-sm font-semibold">
+                                {row.to}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-[#3f4852] text-sm">
+                            {row.time}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
+                                row.statusType === "success"
+                                  ? "bg-green-100 text-green-700"
+                                  : row.statusType === "danger"
+                                    ? "bg-[#ffdad6] text-[#ba1a1a]"
+                                    : "bg-[#eceef0] text-[#3f4852]"
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  row.statusType === "success"
+                                    ? "bg-green-600"
+                                    : row.statusType === "danger"
+                                      ? "bg-[#ba1a1a]"
+                                      : "bg-[#3f4852]/40"
+                                }`}
+                              ></span>
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleActionClick("Sửa", row.id)}
+                              className="p-2 text-[#00629d] hover:bg-[#cfe5ff]/50 rounded-lg transition-all cursor-pointer"
+                              title="Sửa"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
+                                edit
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleActionClick("Xóa", row.id)}
+                              className="p-2 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all cursor-pointer"
+                              title="Xóa"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
+                                delete
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-6 flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#f2f4f6]/30">
+                  <p className="font-label-sm text-xs text-[#3f4852]">
+                    Hiển thị 4 trong số 12 lịch trình
+                  </p>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={currentPage === 1}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#bec7d4] hover:bg-white disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        chevron_left
+                      </span>
+                    </button>
+                    {[1, 2, 3].map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg font-label-sm text-xs ${
+                          currentPage === page
+                            ? "bg-[#00629d] text-white"
+                            : "border border-[#bec7d4] hover:bg-white cursor-pointer"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(3, prev + 1))
+                      }
+                      disabled={currentPage === 3}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#bec7d4] hover:bg-white disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        chevron_right
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
         </div>
 
         {/* Footer Section */}
