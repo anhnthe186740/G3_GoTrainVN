@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Train, LogOut, User } from "lucide-react";
+import { Train, LogOut, User, Wallet } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { toast } from "sonner";
 
@@ -55,6 +55,16 @@ export function Navbar() {
         <div className="flex items-center gap-md">
           {user ? (
             <>
+              {user.role !== "ADMIN" && (
+                <Link
+                  to="/wallet"
+                  className="flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors px-3 py-2 rounded-xl hover:bg-primary/8"
+                  style={{ "--tw-bg-opacity": 1 }}
+                >
+                  <Wallet className="h-4 w-4" />
+                  <span className="hidden sm:inline">Ví</span>
+                </Link>
+              )}
               <Link
                 to="/dashboard"
                 className="flex items-center gap-sm cursor-pointer group"
