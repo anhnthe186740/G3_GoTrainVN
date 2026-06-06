@@ -7,6 +7,7 @@ export function AppLayout() {
   const location = useLocation();
   const { user } = useAuth();
   const isHomePage = location.pathname === "/";
+  const isFullPage = location.pathname === "/wallet";
   const isAdminDashboard =
     location.pathname === "/dashboard" && user?.role === "ADMIN";
 
@@ -20,11 +21,15 @@ export function AppLayout() {
 
   return (
     <div
-      className={`min-h-screen ${isHomePage ? "bg-[#f7f9fb]" : "bg-slate-50"} text-slate-900`}
+      className={`min-h-screen ${isHomePage || isFullPage ? "bg-[#f7f9fb]" : "bg-slate-50"} text-slate-900`}
     >
       <Navbar />
       {isHomePage ? (
         <main className="min-w-0 flex-1">
+          <Outlet />
+        </main>
+      ) : isFullPage ? (
+        <main className="min-w-0 flex-1 pt-[72px]">
           <Outlet />
         </main>
       ) : (
