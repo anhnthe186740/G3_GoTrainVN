@@ -4,6 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { toast } from "sonner";
 import { RouteScheduleMgmt } from "./RouteScheduleMgmt";
 import { AdminWalletPanel } from "./AdminWalletPanel.jsx";
+import { AdminSchedulePanel } from "./AdminSchedulePanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -285,10 +286,14 @@ export function AdminDashboard() {
         <div className="flex-1 overflow-y-auto">
           {/* Dashboard Content */}
           <div className="p-8 space-y-8">
-            {activeSidebar === "Quản Lý Tuyến" && <RouteScheduleMgmt />}
+            {activeSidebar === "Quản Lý Tuyến" && (
+              <RouteScheduleMgmt mode="route" />
+            )}
+            {activeSidebar === "Lịch Trình" && <AdminSchedulePanel />}
             {activeSidebar === "Quản Lý Ví" && <AdminWalletPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
+              activeSidebar !== "Lịch Trình" &&
               activeSidebar !== "Quản Lý Ví" && (
                 <>
                   {/* Welcome Section */}

@@ -81,7 +81,7 @@ function isStopOnRoute(startSt, endSt, stopSt) {
 const TABS = ["Tuyến Đường", "Lịch Trình"];
 
 // ═══════════════════════════════════════════════════════════════
-export function RouteScheduleMgmt() {
+export function RouteScheduleMgmt({ mode }) {
   const [activeTab, setActiveTab] = useState("Tuyến Đường");
 
   // Reference data
@@ -340,18 +340,26 @@ export function RouteScheduleMgmt() {
   };
 
   // ═══════════════════════════════════════════════════════════════
+  const isRouteMode = mode === "route";
+  const isScheduleMode = mode === "schedule";
+  const displayTitle = isRouteMode
+    ? "Quản Lý Tuyến Đường"
+    : isScheduleMode
+      ? "Quản Lý Lịch Trình"
+      : "Quản Lý Tuyến Đường & Lịch Trình";
+  const displaySubtitle = isRouteMode
+    ? "Quản lý lộ trình các tuyến tàu và các ga dừng trung gian."
+    : isScheduleMode
+      ? "Tự động sinh lịch trình chạy tàu với kiểm tra xung đột thông minh."
+      : "Quản lý các tuyến đường và tự động tạo lịch trình chạy tàu.";
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#191c1e]">
-            Quản Lý Tuyến Đường & Lịch Trình
-          </h2>
-          <p className="text-sm text-[#3f4852] mt-1">
-            Tự động sinh tuyến đường và lịch chạy tàu với kiểm tra xung đột
-            thông minh.
-          </p>
+          <h2 className="text-2xl font-bold text-[#191c1e]">{displayTitle}</h2>
+          <p className="text-sm text-[#3f4852] mt-1">{displaySubtitle}</p>
         </div>
         <button
           onClick={loadAll}
@@ -370,66 +378,74 @@ export function RouteScheduleMgmt() {
             value: routes.length,
             icon: "route",
             color: "text-[#00629d] bg-[#cfe5ff]/40",
+            show: !mode || isRouteMode,
           },
           {
             label: "Tuyến đang hoạt động",
             value: routes.filter((r) => r.isActive).length,
             icon: "check_circle",
             color: "text-green-700 bg-green-100",
+            show: !mode || isRouteMode,
           },
           {
             label: "Tổng lịch trình",
             value: schedules.length,
             icon: "calendar_month",
             color: "text-purple-700 bg-purple-100",
+            show: !mode || isScheduleMode,
           },
           {
             label: "Chuyến ACTIVE",
             value: schedules.filter((s) => s.status === "ACTIVE").length,
             icon: "train",
             color: "text-[#00629d] bg-[#d6e5ef]",
+            show: !mode || isScheduleMode,
           },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-white rounded-2xl p-4 border border-[#bec7d4]/10 shadow-[0px_4px_16px_rgba(0,163,255,0.06)]"
-          >
-            <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl ${stat.color}`}>
-                <span className="material-symbols-outlined text-[22px]">
-                  {stat.icon}
-                </span>
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold text-[#191c1e]">
-                  {stat.value}
-                </p>
-                <p className="text-xs text-[#3f4852]">{stat.label}</p>
+        ]
+          .filter((stat) => stat.show)
+          .map((stat) => (
+            <div
+              key={stat.label}
+              className="bg-white rounded-2xl p-4 border border-[#bec7d4]/10 shadow-[0px_4px_16px_rgba(0,163,255,0.06)]"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${stat.color}`}>
+                  <span className="material-symbols-outlined text-[22px]">
+                    {stat.icon}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-[#191c1e]">
+                    {stat.value}
+                  </p>
+                  <p className="text-xs text-[#3f4852]">{stat.label}</p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-[#f2f4f6] p-1 rounded-xl w-fit">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === tab
-                ? "bg-white text-[#00629d] shadow-sm"
-                : "text-[#3f4852] hover:text-[#191c1e]"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      {!mode && (
+        <div className="flex gap-1 bg-[#f2f4f6] p-1 rounded-xl w-fit">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === tab
+                  ? "bg-white text-[#00629d] shadow-sm"
+                  : "text-[#3f4852] hover:text-[#191c1e]"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── TAB 1: TUYẾN ĐƯỜNG ── */}
-      {activeTab === "Tuyến Đường" && (
+      {(isRouteMode || (!mode && activeTab === "Tuyến Đường")) && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Form tạo tuyến */}
           <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-[#bec7d4]/10 shadow-[0px_4px_16px_rgba(0,163,255,0.06)]">
@@ -829,7 +845,7 @@ export function RouteScheduleMgmt() {
       )}
 
       {/* ── TAB 2: LỊCH TRÌNH ── */}
-      {activeTab === "Lịch Trình" && (
+      {(isScheduleMode || (!mode && activeTab === "Lịch Trình")) && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Form tạo lịch trình */}
           <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-[#bec7d4]/10 shadow-[0px_4px_16px_rgba(0,163,255,0.06)]">
