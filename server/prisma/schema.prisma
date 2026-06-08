@@ -196,17 +196,19 @@ model Station {
 }
 
 model Route {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  startStationId  String    @db.ObjectId
-  startStation    Station   @relation("routeStart", fields: [startStationId], references: [id])
-  endStationId    String    @db.ObjectId
-  endStation      Station   @relation("routeEnd", fields: [endStationId], references: [id])
-  distance        Int       // km
-  estimatedDuration Int    // minutes
-  schedules       Schedule[]
-  popularity      Int       @default(0)  // Track booking count
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  routeName         String
+  startStationId    String         @db.ObjectId
+  startStation      Station        @relation("routeStart", fields: [startStationId], references: [id])
+  endStationId      String         @db.ObjectId
+  endStation        Station        @relation("routeEnd", fields: [endStationId], references: [id])
+  distance          Int            // km
+  estimatedDuration Int            // minutes
+  stations          RouteStation[] // Embedded array of intermediate stops
+  schedules         Schedule[]
+  popularity        Int            @default(0)  // Track booking count
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
   
   @@unique([startStationId, endStationId])
   @@index([startStationId])
@@ -217,8 +219,8 @@ model Schedule {
   id                    String    @id @default(auto()) @map("_id") @db.ObjectId
   trainId               String    @db.ObjectId
   train                 Train     @relation(fields: [trainId], references: [id], onDelete: Cascade)
-  routeId               String?   @db.ObjectId
-  route                 Route?    @relation(fields: [routeId], references: [id])
+  routeId               String    @db.ObjectId
+  route                 Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
   startStationId        String    @db.ObjectId
   startStation          Station   @relation("startStation", fields: [startStationId], references: [id])
   endStationId          String    @db.ObjectId
@@ -704,6 +706,13 @@ model RevenueReport {
   
   @@unique([period, periodStart])
   @@index([periodStart])
+}
+
+type RouteStation {
+  stationId         String @db.ObjectId
+  stationName       String
+  stopOrder         Int    // Sequential order (1, 2, 3...)
+  distanceFromStart Int    // Cumulative km from the start station
 }
 
 // ============================================

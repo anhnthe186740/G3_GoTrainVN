@@ -9,7 +9,8 @@
     "build": "node -e \"console.log('No build step required for server')\"",
     "lint": "eslint src --ext .js",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:dbpush": "prisma db push --schema prisma/schema.prisma"
+    "prisma:dbpush": "prisma db push --schema prisma/schema.prisma",
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
