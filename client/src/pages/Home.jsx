@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MapPin,
@@ -20,8 +20,11 @@ import {
   Ticket,
   Wallet,
   User as UserIcon,
+  ArrowLeftRight,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "../services/api";
 
 const MOCK_STATIONS = [
   { id: "1", code: "HAN", name: "Hà Nội", city: "Hà Nội" },
@@ -37,18 +40,31 @@ const MOCK_STATIONS = [
 export function Home() {
   const navigate = useNavigate();
 
+  const getTodayDateStr = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getNextDay = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  };
+
   // Search parameters
   const [fromStation, setFromStation] = useState("Hà Nội");
   const [toStation, setToStation] = useState("Đà Nẵng");
-  const [departureDate, setDepartureDate] = useState("2024-12-24");
+  const [departureDate, setDepartureDate] = useState(getTodayDateStr());
+  const [returnDate, setReturnDate] = useState("");
   const [tripType, setTripType] = useState("one-way"); // 'one-way' or 'round-trip'
 
-  // Passengers state
-  const [passengers, setPassengers] = useState({
-    adult: 1,
-    child: 0,
-  });
-  const [showPassengerDropdown, setShowPassengerDropdown] = useState(false);
+  const [stations, setStations] = useState(MOCK_STATIONS);
+  const [showFromSuggestions, setShowFromSuggestions] = useState(false);
+  const [showToSuggestions, setShowToSuggestions] = useState(false);
 
   // Live tracking progress bar logic
   const [progress, setProgress] = useState(66.05);
@@ -60,11 +76,34 @@ export function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Close dropdown on click outside
+  // Fetch active stations from server on load
   useEffect(() => {
-    const handleClose = () => setShowPassengerDropdown(false);
-    window.addEventListener("click", handleClose);
-    return () => window.removeEventListener("click", handleClose);
+    api
+      .get("/stations")
+      .then(({ data }) => {
+        if (data && data.stations) {
+          const formatted = data.stations.map((s) => ({
+            id: s.id,
+            code: s.stationCode,
+            name: s.stationName,
+            city: s.city,
+          }));
+          setStations(formatted);
+        }
+      })
+      .catch((err) => {
+        console.error("Lỗi khi tải danh sách ga từ API:", err);
+      });
+  }, []);
+
+  // Close dropdowns on click outside
+  useEffect(() => {
+    const handleCloseSuggestions = () => {
+      setShowFromSuggestions(false);
+      setShowToSuggestions(false);
+    };
+    window.addEventListener("click", handleCloseSuggestions);
+    return () => window.removeEventListener("click", handleCloseSuggestions);
   }, []);
 
   const handleSwapStations = () => {
@@ -74,30 +113,99 @@ export function Home() {
     toast.success("Đã đổi Ga đi và Ga đến!");
   };
 
-  const updatePassengerCount = (type, delta) => {
-    setPassengers((prev) => {
-      const val = prev[type] + delta;
-      if (val < 0) return prev;
-      if (type === "adult" && val < 1) return prev; // At least 1 adult
-      return { ...prev, [type]: val };
-    });
-  };
+  const filteredFromSuggestions = useMemo(() => {
+    const query = fromStation.trim().toLowerCase();
+    if (!query) return stations;
+    return stations.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.city.toLowerCase().includes(query) ||
+        s.code.toLowerCase().includes(query),
+    );
+  }, [fromStation, stations]);
 
-  const getPassengerSummary = () => {
-    return `${passengers.adult} Người lớn, ${passengers.child} Trẻ em`;
-  };
+  const filteredToSuggestions = useMemo(() => {
+    const query = toStation.trim().toLowerCase();
+    if (!query) return stations;
+    return stations.filter(
+      (s) =>
+        s.name.toLowerCase().includes(query) ||
+        s.city.toLowerCase().includes(query) ||
+        s.code.toLowerCase().includes(query),
+    );
+  }, [toStation, stations]);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (fromStation.trim() === toStation.trim()) {
+
+    const fromTrimmed = fromStation.trim();
+    const toTrimmed = toStation.trim();
+
+    if (!fromTrimmed) {
+      toast.error("Vui lòng nhập Ga đi!");
+      return;
+    }
+    if (!toTrimmed) {
+      toast.error("Vui lòng nhập Ga đến!");
+      return;
+    }
+
+    // Match exact station name from database/mock
+    const validFrom = stations.find(
+      (s) => s.name.toLowerCase() === fromTrimmed.toLowerCase(),
+    );
+    const validTo = stations.find(
+      (s) => s.name.toLowerCase() === toTrimmed.toLowerCase(),
+    );
+
+    if (!validFrom) {
+      toast.error(
+        `Ga đi "${fromTrimmed}" không tồn tại trong hệ thống. Vui lòng chọn ga từ danh sách!`,
+      );
+      return;
+    }
+    if (!validTo) {
+      toast.error(
+        `Ga đến "${toTrimmed}" không tồn tại trong hệ thống. Vui lòng chọn ga từ danh sách!`,
+      );
+      return;
+    }
+
+    if (validFrom.name === validTo.name) {
       toast.error("Ga đi và Ga đến không được trùng nhau!");
       return;
     }
+
+    if (!departureDate) {
+      toast.error("Vui lòng chọn ngày đi!");
+      return;
+    }
+
+    const todayStr = getTodayDateStr();
+    if (departureDate < todayStr) {
+      toast.error("Ngày đi không được ở quá khứ!");
+      return;
+    }
+
+    if (tripType === "round-trip") {
+      if (!returnDate) {
+        toast.error("Vui lòng chọn ngày về cho vé khứ hồi!");
+        return;
+      }
+      if (returnDate < departureDate) {
+        toast.error("Ngày về không được trước ngày đi!");
+        return;
+      }
+    }
+
     toast.success(
-      `Đang tìm kiếm chuyến tàu từ ${fromStation} đi ${toStation}...`,
+      `Đang tìm kiếm chuyến tàu từ ${validFrom.name} đi ${validTo.name}...`,
     );
+
+    const returnParam =
+      tripType === "round-trip" ? `&returnDate=${returnDate}` : "";
     navigate(
-      `/dashboard?from=${fromStation}&to=${toStation}&date=${departureDate}&trip=${tripType}`,
+      `/schedule?from=${validFrom.name}&to=${validTo.name}&date=${departureDate}&trip=${tripType}${returnParam}`,
     );
   };
 
@@ -116,7 +224,7 @@ export function Home() {
   return (
     <div className="text-on-surface bg-[#f7f9fb] min-h-screen pb-16 md:pb-0 pt-16">
       {/* 1. Hero Section */}
-      <section className="relative min-h-[600px] flex items-center overflow-hidden">
+      <section className="relative min-h-[680px] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
             className="w-full h-full object-cover"
@@ -127,39 +235,89 @@ export function Home() {
           <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-transparent"></div>
         </div>
 
-        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full py-12">
-          <div className="max-w-2xl text-left">
-            <h1 className="font-display-lg text-display-lg md:text-[56px] text-primary mb-md leading-tight">
-              Hành Trình Mới,
-              <br />
-              Trải Nghiệm Mới
-            </h1>
-            <p className="font-body-lg text-body-lg text-secondary mb-lg">
-              Đặt vé tàu nhanh chóng, an toàn và tiện lợi cùng GoTrain VN. Khám
-              phá vẻ đẹp Việt Nam qua từng ô cửa sổ.
-            </p>
+        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full pt-16 pb-28 md:pb-36">
+          <div className="text-left w-full">
+            <div className="max-w-2xl mb-lg">
+              <h1 className="font-display-lg text-display-lg md:text-[56px] text-primary mb-md leading-tight">
+                Hành Trình Mới,
+                <br />
+                Trải Nghiệm Mới
+              </h1>
+              <p className="font-body-lg text-body-lg text-secondary">
+                Đặt vé tàu nhanh chóng, an toàn và tiện lợi cùng GoTrain VN.
+                Khám phá vẻ đẹp Việt Nam qua từng ô cửa sổ.
+              </p>
+            </div>
 
             {/* Search Card */}
-            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,163,255,0.12)] border border-surface-container">
+            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,163,255,0.12)] border border-surface-container max-w-5xl w-full">
               <form onSubmit={handleSearch}>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-md items-end">
+                <div
+                  className={`grid grid-cols-1 gap-md items-end ${tripType === "round-trip" ? "md:grid-cols-5" : "md:grid-cols-4"}`}
+                >
                   {/* Station Fields Container */}
                   <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-md relative">
                     {/* Ga Đi */}
-                    <div className="flex flex-col gap-xs">
+                    <div
+                      className="flex flex-col gap-xs relative text-left"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <label className="font-label-md text-label-md text-secondary">
                         Ga Đi
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white">
+                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
                         <MapPin className="h-5 w-5 text-primary shrink-0" />
                         <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none"
+                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
                           placeholder="Hà Nội"
                           type="text"
                           value={fromStation}
-                          onChange={(e) => setFromStation(e.target.value)}
+                          onChange={(e) => {
+                            setFromStation(e.target.value);
+                            setShowFromSuggestions(true);
+                          }}
+                          onFocus={() => {
+                            setShowFromSuggestions(true);
+                            setShowToSuggestions(false);
+                          }}
                         />
                       </div>
+                      {/* Suggestions Dropdown */}
+                      {showFromSuggestions &&
+                        filteredFromSuggestions.length > 0 && (
+                          <div className="absolute left-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
+                            {filteredFromSuggestions.map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => {
+                                  setFromStation(s.name);
+                                  setShowFromSuggestions(false);
+                                }}
+                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
+                                    <MapPin className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-800">
+                                      {s.name.toLowerCase().startsWith("ga")
+                                        ? s.name
+                                        : `Ga ${s.name}`}
+                                    </p>
+                                    <p className="text-xs text-slate-400 font-semibold">
+                                      {s.city}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
+                                  {s.code}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                     </div>
 
                     {/* Swap Button */}
@@ -173,178 +331,169 @@ export function Home() {
                     </button>
 
                     {/* Ga Đến */}
-                    <div className="flex flex-col gap-xs">
+                    <div
+                      className="flex flex-col gap-xs relative text-left"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <label className="font-label-md text-label-md text-secondary">
                         Ga Đến
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white">
+                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
                         <Navigation className="h-5 w-5 text-primary rotate-45 shrink-0" />
                         <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none"
+                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
                           placeholder="Đà Nẵng"
                           type="text"
                           value={toStation}
-                          onChange={(e) => setToStation(e.target.value)}
+                          onChange={(e) => {
+                            setToStation(e.target.value);
+                            setShowToSuggestions(true);
+                          }}
+                          onFocus={() => {
+                            setShowToSuggestions(true);
+                            setShowFromSuggestions(false);
+                          }}
                         />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Ngày Đi */}
-                  <div className="flex flex-col gap-xs text-left">
-                    <label className="font-label-md text-label-md text-secondary">
-                      Ngày Đi
-                    </label>
-                    <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white">
-                      <Calendar className="h-5 w-5 text-primary shrink-0" />
-                      <input
-                        className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer"
-                        placeholder="24/12/2024"
-                        type="text"
-                        value={departureDate}
-                        onChange={(e) => setDepartureDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    className="bg-primary-container text-white h-[52px] rounded-xl font-label-md text-label-md font-bold shadow-[0px_8px_24px_rgba(0,163,255,0.3)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer"
-                  >
-                    Tìm Chuyến Tàu
-                  </button>
-                </div>
-
-                {/* Bottom of search card */}
-                <div className="flex flex-wrap gap-md mt-md pt-md border-t border-surface-container items-center">
-                  <div className="flex items-center gap-sm">
-                    <input
-                      checked={tripType === "one-way"}
-                      onChange={() => setTripType("one-way")}
-                      className="text-primary focus:ring-primary h-4 w-4"
-                      id="one-way"
-                      name="trip"
-                      type="radio"
-                    />
-                    <label
-                      className="font-body-sm text-body-sm text-on-surface-variant cursor-pointer select-none"
-                      htmlFor="one-way"
-                    >
-                      Một chiều
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-sm">
-                    <input
-                      checked={tripType === "round-trip"}
-                      onChange={() => setTripType("round-trip")}
-                      className="text-primary focus:ring-primary h-4 w-4"
-                      id="round-trip"
-                      name="trip"
-                      type="radio"
-                    />
-                    <label
-                      className="font-body-sm text-body-sm text-on-surface-variant cursor-pointer select-none"
-                      htmlFor="round-trip"
-                    >
-                      Khứ hồi
-                    </label>
-                  </div>
-
-                  {/* Passenger selector */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowPassengerDropdown(!showPassengerDropdown);
-                    }}
-                    className="ml-auto flex items-center gap-sm text-secondary cursor-pointer hover:text-primary transition-colors relative py-1"
-                  >
-                    <Users className="h-5 w-5 text-secondary" />
-                    <span className="font-body-sm text-body-sm select-none">
-                      {getPassengerSummary()}
-                    </span>
-
-                    {showPassengerDropdown && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute right-0 bottom-full mb-3 w-64 rounded-2xl border border-surface-container bg-white p-4 shadow-xl z-20 text-on-surface"
-                      >
-                        <h4 className="font-bold text-xs text-slate-800 border-b pb-2 mb-3">
-                          Hành khách
-                        </h4>
-                        <div className="space-y-3">
-                          {/* Adult */}
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-semibold text-slate-700">
-                                Người lớn
-                              </p>
-                              <p className="text-[10px] text-slate-400">
-                                Từ 12 tuổi
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
+                      {/* Suggestions Dropdown */}
+                      {showToSuggestions &&
+                        filteredToSuggestions.length > 0 && (
+                          <div className="absolute right-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
+                            {filteredToSuggestions.map((s) => (
                               <button
+                                key={s.id}
                                 type="button"
-                                disabled={passengers.adult <= 1}
-                                onClick={() =>
-                                  updatePassengerCount("adult", -1)
-                                }
-                                className="flex h-6.5 w-6.5 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
+                                onClick={() => {
+                                  setToStation(s.name);
+                                  setShowToSuggestions(false);
+                                }}
+                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
                               >
-                                <Minus className="h-3 w-3" />
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
+                                    <MapPin className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-800">
+                                      {s.name.toLowerCase().startsWith("ga")
+                                        ? s.name
+                                        : `Ga ${s.name}`}
+                                    </p>
+                                    <p className="text-xs text-slate-400 font-semibold">
+                                      {s.city}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
+                                  {s.code}
+                                </span>
                               </button>
-                              <span className="w-4 text-center text-xs font-bold">
-                                {passengers.adult}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updatePassengerCount("adult", 1)}
-                                className="flex h-6.5 w-6.5 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600"
-                              >
-                                <Plus className="h-3 w-3" />
-                              </button>
-                            </div>
+                            ))}
                           </div>
+                        )}
+                    </div>
+                  </div>
 
-                          {/* Child */}
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-semibold text-slate-700">
-                                Trẻ em
-                              </p>
-                              <p className="text-[10px] text-slate-400">
-                                Dưới 12 tuổi
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                disabled={passengers.child <= 0}
-                                onClick={() =>
-                                  updatePassengerCount("child", -1)
+                  {/* Ngày Đi / Ngày Về Container */}
+                  <div
+                    className={`col-span-1 text-left ${tripType === "round-trip" ? "md:col-span-2" : "md:col-span-1"}`}
+                  >
+                    {tripType === "one-way" ? (
+                      <div className="flex flex-col gap-xs text-left w-full">
+                        <div className="flex justify-between items-center">
+                          <label className="font-label-md text-label-md text-secondary">
+                            Ngày Đi
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTripType("round-trip");
+                              setReturnDate(getNextDay(departureDate));
+                            }}
+                            className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary-container cursor-pointer transition-colors"
+                            title="Chọn vé khứ hồi"
+                          >
+                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                            <span>Khứ hồi?</span>
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
+                          <Calendar className="h-5 w-5 text-primary shrink-0" />
+                          <input
+                            className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                            type="date"
+                            min={getTodayDateStr()}
+                            value={departureDate}
+                            onChange={(e) => {
+                              setDepartureDate(e.target.value);
+                              if (returnDate && returnDate < e.target.value) {
+                                setReturnDate(e.target.value);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-md w-full">
+                        {/* Ngày Đi */}
+                        <div className="col-span-1 flex flex-col gap-xs text-left">
+                          <label className="font-label-md text-label-md text-secondary">
+                            Ngày Đi
+                          </label>
+                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
+                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                            <input
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              type="date"
+                              min={getTodayDateStr()}
+                              value={departureDate}
+                              onChange={(e) => {
+                                setDepartureDate(e.target.value);
+                                if (returnDate && returnDate < e.target.value) {
+                                  setReturnDate(e.target.value);
                                 }
-                                className="flex h-6.5 w-6.5 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-30"
-                              >
-                                <Minus className="h-3 w-3" />
-                              </button>
-                              <span className="w-4 text-center text-xs font-bold">
-                                {passengers.child}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updatePassengerCount("child", 1)}
-                                className="flex h-6.5 w-6.5 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 text-slate-600"
-                              >
-                                <Plus className="h-3 w-3" />
-                              </button>
-                            </div>
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Ngày Về */}
+                        <div className="col-span-1 flex flex-col gap-xs text-left relative">
+                          <div className="flex justify-between items-center">
+                            <label className="font-label-md text-label-md text-secondary">
+                              Ngày Về
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setTripType("one-way")}
+                              className="text-slate-400 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
+                              title="Hủy khứ hồi"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
+                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                            <input
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              type="date"
+                              min={departureDate || getTodayDateStr()}
+                              value={returnDate}
+                              onChange={(e) => setReturnDate(e.target.value)}
+                            />
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    className="bg-primary-container text-white h-[48px] rounded-xl font-label-md text-label-md font-bold shadow-[0px_8px_24px_rgba(0,163,255,0.3)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
+                  >
+                    Tìm Chuyến Tàu
+                  </button>
                 </div>
               </form>
             </div>

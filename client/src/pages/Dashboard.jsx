@@ -1,7 +1,6 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { AdminDashboard } from "../components/dashboard/AdminDashboard";
-import { CustomerBooking } from "../components/booking/CustomerBooking";
 import { Card } from "../components/ui/Card";
 
 export function Dashboard() {
@@ -16,7 +15,7 @@ export function Dashboard() {
   const isBookingFlow = searchParams.get("from") && searchParams.get("to");
 
   if (isBookingFlow) {
-    return <CustomerBooking />;
+    return <Navigate to={`/schedule?${searchParams.toString()}`} replace />;
   }
 
   return (

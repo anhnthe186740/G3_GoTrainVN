@@ -1,6 +1,5 @@
 import {
   RotateCw,
-  Clock,
   Train as TrainIcon,
   SlidersHorizontal,
   ArrowUpDown,
@@ -13,22 +12,9 @@ export function FilterPanel({
   setSortBy,
   onReset,
 }) {
-  const timeSlots = [
-    { id: "early", label: "Sáng sớm (00:00 - 06:00)", value: "00-06" },
-    { id: "morning", label: "Buổi sáng (06:00 - 12:00)", value: "06-12" },
-    { id: "afternoon", label: "Buổi chiều (12:00 - 18:00)", value: "12-18" },
-    { id: "night", label: "Buổi tối (18:00 - 24:00)", value: "18-24" },
-  ];
-
   const trainTypes = [
     { label: "Tàu nhanh (SE)", value: "SE" },
     { label: "Tàu thường (TN)", value: "TN" },
-  ];
-
-  const carriageTypes = [
-    { label: "Ghế ngồi (SEAT)", value: "SEAT" },
-    { label: "Ghế AC (AC_SEAT)", value: "AC_SEAT" },
-    { label: "Giường nằm (SLEEPER)", value: "SLEEPER" },
   ];
 
   const sortOptions = [
@@ -86,39 +72,8 @@ export function FilterPanel({
         </select>
       </div>
 
-      {/* Lọc Khung giờ đi */}
-      <div className="space-y-3">
-        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-          <Clock className="h-3.5 w-3.5 text-slate-400" />
-          Giờ xuất phát
-        </label>
-        <div className="space-y-2">
-          {timeSlots.map((slot) => {
-            const isChecked = (filters.timeSlots || []).includes(slot.value);
-            return (
-              <label
-                key={slot.id}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none transition-all ${
-                  isChecked
-                    ? "border-primary bg-primary/5 text-primary font-semibold"
-                    : "border-slate-100 bg-slate-50/50 hover:bg-slate-50 text-slate-600"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggleFilter("timeSlots", slot.value)}
-                  className="hidden"
-                />
-                <span className="text-xs">{slot.label}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Lọc Loại tàu */}
-      <div className="space-y-3">
+      <div className="space-y-3 pb-2">
         <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
           <TrainIcon className="h-3.5 w-3.5 text-slate-400" />
           Loại tàu
@@ -144,33 +99,22 @@ export function FilterPanel({
         </div>
       </div>
 
-      {/* Lọc Loại chỗ (Ghế/Giường) */}
-      <div className="space-y-3">
-        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
-          Loại chỗ
-        </label>
-        <div className="space-y-2">
-          {carriageTypes.map((type) => {
-            const isChecked = (filters.carriageTypes || []).includes(
-              type.value,
-            );
-            return (
-              <label
-                key={type.value}
-                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800 cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggleFilter("carriageTypes", type.value)}
-                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20"
-                />
-                <span>{type.label}</span>
-              </label>
-            );
-          })}
-        </div>
+      {/* Dynamic/Helpful Info section at the bottom to fill height */}
+      <div className="pt-5 border-t border-slate-100 space-y-3">
+        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Mẹo đặt vé tàu
+        </h4>
+        <ul className="text-[11px] text-slate-500 space-y-2.5 list-disc pl-4 font-semibold leading-relaxed">
+          <li>
+            Đặt trước 3-5 ngày để giữ được vị trí ngồi AC hoặc giường nằm mong
+            muốn.
+          </li>
+          <li>
+            Học sinh, sinh viên và trẻ em được ưu đãi giảm tới 15% - 25% trực
+            tiếp khi nhập thông tin.
+          </li>
+          <li>Tỉ lệ lấp đầy hiển thị theo thời gian thực.</li>
+        </ul>
       </div>
     </div>
   );

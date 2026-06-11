@@ -99,18 +99,41 @@ export function ScheduleCard({ schedule, onSelect }) {
 
         {/* Hàng cuối: Các loại ghế hiện có */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-50">
-          {schedule.pricing.map((opt) => (
-            <div
-              key={opt.carriageType}
-              className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100 text-[11px] font-semibold text-slate-600 flex items-center gap-1.5"
-            >
-              <span>{opt.carriageTypeName}</span>
-              <span className="text-slate-400">|</span>
-              <span className="text-slate-800 font-bold">
-                {formatPrice(opt.price)}
-              </span>
-            </div>
-          ))}
+          {schedule.pricing.map((opt) => {
+            const snap = schedule.availability?.find(
+              (a) => a.carriageType === opt.carriageType,
+            );
+            const unitName = opt.carriageType === "SLEEPER" ? "giường" : "ghế";
+            return (
+              <div
+                key={opt.carriageType}
+                className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100 text-[11px] font-semibold text-slate-600 flex items-center gap-1.5"
+              >
+                <span>{opt.carriageTypeName}</span>
+                <span className="text-slate-400">|</span>
+                <span className="text-slate-800 font-bold">
+                  {formatPrice(opt.price)}
+                </span>
+                {snap && (
+                  <>
+                    <span className="text-slate-400">|</span>
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        snap.occupancyPercentage >= 80
+                          ? "bg-red-50 text-red-600 border border-red-100"
+                          : snap.occupancyPercentage >= 50
+                            ? "bg-amber-50 text-amber-600 border border-amber-100"
+                            : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                      }`}
+                    >
+                      Lấp đầy: {snap.occupancyPercentage}% ({snap.bookedSeats}{" "}
+                      {unitName})
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

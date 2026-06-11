@@ -9,6 +9,7 @@ import { Register } from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
 import { NotFound } from "./pages/NotFound";
+import { CustomerBooking } from "./components/booking/CustomerBooking";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
 
@@ -60,6 +61,7 @@ export default function App() {
       />
       <Route element={<AppLayout />}>
         <Route index element={<Home />} />
+        <Route path="schedule" element={<CustomerBooking />} />
         <Route
           path="dashboard"
           element={

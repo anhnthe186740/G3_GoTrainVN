@@ -1,128 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft,
-  Inbox,
-  Search,
-  Ticket,
-  Users,
-  Calendar,
-  Sparkles,
-} from "lucide-react";
+import { api } from "../../services/api";
+import { Inbox, Search, Calendar } from "lucide-react";
 import { FilterPanel } from "./FilterPanel";
 import { ScheduleCard } from "./ScheduleCard";
 import { toast } from "sonner";
-
-// Mock schedules data for G3_GoTrainVN Customer booking flow
-const MOCK_SCHEDULES = [
-  {
-    id: "sched-se1",
-    trainCode: "SE1",
-    trainName: "Hải Vân Express (Tàu nhanh SE)",
-    departureTime: "2024-12-24T06:15:00.000Z",
-    arrivalTime: "2024-12-24T18:45:00.000Z",
-    duration: 750, // 12h 30m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "SEAT", carriageTypeName: "Ghế ngồi", price: 420000 },
-      { carriageType: "AC_SEAT", carriageTypeName: "Ghế AC", price: 580000 },
-      {
-        carriageType: "SLEEPER",
-        carriageTypeName: "Giường nằm",
-        price: 920000,
-      },
-    ],
-  },
-  {
-    id: "sched-se3",
-    trainCode: "SE3",
-    trainName: "Thống Nhất Express (Tàu nhanh SE)",
-    departureTime: "2024-12-24T08:30:00.000Z",
-    arrivalTime: "2024-12-24T21:00:00.000Z",
-    duration: 750, // 12h 30m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "SEAT", carriageTypeName: "Ghế ngồi", price: 450000 },
-      { carriageType: "AC_SEAT", carriageTypeName: "Ghế AC", price: 620000 },
-      {
-        carriageType: "SLEEPER",
-        carriageTypeName: "Giường nằm",
-        price: 950000,
-      },
-    ],
-  },
-  {
-    id: "sched-tn1",
-    trainCode: "TN1",
-    trainName: "Thống Nhất Thường (Tàu thường TN)",
-    departureTime: "2024-12-24T05:45:00.000Z",
-    arrivalTime: "2024-12-24T19:30:00.000Z",
-    duration: 825, // 13h 45m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "SEAT", carriageTypeName: "Ghế ngồi", price: 350000 },
-      { carriageType: "AC_SEAT", carriageTypeName: "Ghế AC", price: 490000 },
-    ],
-  },
-  {
-    id: "sched-se5",
-    trainCode: "SE5",
-    trainName: "Phương Nam Express (Tàu nhanh SE)",
-    departureTime: "2024-12-24T13:15:00.000Z",
-    arrivalTime: "2024-12-25T01:45:00.000Z",
-    duration: 750, // 12h 30m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "AC_SEAT", carriageTypeName: "Ghế AC", price: 610000 },
-      {
-        carriageType: "SLEEPER",
-        carriageTypeName: "Giường nằm",
-        price: 980000,
-      },
-    ],
-  },
-  {
-    id: "sched-tn3",
-    trainCode: "TN3",
-    trainName: "Vạn Xuân Night (Tàu thường TN)",
-    departureTime: "2024-12-24T20:15:00.000Z",
-    arrivalTime: "2024-12-25T09:30:00.000Z",
-    duration: 795, // 13h 15m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "SEAT", carriageTypeName: "Ghế ngồi", price: 380000 },
-      {
-        carriageType: "SLEEPER",
-        carriageTypeName: "Giường nằm",
-        price: 820000,
-      },
-    ],
-  },
-  {
-    id: "sched-se7",
-    trainCode: "SE7",
-    trainName: "Bình Minh Speed (Tàu nhanh SE)",
-    departureTime: "2024-12-24T17:45:00.000Z",
-    arrivalTime: "2024-12-25T06:00:00.000Z",
-    duration: 735, // 12h 15m
-    startStationName: "Hà Nội",
-    endStationName: "Đà Nẵng",
-    pricing: [
-      { carriageType: "SEAT", carriageTypeName: "Ghế ngồi", price: 490000 },
-      { carriageType: "AC_SEAT", carriageTypeName: "Ghế AC", price: 680000 },
-      {
-        carriageType: "SLEEPER",
-        carriageTypeName: "Giường nằm",
-        price: 1050000,
-      },
-    ],
-  },
-];
 
 export function CustomerBooking() {
   const [searchParams] = useSearchParams();
@@ -133,6 +15,11 @@ export function CustomerBooking() {
   const to = searchParams.get("to") || "Đà Nẵng";
   const dateStr = searchParams.get("date") || "2024-12-24";
   const tripType = searchParams.get("trip") || "one-way";
+  const returnDate = searchParams.get("returnDate");
+
+  // State management for schedules loaded from API
+  const [schedules, setSchedules] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // State management for filters and sort
   const [filters, setFilters] = useState({
@@ -142,8 +29,66 @@ export function CustomerBooking() {
   });
   const [sortBy, setSortBy] = useState("price-asc");
 
-  // Selected schedule state (For transitioning to Task 6 later)
-  const [selectedSchedule, setSelectedSchedule] = useState(null);
+  const fetchSchedules = () => {
+    api
+      .get("/schedules")
+      .then(({ data }) => {
+        if (data && data.schedules) {
+          const formatted = data.schedules.map((s) => {
+            let duration = s.duration;
+            if (!duration) {
+              const diffMs =
+                new Date(s.arrivalTime) - new Date(s.departureTime);
+              duration = Math.floor(diffMs / 60 / 1000);
+            }
+
+            const carriageNames = {
+              SEAT: "Ghế thường",
+              AC_SEAT: "Ghế AC",
+              SLEEPER: "Giường nằm",
+            };
+            const pricing = s.pricing.map((p) => ({
+              carriageType: p.carriageType,
+              carriageTypeName: carriageNames[p.carriageType] || p.carriageType,
+              price: p.basePrice,
+            }));
+
+            const availability = s.availabilitySnapshots || [];
+
+            return {
+              id: s.id,
+              trainCode: s.train.trainCode,
+              trainName: s.train.trainName,
+              departureTime: s.departureTime,
+              arrivalTime: s.arrivalTime,
+              duration,
+              startStationName: s.route.startStation.stationName,
+              endStationName: s.route.endStation.stationName,
+              pricing,
+              availability,
+            };
+          });
+          setSchedules(formatted);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Lỗi khi tải lịch trình từ API:", err);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchSchedules();
+
+    // 2-minute polling interval
+    const interval = setInterval(() => {
+      fetchSchedules();
+      toast.info("Đã cập nhật tự động tỉ lệ lấp đầy ghế thực tế từ database!");
+    }, 120000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const resetFilters = () => {
     setFilters({
@@ -158,16 +103,16 @@ export function CustomerBooking() {
   // Filter and sort computation
   const filteredAndSortedSchedules = useMemo(() => {
     // 1. Filter by search query (stations match)
-    let list = MOCK_SCHEDULES.filter(
-      (s) =>
-        s.startStationName.toLowerCase().includes(from.toLowerCase()) &&
-        s.endStationName.toLowerCase().includes(to.toLowerCase()),
-    );
-
-    // If no exact match (e.g. searching for other mocked routes), display all for visual demonstration
-    if (list.length === 0) {
-      list = MOCK_SCHEDULES;
-    }
+    let list = schedules.filter((s) => {
+      const fromClean = from.toLowerCase().replace("ga ", "").trim();
+      const toClean = to.toLowerCase().replace("ga ", "").trim();
+      const startClean = s.startStationName
+        .toLowerCase()
+        .replace("ga ", "")
+        .trim();
+      const endClean = s.endStationName.toLowerCase().replace("ga ", "").trim();
+      return startClean.includes(fromClean) && endClean.includes(toClean);
+    });
 
     // 2. Filter by time slots
     if (filters.timeSlots.length > 0) {
@@ -215,70 +160,17 @@ export function CustomerBooking() {
     });
 
     return list;
-  }, [from, to, filters, sortBy]);
+  }, [from, to, filters, sortBy, schedules]);
 
   const handleSelectSchedule = (schedule) => {
-    setSelectedSchedule(schedule);
     toast.success(
-      `Đã chọn chuyến tàu ${schedule.trainCode}. Đang chuyển qua chọn ghế!`,
+      `Đã chọn chuyến tàu ${schedule.trainCode}. Đang chuyển hướng qua luồng đặt vé...`,
     );
   };
 
   const handleBackToSearch = () => {
     navigate("/");
   };
-
-  // Render Seat Selection placeholder (Task 6 preparation)
-  if (selectedSchedule) {
-    return (
-      <div className="space-y-6 text-left max-w-4xl mx-auto p-6">
-        <button
-          onClick={() => setSelectedSchedule(null)}
-          className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition"
-        >
-          <ArrowLeft className="h-4 w-4" /> Quay lại danh sách chuyến tàu
-        </button>
-
-        <div className="bg-[#cfe5ff]/20 border border-[#cfe5ff] rounded-2xl p-5 flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-          <div>
-            <h3 className="font-bold text-slate-800">Thông báo từ hệ thống</h3>
-            <p className="text-xs text-slate-600 mt-1">
-              Bạn đã chọn chuyến tàu{" "}
-              <strong>
-                {selectedSchedule.trainCode} - {selectedSchedule.trainName}
-              </strong>{" "}
-              thành công. Các tính năng vẽ sơ đồ toa tàu, khóa ghế và nhập thông
-              tin hành khách thuộc <strong>Nhiệm vụ 6 (Lực)</strong> đang sẵn
-              sàng tích hợp!
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-4 shadow-sm">
-          <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary">
-            <Ticket className="h-8 w-8" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800">
-            Giao diện Chọn ghế (Nhiệm vụ 6)
-          </h2>
-          <p className="text-slate-500 text-sm max-w-md mx-auto">
-            Tại bước này, hệ thống sẽ gọi API sơ đồ ghế của tàu{" "}
-            {selectedSchedule.trainCode}, hiển thị cấu trúc khoang hành khách và
-            khóa giữ chỗ tự động.
-          </p>
-          <div className="pt-2">
-            <button
-              onClick={() => setSelectedSchedule(null)}
-              className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:shadow-md transition active:scale-95 cursor-pointer"
-            >
-              Xem lại bộ lọc kết quả
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-6">
@@ -299,10 +191,12 @@ export function CustomerBooking() {
                 <Calendar className="h-3.5 w-3.5 text-slate-400" />
                 Ngày đi: {dateStr}
               </span>
-              <span className="flex items-center gap-1">
-                <Users className="h-3.5 w-3.5 text-slate-400" />
-                Khứ hồi: {tripType === "round-trip" ? "Có" : "Không"}
-              </span>
+              {tripType === "round-trip" && returnDate && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                  Ngày về: {returnDate}
+                </span>
+              )}
             </div>
           </div>
         </div>
