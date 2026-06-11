@@ -7,6 +7,8 @@ import {
   generateRoute,
   generateSchedules,
   deleteRoute,
+  createTrain,
+  deleteTrain,
 } from "../controllers/routeSchedule.controller.js";
 
 export const routeScheduleRoutes = Router();
@@ -14,6 +16,8 @@ export const routeScheduleRoutes = Router();
 // Stations & Trains (reference data)
 routeScheduleRoutes.get("/stations", getStations);
 routeScheduleRoutes.get("/trains", getTrains);
+routeScheduleRoutes.post("/trains", createTrain);
+routeScheduleRoutes.delete("/trains/:id", deleteTrain);
 
 // Routes
 routeScheduleRoutes.get("/routes", getRoutes);
