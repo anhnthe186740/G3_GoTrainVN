@@ -8,6 +8,7 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
+import { TicketLookup } from "./pages/TicketLookup";
 import { NotFound } from "./pages/NotFound";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
@@ -60,6 +61,7 @@ export default function App() {
       />
       <Route element={<AppLayout />}>
         <Route index element={<Home />} />
+        <Route path="tra-cuu-ve" element={<TicketLookup />} />
         <Route
           path="dashboard"
           element={
