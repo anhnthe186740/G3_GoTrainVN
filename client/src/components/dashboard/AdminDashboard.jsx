@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { RouteScheduleMgmt } from "./RouteScheduleMgmt";
 import { AdminWalletPanel } from "./AdminWalletPanel.jsx";
 import { AdminSchedulePanel } from "./AdminSchedulePanel.jsx";
+import { AdminTrainPanel } from "./AdminTrainPanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -291,10 +292,12 @@ export function AdminDashboard() {
             )}
             {activeSidebar === "Lịch Trình" && <AdminSchedulePanel />}
             {activeSidebar === "Quản Lý Ví" && <AdminWalletPanel />}
+            {activeSidebar === "Quản Lý Tàu" && <AdminTrainPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
-              activeSidebar !== "Quản Lý Ví" && (
+              activeSidebar !== "Quản Lý Ví" &&
+              activeSidebar !== "Quản Lý Tàu" && (
                 <>
                   {/* Welcome Section */}
                   <section>
