@@ -7,6 +7,7 @@ import { AdminWalletPanel } from "./AdminWalletPanel.jsx";
 import { UserManagement } from "./UserManagement";
 import { AdminSchedulePanel } from "./AdminSchedulePanel.jsx";
 import { AdminTrainPanel } from "./AdminTrainPanel.jsx";
+import { AdminPricingPanel } from "./AdminPricingPanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -295,11 +296,13 @@ export function AdminDashboard() {
             {activeSidebar === "Quản Lý Ví" && <AdminWalletPanel />}
             {activeSidebar === "Người Dùng" && <UserManagement />}
             {activeSidebar === "Quản Lý Tàu" && <AdminTrainPanel />}
+            {activeSidebar === "Giá Vé" && <AdminPricingPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
               activeSidebar !== "Quản Lý Ví" &&
               activeSidebar !== "Quản Lý Tàu" &&
+              activeSidebar !== "Giá Vé" &&
               activeSidebar !== "Người Dùng" && (
                 <>
                   {/* Welcome Section */}
