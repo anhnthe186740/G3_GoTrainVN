@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
+import {
+  getRoutes,
+  getSchedules,
+  getStations,
+  getTrains,
+} from "../../services/referenceDataApi";
 
 // ─── Helpers ───────────────────────────────────────────────────
 const formatDateTime = (iso) => {
@@ -116,24 +122,41 @@ export function RouteScheduleMgmt({ mode }) {
   const [conflicts, setConflicts] = useState([]);
 
   // ── Load reference data ───────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    try {
-      setLoadingRef(true);
-      const [stRes, trRes, rtRes, scRes] = await Promise.all([
-        api.get("/stations"),
-        api.get("/trains"),
-        api.get("/routes"),
-        api.get("/schedules"),
-      ]);
-      setStations(stRes.data.stations || []);
-      setTrains(trRes.data.trains || []);
-      setRoutes(rtRes.data.routes || []);
-      setSchedules(scRes.data.schedules || []);
-    } catch {
-      toast.error("Không thể tải dữ liệu. Kiểm tra kết nối server.");
-    } finally {
-      setLoadingRef(false);
+  const loadAll = useCallback(async ({ force = false } = {}) => {
+    setLoadingRef(true);
+    const requests = [
+      ["stations", getStations({ force })],
+      ["trains", getTrains({ force })],
+      ["routes", getRoutes({ force })],
+      ["schedules", getSchedules({ force })],
+    ];
+    const results = await Promise.allSettled(
+      requests.map(([, request]) => request),
+    );
+    const failed = [];
+
+    results.forEach((result, index) => {
+      const resource = requests[index][0];
+      if (result.status === "rejected") {
+        failed.push(resource);
+        return;
+      }
+
+      if (resource === "stations") {
+        setStations(result.value.stations || []);
+      } else if (resource === "trains") {
+        setTrains(result.value.trains || []);
+      } else if (resource === "routes") {
+        setRoutes(result.value.routes || []);
+      } else {
+        setSchedules(result.value.schedules || []);
+      }
+    });
+
+    if (failed.length > 0) {
+      toast.error(`Không thể tải: ${failed.join(", ")}.`);
     }
+    setLoadingRef(false);
   }, []);
 
   useEffect(() => {
@@ -282,7 +305,7 @@ export function RouteScheduleMgmt({ mode }) {
       });
       setIntermediateStops([]);
       setAutoCalcDistance(false);
-      loadAll();
+      loadAll({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || "Lỗi khi tạo tuyến đường.");
     } finally {
@@ -317,7 +340,7 @@ export function RouteScheduleMgmt({ mode }) {
         departureTimes: "08:00",
         bufferMinutes: "60",
       });
-      loadAll();
+      loadAll({ force: true });
     } catch (err) {
       const { message, conflicts: c = [] } = err.response?.data || {};
       toast.error(message || "Lỗi khi tạo lịch trình.");
@@ -333,7 +356,7 @@ export function RouteScheduleMgmt({ mode }) {
     try {
       await api.delete(`/routes/${id}`);
       toast.success("Đã vô hiệu hóa tuyến đường.");
-      loadAll();
+      loadAll({ force: true });
     } catch {
       toast.error("Lỗi khi xóa tuyến đường.");
     }
@@ -362,7 +385,7 @@ export function RouteScheduleMgmt({ mode }) {
           <p className="text-sm text-[#3f4852] mt-1">{displaySubtitle}</p>
         </div>
         <button
-          onClick={loadAll}
+          onClick={() => loadAll({ force: true })}
           className="flex items-center gap-1.5 bg-[#f2f4f6] hover:bg-[#eceef0] text-[#3f4852] px-4 py-2 rounded-xl font-semibold text-sm transition-all"
         >
           <span className="material-symbols-outlined text-[18px]">refresh</span>

@@ -83,8 +83,11 @@ async function resolveScope(scopeType, scopeId) {
 
   const schedule = await prisma.schedule.findUnique({
     where: { id: scopeId },
-    include: {
-      route: true,
+    select: {
+      id: true,
+      routeId: true,
+      distance: true,
+      route: { select: { routeName: true, distance: true } },
       train: { select: { trainCode: true, trainName: true } },
     },
   });
@@ -294,7 +297,12 @@ export async function getPricingContext() {
         status: { in: ["ACTIVE", "DELAYED"] },
         departureTime: { gte: new Date() },
       },
-      include: {
+      select: {
+        id: true,
+        routeId: true,
+        departureTime: true,
+        distance: true,
+        status: true,
         route: { select: { routeName: true, distance: true } },
         train: { select: { trainCode: true, trainName: true } },
       },

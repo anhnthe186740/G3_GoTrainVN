@@ -1,5 +1,6 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { searchJourneys } from "../services/scheduleSearch.service.js";
 
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
@@ -17,20 +18,32 @@ export const getStations = asyncHandler(async (_req, res) => {
 // ============================================================
 export const getTrains = asyncHandler(async (_req, res) => {
   const trains = await prisma.train.findMany({
-    include: {
-      carriages: {
-        include: {
-          seats: true,
+    select: {
+      id: true,
+      trainName: true,
+      trainCode: true,
+      trainType: true,
+      operatingCompany: true,
+      totalCarriages: true,
+      totalCapacity: true,
+      createdAt: true,
+      updatedAt: true,
+      maintenance: {
+        select: {
+          id: true,
+          maintenanceType: true,
+          startDate: true,
+          endDate: true,
+          status: true,
         },
-        orderBy: { carriageNumber: "asc" },
       },
-      maintenance: true,
       schedules: {
-        include: {
+        select: {
+          id: true,
+          status: true,
+          departureTime: true,
           route: {
-            select: {
-              routeName: true,
-            },
+            select: { routeName: true },
           },
         },
       },
@@ -38,6 +51,36 @@ export const getTrains = asyncHandler(async (_req, res) => {
     orderBy: { trainName: "asc" },
   });
   res.json({ trains });
+});
+
+export const getTrainById = asyncHandler(async (req, res) => {
+  const train = await prisma.train.findUnique({
+    where: { id: req.params.id },
+    include: {
+      carriages: {
+        include: {
+          seats: {
+            orderBy: { seatNumber: "asc" },
+          },
+        },
+        orderBy: { carriageNumber: "asc" },
+      },
+      maintenance: true,
+      schedules: {
+        include: {
+          route: { select: { routeName: true } },
+        },
+        orderBy: { departureTime: "desc" },
+        take: 20,
+      },
+    },
+  });
+
+  if (!train) {
+    return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+  }
+
+  res.json({ train });
 });
 
 // ============================================================
@@ -59,110 +102,45 @@ export const getRoutes = asyncHandler(async (_req, res) => {
 // GET /api/v1/schedules - Lấy danh sách lịch trình
 // ============================================================
 export const getSchedules = asyncHandler(async (_req, res) => {
-  let schedules = await prisma.schedule.findMany({
-    include: {
+  const schedules = await prisma.schedule.findMany({
+    select: {
+      id: true,
+      trainId: true,
+      routeId: true,
+      startStationId: true,
+      endStationId: true,
+      departureTime: true,
+      arrivalTime: true,
+      distance: true,
+      duration: true,
+      status: true,
+      delayMinutes: true,
+      notes: true,
+      createdAt: true,
       route: {
         select: {
           routeName: true,
+          stations: true,
           startStation: { select: { stationName: true } },
           endStation: { select: { stationName: true } },
         },
       },
       train: { select: { trainName: true, trainCode: true } },
-      pricing: true,
-      availabilitySnapshots: true,
-    },
-    orderBy: { departureTime: "asc" },
-  });
-
-  const now = new Date();
-
-  // Availability is still maintained here for the legacy booking screen.
-  // Pricing is managed exclusively through the admin pricing configuration flow.
-  for (const s of schedules) {
-    let needsUpdate = false;
-
-    // Check if availability snapshots exist, if not create them
-    if (!s.availabilitySnapshots || s.availabilitySnapshots.length === 0) {
-      const defaultSnapshots = [
-        {
-          carriageType: "SEAT",
-          availableSeats: 35,
-          bookedSeats: 45,
-          occupancyPercentage: 56.25,
-        },
-        {
-          carriageType: "AC_SEAT",
-          availableSeats: 18,
-          bookedSeats: 42,
-          occupancyPercentage: 70.0,
-        },
-        {
-          carriageType: "SLEEPER",
-          availableSeats: 6,
-          bookedSeats: 26,
-          occupancyPercentage: 81.25,
-        },
-      ];
-      await prisma.availabilitySnapshot.createMany({
-        data: defaultSnapshots.map((snap) => ({
-          scheduleId: s.id,
-          ...snap,
-          snapshotTime: now,
-        })),
-      });
-      needsUpdate = true;
-    } else {
-      // If snapshots exist, check if we need to randomly update them to simulate live booking (e.g. if older than 2 minutes)
-      const lastSnapshot = s.availabilitySnapshots[0];
-      const timeDiffMs =
-        now.getTime() - new Date(lastSnapshot.snapshotTime).getTime();
-      const twoMinutesMs = 2 * 60 * 1000;
-
-      if (timeDiffMs > twoMinutesMs) {
-        for (const snap of s.availabilitySnapshots) {
-          const delta = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
-          let newBooked = Math.max(0, snap.bookedSeats + delta);
-          // Set capacity limits
-          const totalSeats = snap.carriageType === "SLEEPER" ? 32 : 80;
-          if (newBooked > totalSeats) newBooked = totalSeats;
-          const newAvailable = totalSeats - newBooked;
-          const newPercentage =
-            Math.round((newBooked / totalSeats) * 10000) / 100;
-
-          await prisma.availabilitySnapshot.update({
-            where: { id: snap.id },
-            data: {
-              availableSeats: newAvailable,
-              bookedSeats: newBooked,
-              occupancyPercentage: newPercentage,
-              snapshotTime: now,
-            },
-          });
-        }
-        needsUpdate = true;
-      }
-    }
-  }
-
-  // Refetch if any updates were made to return fresh data
-  schedules = await prisma.schedule.findMany({
-    include: {
-      route: {
-        select: {
-          routeName: true,
-          startStation: { select: { stationName: true } },
-          endStation: { select: { stationName: true } },
-        },
-      },
-      train: { select: { trainName: true, trainCode: true } },
-      pricing: true,
-      availabilitySnapshots: true,
     },
     orderBy: { departureTime: "asc" },
   });
 
   res.json({ schedules });
+});
+
+export const searchSchedules = asyncHandler(async (req, res) => {
+  const result = await searchJourneys({
+    fromStationId: req.query.fromStationId,
+    toStationId: req.query.toStationId,
+    departureDate: req.query.departureDate,
+    returnDate: req.query.returnDate,
+  });
+  res.json(result);
 });
 
 // ============================================================
@@ -416,16 +394,47 @@ export const generateSchedules = asyncHandler(async (req, res) => {
 
   for (const trip of valid) {
     try {
-      await prisma.schedule.create({
-        data: {
-          trainId,
-          routeId,
-          startStationId: routeWithStations.startStationId,
-          endStationId: routeWithStations.endStationId,
-          departureTime: trip.departure,
-          arrivalTime: trip.arrival,
-          status: "ACTIVE",
-        },
+      await prisma.$transaction(async (tx) => {
+        const schedule = await tx.schedule.create({
+          data: {
+            trainId,
+            routeId,
+            startStationId: routeWithStations.startStationId,
+            endStationId: routeWithStations.endStationId,
+            departureTime: trip.departure,
+            arrivalTime: trip.arrival,
+            distance: routeWithStations.distance,
+            duration: routeWithStations.estimatedDuration,
+            status: "ACTIVE",
+          },
+        });
+
+        if (routeWithStations.stations.length > 0) {
+          const tripDurationMs =
+            trip.arrival.getTime() - trip.departure.getTime();
+          await tx.scheduleStop.createMany({
+            data: routeWithStations.stations.map((stop) => {
+              const progress = Math.min(
+                1,
+                Math.max(
+                  0,
+                  stop.distanceFromStart / routeWithStations.distance,
+                ),
+              );
+              const stopTime = new Date(
+                trip.departure.getTime() + tripDurationMs * progress,
+              );
+
+              return {
+                scheduleId: schedule.id,
+                stationId: stop.stationId,
+                stopOrder: stop.stopOrder,
+                arrivalTime: stopTime,
+                departureTime: stopTime,
+              };
+            }),
+          });
+        }
       });
       insertedCount++;
     } catch (dbErr) {

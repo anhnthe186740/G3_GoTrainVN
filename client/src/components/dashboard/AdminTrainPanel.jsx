@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
+import { getTrains } from "../../services/referenceDataApi";
 
 const TRAIN_TYPES = {
   SE: {
@@ -61,14 +62,15 @@ export function AdminTrainPanel() {
   // Seat/Carriage view modal states
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedTrain, setSelectedTrain] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [selectedCarriageIdx, setSelectedCarriageIdx] = useState(0); // index 0-4
 
   // Fetch trains
-  const fetchTrains = useCallback(async () => {
+  const fetchTrains = useCallback(async ({ force = false } = {}) => {
     try {
       setLoading(true);
-      const res = await api.get("/trains");
-      setTrains(res.data.trains || []);
+      const data = await getTrains({ force });
+      setTrains(data.trains || []);
     } catch (err) {
       toast.error(
         "Không thể tải danh sách tàu: " +
@@ -126,11 +128,31 @@ export function AdminTrainPanel() {
     try {
       await api.delete(`/trains/${trainId}`);
       toast.success(`Đã xóa tàu ${trainName} thành công.`);
-      fetchTrains();
+      fetchTrains({ force: true });
     } catch (err) {
       toast.error(
         "Lỗi khi xóa tàu: " + (err.response?.data?.message || err.message),
       );
+    }
+  };
+
+  const handleOpenTrainDetail = async (train) => {
+    setSelectedTrain(train);
+    setSelectedCarriageIdx(0);
+    setShowDetailModal(true);
+    setDetailLoading(true);
+
+    try {
+      const response = await api.get(`/trains/${train.id}`);
+      setSelectedTrain(response.data.train);
+    } catch (err) {
+      toast.error(
+        "Không thể tải chi tiết tàu: " +
+          (err.response?.data?.message || err.message),
+      );
+      setShowDetailModal(false);
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -165,7 +187,7 @@ export function AdminTrainPanel() {
           "SLEEPER_4",
         ],
       });
-      fetchTrains();
+      fetchTrains({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || "Lỗi khi tạo tàu.");
     } finally {
@@ -603,9 +625,7 @@ export function AdminTrainPanel() {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => {
-                              setSelectedTrain(train);
-                              setSelectedCarriageIdx(0);
-                              setShowDetailModal(true);
+                              handleOpenTrainDetail(train);
                             }}
                             className="p-2 text-outline hover:text-primary transition-colors rounded-lg hover:bg-primary-fixed/20"
                             title="Xem sơ đồ & Chi tiết Toa/Ghế"
@@ -950,101 +970,114 @@ export function AdminTrainPanel() {
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-md space-y-lg">
-              {/* Carriage visualization (Punch card metaphor) */}
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-on-surface-variant">
-                  Sơ đồ {selectedTrain.totalCarriages} Toa
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Locomotive (Đầu máy) */}
-                  <div className="w-16 h-20 bg-primary-container text-white rounded-lg flex flex-col items-center justify-center relative punch-hole overflow-hidden select-none">
-                    <span className="material-symbols-outlined text-[20px]">
-                      train
-                    </span>
-                    <span className="text-[10px] opacity-80 uppercase mt-0.5 font-bold">
-                      Đầu Máy
-                    </span>
-                  </div>
-
-                  {/* Carriages */}
-                  {selectedTrain.carriages?.map((carriage, idx) => {
-                    const isSelected = selectedCarriageIdx === idx;
-                    let shortName = "Ghế";
-                    if (carriage.carriageType.includes("SLEEPER"))
-                      shortName = "Giường";
-
-                    return (
-                      <div
-                        key={carriage.id}
-                        onClick={() => setSelectedCarriageIdx(idx)}
-                        className={`w-16 h-20 rounded-lg flex flex-col items-center justify-center relative punch-hole overflow-hidden cursor-pointer select-none transition-all ${
-                          isSelected
-                            ? "bg-primary text-white ring-2 ring-primary-container shadow-md"
-                            : "bg-surface-container-highest border border-outline-variant text-on-surface hover:bg-surface-container-high"
-                        }`}
-                      >
-                        <span className="font-extrabold text-sm">
-                          Toa {carriage.carriageNumber}
+              {detailLoading ? (
+                <div className="min-h-64 flex flex-col items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-3xl animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="mt-2 text-sm font-semibold">
+                    Đang tải sơ đồ toa và ghế...
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Carriage visualization (Punch card metaphor) */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-on-surface-variant">
+                      Sơ đồ {selectedTrain.totalCarriages} Toa
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Locomotive (Đầu máy) */}
+                      <div className="w-16 h-20 bg-primary-container text-white rounded-lg flex flex-col items-center justify-center relative punch-hole overflow-hidden select-none">
+                        <span className="material-symbols-outlined text-[20px]">
+                          train
                         </span>
-                        <span
-                          className={`text-[9px] uppercase mt-0.5 font-bold ${isSelected ? "text-white/80" : "text-on-surface-variant"}`}
-                        >
-                          {shortName}
-                        </span>
-                        <span
-                          className={`text-[9px] mt-0.5 font-semibold ${isSelected ? "text-white/70" : "text-outline"}`}
-                        >
-                          {carriage.totalSeats} chỗ
+                        <span className="text-[10px] opacity-80 uppercase mt-0.5 font-bold">
+                          Đầu Máy
                         </span>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* Selected Carriage Info & Seat Map */}
-              {selectedTrain.carriages?.[selectedCarriageIdx] && (
-                <div className="space-y-4 border-t border-outline-variant/60 pt-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-base text-on-surface">
-                        Toa Số{" "}
-                        {
-                          selectedTrain.carriages[selectedCarriageIdx]
-                            .carriageNumber
-                        }
-                        :{" "}
-                        {CARRIAGE_TYPES[
-                          selectedTrain.carriages[selectedCarriageIdx]
-                            .carriageType
-                        ]?.name ||
-                          selectedTrain.carriages[selectedCarriageIdx]
-                            .carriageType}
-                      </h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        Tổng số chỗ ngồi:{" "}
-                        {
-                          selectedTrain.carriages[selectedCarriageIdx]
-                            .totalSeats
-                        }{" "}
-                        chỗ
-                      </p>
-                    </div>
-                    <div className="flex gap-md text-xs font-semibold">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-3.5 h-3.5 border border-[#bec7d4] bg-white rounded"></span>{" "}
-                        Trống (Available)
-                      </span>
+                      {/* Carriages */}
+                      {selectedTrain.carriages?.map((carriage, idx) => {
+                        const isSelected = selectedCarriageIdx === idx;
+                        let shortName = "Ghế";
+                        if (carriage.carriageType.includes("SLEEPER"))
+                          shortName = "Giường";
+
+                        return (
+                          <div
+                            key={carriage.id}
+                            onClick={() => setSelectedCarriageIdx(idx)}
+                            className={`w-16 h-20 rounded-lg flex flex-col items-center justify-center relative punch-hole overflow-hidden cursor-pointer select-none transition-all ${
+                              isSelected
+                                ? "bg-primary text-white ring-2 ring-primary-container shadow-md"
+                                : "bg-surface-container-highest border border-outline-variant text-on-surface hover:bg-surface-container-high"
+                            }`}
+                          >
+                            <span className="font-extrabold text-sm">
+                              Toa {carriage.carriageNumber}
+                            </span>
+                            <span
+                              className={`text-[9px] uppercase mt-0.5 font-bold ${isSelected ? "text-white/80" : "text-on-surface-variant"}`}
+                            >
+                              {shortName}
+                            </span>
+                            <span
+                              className={`text-[9px] mt-0.5 font-semibold ${isSelected ? "text-white/70" : "text-outline"}`}
+                            >
+                              {carriage.totalSeats} chỗ
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Seat Map */}
-                  <div className="p-4 bg-surface rounded-2xl border border-outline-variant/60">
-                    {renderSeatsMatrix(
-                      selectedTrain.carriages[selectedCarriageIdx],
-                    )}
-                  </div>
-                </div>
+                  {/* Selected Carriage Info & Seat Map */}
+                  {selectedTrain.carriages?.[selectedCarriageIdx] && (
+                    <div className="space-y-4 border-t border-outline-variant/60 pt-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-bold text-base text-on-surface">
+                            Toa Số{" "}
+                            {
+                              selectedTrain.carriages[selectedCarriageIdx]
+                                .carriageNumber
+                            }
+                            :{" "}
+                            {CARRIAGE_TYPES[
+                              selectedTrain.carriages[selectedCarriageIdx]
+                                .carriageType
+                            ]?.name ||
+                              selectedTrain.carriages[selectedCarriageIdx]
+                                .carriageType}
+                          </h4>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            Tổng số chỗ ngồi:{" "}
+                            {
+                              selectedTrain.carriages[selectedCarriageIdx]
+                                .totalSeats
+                            }{" "}
+                            chỗ
+                          </p>
+                        </div>
+                        <div className="flex gap-md text-xs font-semibold">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-3.5 h-3.5 border border-[#bec7d4] bg-white rounded"></span>{" "}
+                            Trống (Available)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Seat Map */}
+                      <div className="p-4 bg-surface rounded-2xl border border-outline-variant/60">
+                        {renderSeatsMatrix(
+                          selectedTrain.carriages[selectedCarriageIdx],
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

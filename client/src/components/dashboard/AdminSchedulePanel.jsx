@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../../services/api";
 import { toast } from "sonner";
+import {
+  getRoutes,
+  getSchedules,
+  getTrains,
+} from "../../services/referenceDataApi";
 
 // ─── Helpers ───────────────────────────────────────────────────
 const formatDateTime = (iso) => {
@@ -41,65 +46,6 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
-const MOCK_SCHEDULES = [
-  {
-    id: "mock-1",
-    train: { trainCode: "SE1", trainName: "Tàu SE1" },
-    route: {
-      routeName: "Đường sắt Bắc Nam",
-      startStation: { stationName: "Hà Nội" },
-      endStation: { stationName: "Sài Gòn" },
-      stations: [
-        { station: { stationName: "Nam Định" } },
-        { station: { stationName: "Thanh Hóa" } },
-        { station: { stationName: "Vinh" } },
-      ],
-    },
-    departureTime: "2026-05-24T19:30:00.000Z",
-    status: "Đang chạy",
-  },
-  {
-    id: "mock-2",
-    train: { trainCode: "SE3", trainName: "Tàu SE3" },
-    route: {
-      routeName: "Đường sắt Bắc Nam",
-      startStation: { stationName: "Hà Nội" },
-      endStation: { stationName: "Sài Gòn" },
-      stations: [
-        { station: { stationName: "Phủ Lý" } },
-        { station: { stationName: "Đồng Hới" } },
-        { station: { stationName: "Huế" } },
-      ],
-    },
-    departureTime: "2026-05-24T22:00:00.000Z",
-    status: "Chưa chạy",
-  },
-  {
-    id: "mock-3",
-    train: { trainCode: "HP1", trainName: "Tàu HP1" },
-    route: {
-      routeName: "Hà Nội - Hải Phòng",
-      startStation: { stationName: "Long Biên" },
-      endStation: { stationName: "Hải Phòng" },
-      stations: [],
-    },
-    departureTime: "2026-05-24T06:00:00.000Z",
-    status: "Hoàn thành",
-  },
-  {
-    id: "mock-4",
-    train: { trainCode: "SP1", trainName: "Tàu SP1" },
-    route: {
-      routeName: "Hà Nội - Lào Cai",
-      startStation: { stationName: "Hà Nội" },
-      endStation: { stationName: "Lào Cai" },
-      stations: [],
-    },
-    departureTime: "2026-05-24T21:35:00.000Z",
-    status: "Hủy bỏ",
-  },
-];
-
 export function AdminSchedulePanel() {
   const [schedules, setSchedules] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -132,28 +78,24 @@ export function AdminSchedulePanel() {
   const [activeDetails, setActiveDetails] = useState(null);
 
   // ── Load All Data ──────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async ({ force = false } = {}) => {
     try {
       setLoading(true);
       const [rtRes, trRes, scRes] = await Promise.all([
-        api.get("/routes").catch(() => ({ data: { routes: [] } })),
-        api.get("/trains").catch(() => ({ data: { trains: [] } })),
-        api.get("/schedules").catch(() => ({ data: { schedules: [] } })),
+        getRoutes({ force }),
+        getTrains({ force }),
+        getSchedules({ force }),
       ]);
 
-      setRoutes(rtRes.data.routes || []);
-      setTrains(trRes.data.trains || []);
+      setRoutes(rtRes.routes || []);
+      setTrains(trRes.trains || []);
 
-      const serverSchedules = scRes.data.schedules || [];
-      if (serverSchedules.length > 0) {
-        setSchedules(serverSchedules);
-      } else {
-        // Fallback to rich mock data if server list is empty
-        setSchedules(MOCK_SCHEDULES);
-      }
+      setSchedules(scRes.schedules || []);
     } catch (err) {
-      toast.error("Không thể tải dữ liệu từ server. Sử dụng dữ liệu mô phỏng.");
-      setSchedules(MOCK_SCHEDULES);
+      toast.error("Không thể tải dữ liệu từ server.");
+      setRoutes([]);
+      setTrains([]);
+      setSchedules([]);
     } finally {
       setLoading(false);
     }
@@ -194,7 +136,7 @@ export function AdminSchedulePanel() {
           departureTimes: "08:00",
           bufferMinutes: "60",
         });
-        loadAll();
+        loadAll({ force: true });
       }
     } catch (err) {
       const { message, conflicts: c = [] } = err.response?.data || {};
@@ -217,7 +159,7 @@ export function AdminSchedulePanel() {
       } else {
         await api.delete(`/schedules/${id}`);
         toast.success("Đã xóa lịch trình thành công.");
-        loadAll();
+        loadAll({ force: true });
       }
     } catch (err) {
       toast.error("Không thể xóa lịch trình này.");
@@ -452,7 +394,7 @@ export function AdminSchedulePanel() {
         )}
 
         <button
-          onClick={loadAll}
+          onClick={() => loadAll({ force: true })}
           className="bg-[#f2f4f6] text-[#00629d] hover:bg-[#cfe5ff]/50 p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer border-none"
           title="Tải lại dữ liệu"
         >

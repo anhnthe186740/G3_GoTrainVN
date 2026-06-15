@@ -8,8 +8,10 @@
     "start": "node src/server.js",
     "build": "node -e \"console.log('No build step required for server')\"",
     "lint": "eslint src --ext .js",
+    "test": "node --test test/journey.test.js",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:dbpush": "prisma db push --schema prisma/schema.prisma",
+    "prisma:repair-timestamps": "node prisma/repair_legacy_timestamps.js",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
