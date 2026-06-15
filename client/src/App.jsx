@@ -8,6 +8,7 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
+import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
@@ -33,6 +34,7 @@ export default function App() {
             name: u.fullName,
             email: u.email,
             role: u.userType,
+            loyaltyPoints: u.loyaltyPoints || 0,
           },
           token: "session",
         });
@@ -80,6 +82,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Wallet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />
