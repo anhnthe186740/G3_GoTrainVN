@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.js";
-import { profile } from "../controllers/user.controller.js";
+import { profile, updateProfile } from "../controllers/user.controller.js";
 import {
   getAdminUsers,
   createAdminUser,
@@ -19,6 +19,7 @@ function adminOnly(req, res, next) {
 }
 
 userRoutes.get("/profile", authMiddleware, profile);
+userRoutes.put("/profile", authMiddleware, updateProfile);
 
 // Admin user management routes
 userRoutes.get("/admin/list", authMiddleware, adminOnly, getAdminUsers);
