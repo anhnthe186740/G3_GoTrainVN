@@ -23,8 +23,10 @@ export default function App() {
   // log in again. On failure (401/network error) we call clearAuth() so
   // ProtectedRoute stops waiting and redirects to /login.
   useEffect(() => {
+    const controller = new AbortController();
+
     api
-      .get("/users/profile")
+      .get("/users/profile", { signal: controller.signal })
       .then(({ data }) => {
         const u = data.user;
         setAuth({
@@ -37,9 +39,11 @@ export default function App() {
           token: "session",
         });
       })
-      .catch(() => {
-        clearAuth();
+      .catch((error) => {
+        if (error.code !== "ERR_CANCELED") clearAuth();
       });
+
+    return () => controller.abort();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

@@ -103,7 +103,9 @@ export function ScheduleCard({ schedule, onSelect }) {
             const snap = schedule.availability?.find(
               (a) => a.carriageType === opt.carriageType,
             );
-            const unitName = opt.carriageType === "SLEEPER" ? "giường" : "ghế";
+            const unitName = opt.carriageType.startsWith("SLEEPER")
+              ? "giường"
+              : "ghế";
             return (
               <div
                 key={opt.carriageType}
@@ -126,8 +128,7 @@ export function ScheduleCard({ schedule, onSelect }) {
                             : "bg-emerald-50 text-emerald-600 border border-emerald-100"
                       }`}
                     >
-                      Lấp đầy: {snap.occupancyPercentage}% ({snap.bookedSeats}{" "}
-                      {unitName})
+                      Còn {snap.availableSeats} {unitName}
                     </span>
                   </>
                 )}

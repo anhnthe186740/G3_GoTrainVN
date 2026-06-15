@@ -15,6 +15,20 @@ export function FilterPanel({
   const trainTypes = [
     { label: "Tàu nhanh (SE)", value: "SE" },
     { label: "Tàu thường (TN)", value: "TN" },
+    { label: "Tàu du lịch (SP)", value: "SP" },
+    { label: "Tàu địa phương (QN)", value: "QN" },
+  ];
+  const timeSlots = [
+    { label: "00:00 - 06:00", value: "00-06" },
+    { label: "06:00 - 12:00", value: "06-12" },
+    { label: "12:00 - 18:00", value: "12-18" },
+    { label: "18:00 - 24:00", value: "18-24" },
+  ];
+  const carriageTypes = [
+    { label: "Ghế thường", value: "NORMAL_SEAT" },
+    { label: "Ghế điều hòa", value: "AC_SEAT" },
+    { label: "Giường khoang 6", value: "SLEEPER_6" },
+    { label: "Giường khoang 4", value: "SLEEPER_4" },
   ];
 
   const sortOptions = [
@@ -99,6 +113,56 @@ export function FilterPanel({
         </div>
       </div>
 
+      <div className="space-y-3 pb-2">
+        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Giờ khởi hành
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {timeSlots.map((slot) => {
+            const isChecked = filters.timeSlots.includes(slot.value);
+            return (
+              <button
+                key={slot.value}
+                type="button"
+                onClick={() => toggleFilter("timeSlots", slot.value)}
+                className={`px-2 py-1.5 rounded-xl border text-[11px] font-semibold transition ${
+                  isChecked
+                    ? "border-primary bg-primary text-white"
+                    : "border-slate-200 text-slate-600"
+                }`}
+              >
+                {slot.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-3 pb-2">
+        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Loại chỗ
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {carriageTypes.map((type) => {
+            const isChecked = filters.carriageTypes.includes(type.value);
+            return (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => toggleFilter("carriageTypes", type.value)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition ${
+                  isChecked
+                    ? "border-primary bg-primary text-white"
+                    : "border-slate-200 text-slate-600"
+                }`}
+              >
+                {type.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Dynamic/Helpful Info section at the bottom to fill height */}
       <div className="pt-5 border-t border-slate-100 space-y-3">
         <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -113,7 +177,7 @@ export function FilterPanel({
             Học sinh, sinh viên và trẻ em được ưu đãi giảm tới 15% - 25% trực
             tiếp khi nhập thông tin.
           </li>
-          <li>Tỉ lệ lấp đầy hiển thị theo thời gian thực.</li>
+          <li>Số chỗ còn lại được tính từ dữ liệu đặt vé hiện tại.</li>
         </ul>
       </div>
     </div>

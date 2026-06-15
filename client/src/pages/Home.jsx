@@ -26,16 +26,8 @@ import {
 import { toast } from "sonner";
 import { api } from "../services/api";
 
-const MOCK_STATIONS = [
-  { id: "1", code: "HAN", name: "Hà Nội", city: "Hà Nội" },
-  { id: "2", code: "SGN", name: "Sài Gòn", city: "TP. Hồ Chí Minh" },
-  { id: "3", code: "DAD", name: "Đà Nẵng", city: "Đà Nẵng" },
-  { id: "4", code: "HPH", name: "Hải Phòng", city: "Hải Phòng" },
-  { id: "5", code: "NHA", name: "Nha Trang", city: "Khánh Hòa" },
-  { id: "6", code: "HUE", name: "Huế", city: "Thừa Thiên Huế" },
-  { id: "7", code: "VTA", name: "Vinh", city: "Nghệ An" },
-  { id: "8", code: "LCI", name: "Lào Cai", city: "Lào Cai" },
-];
+const DEFAULT_FROM_STATION = "Hà Nội";
+const DEFAULT_TO_STATION = "Đà Nẵng";
 
 export function Home() {
   const navigate = useNavigate();
@@ -56,13 +48,15 @@ export function Home() {
   };
 
   // Search parameters
-  const [fromStation, setFromStation] = useState("Hà Nội");
-  const [toStation, setToStation] = useState("Đà Nẵng");
+  const [fromStation, setFromStation] = useState(DEFAULT_FROM_STATION);
+  const [fromStationId, setFromStationId] = useState("");
+  const [toStation, setToStation] = useState(DEFAULT_TO_STATION);
+  const [toStationId, setToStationId] = useState("");
   const [departureDate, setDepartureDate] = useState(getTodayDateStr());
   const [returnDate, setReturnDate] = useState("");
   const [tripType, setTripType] = useState("one-way"); // 'one-way' or 'round-trip'
 
-  const [stations, setStations] = useState(MOCK_STATIONS);
+  const [stations, setStations] = useState([]);
   const [showFromSuggestions, setShowFromSuggestions] = useState(false);
   const [showToSuggestions, setShowToSuggestions] = useState(false);
 
@@ -85,14 +79,23 @@ export function Home() {
           const formatted = data.stations.map((s) => ({
             id: s.id,
             code: s.stationCode,
-            name: s.stationName,
+            name: s.stationName.replace(/^Ga\s+/i, ""),
             city: s.city,
           }));
           setStations(formatted);
+          setFromStationId(
+            formatted.find((station) => station.name === DEFAULT_FROM_STATION)
+              ?.id || "",
+          );
+          setToStationId(
+            formatted.find((station) => station.name === DEFAULT_TO_STATION)
+              ?.id || "",
+          );
         }
       })
       .catch((err) => {
         console.error("Lỗi khi tải danh sách ga từ API:", err);
+        toast.error("Không thể tải danh sách ga đang hoạt động.");
       });
   }, []);
 
@@ -108,8 +111,11 @@ export function Home() {
 
   const handleSwapStations = () => {
     const temp = fromStation;
+    const tempId = fromStationId;
     setFromStation(toStation);
+    setFromStationId(toStationId);
     setToStation(temp);
+    setToStationId(tempId);
     toast.success("Đã đổi Ga đi và Ga đến!");
   };
 
@@ -152,10 +158,14 @@ export function Home() {
 
     // Match exact station name from database/mock
     const validFrom = stations.find(
-      (s) => s.name.toLowerCase() === fromTrimmed.toLowerCase(),
+      (s) =>
+        s.id === fromStationId &&
+        s.name.toLowerCase() === fromTrimmed.toLowerCase(),
     );
     const validTo = stations.find(
-      (s) => s.name.toLowerCase() === toTrimmed.toLowerCase(),
+      (s) =>
+        s.id === toStationId &&
+        s.name.toLowerCase() === toTrimmed.toLowerCase(),
     );
 
     if (!validFrom) {
@@ -202,11 +212,16 @@ export function Home() {
       `Đang tìm kiếm chuyến tàu từ ${validFrom.name} đi ${validTo.name}...`,
     );
 
-    const returnParam =
-      tripType === "round-trip" ? `&returnDate=${returnDate}` : "";
-    navigate(
-      `/schedule?from=${validFrom.name}&to=${validTo.name}&date=${departureDate}&trip=${tripType}${returnParam}`,
-    );
+    const params = new URLSearchParams({
+      fromStationId: validFrom.id,
+      toStationId: validTo.id,
+      from: validFrom.name,
+      to: validTo.name,
+      departureDate,
+      trip: tripType,
+    });
+    if (tripType === "round-trip") params.set("returnDate", returnDate);
+    navigate(`/schedule?${params.toString()}`);
   };
 
   const handleCopyVoucher = (code) => {
@@ -215,8 +230,18 @@ export function Home() {
   };
 
   const handleRouteSelect = (from, to) => {
+    const selectedFrom = stations.find((station) => station.name === from);
+    const selectedTo = stations.find((station) => station.name === to);
+
+    if (!selectedFrom || !selectedTo) {
+      toast.error("Chặng này hiện chưa có trong danh sách ga đang hoạt động.");
+      return;
+    }
+
     setFromStation(from);
+    setFromStationId(selectedFrom.id);
     setToStation(to);
+    setToStationId(selectedTo.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
     toast.info(`Đã chọn chặng phổ biến: ${from} ↔ ${to}`);
   };
@@ -274,6 +299,7 @@ export function Home() {
                           value={fromStation}
                           onChange={(e) => {
                             setFromStation(e.target.value);
+                            setFromStationId("");
                             setShowFromSuggestions(true);
                           }}
                           onFocus={() => {
@@ -292,6 +318,7 @@ export function Home() {
                                 type="button"
                                 onClick={() => {
                                   setFromStation(s.name);
+                                  setFromStationId(s.id);
                                   setShowFromSuggestions(false);
                                 }}
                                 className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
@@ -347,6 +374,7 @@ export function Home() {
                           value={toStation}
                           onChange={(e) => {
                             setToStation(e.target.value);
+                            setToStationId("");
                             setShowToSuggestions(true);
                           }}
                           onFocus={() => {
@@ -365,6 +393,7 @@ export function Home() {
                                 type="button"
                                 onClick={() => {
                                   setToStation(s.name);
+                                  setToStationId(s.id);
                                   setShowToSuggestions(false);
                                 }}
                                 className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
