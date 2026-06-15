@@ -19,6 +19,9 @@ export const getTrains = asyncHandler(async (_req, res) => {
   const trains = await prisma.train.findMany({
     include: {
       carriages: {
+        include: {
+          seats: true,
+        },
         orderBy: { carriageNumber: "asc" },
       },
       maintenance: true,
@@ -374,12 +377,9 @@ export const createTrain = asyncHandler(async (req, res) => {
     !Array.isArray(carriages) ||
     carriages.length !== 5
   ) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "Thông tin tàu không hợp lệ. Cần nhập đầy đủ và cấu hình 5 toa.",
-      });
+    return res.status(400).json({
+      message: "Thông tin tàu không hợp lệ. Cần nhập đầy đủ và cấu hình 5 toa.",
+    });
   }
 
   // Check unique constraints
