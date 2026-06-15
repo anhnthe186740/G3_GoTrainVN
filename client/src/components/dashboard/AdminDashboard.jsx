@@ -293,20 +293,14 @@ export function AdminDashboard() {
             )}
             {activeSidebar === "Lịch Trình" && <AdminSchedulePanel />}
             {activeSidebar === "Quản Lý Ví" && <AdminWalletPanel />}
-
             {activeSidebar === "Người Dùng" && <UserManagement />}
-
-            {activeSidebar !== "Quản Lý Tuyến" &&
-              activeSidebar !== "Quản Lý Ví" &&
-              activeSidebar !== "Người Dùng" && (
-
             {activeSidebar === "Quản Lý Tàu" && <AdminTrainPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
               activeSidebar !== "Quản Lý Ví" &&
-              activeSidebar !== "Quản Lý Tàu" && (
-
+              activeSidebar !== "Quản Lý Tàu" &&
+              activeSidebar !== "Người Dùng" && (
                 <>
                   {/* Welcome Section */}
                   <section>
