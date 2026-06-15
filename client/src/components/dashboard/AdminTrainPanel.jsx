@@ -190,9 +190,15 @@ export function AdminTrainPanel() {
 
   // Filters
   const filteredTrains = trains.filter((train) => {
+    const uniqueRoutes = [
+      ...new Set(
+        train.schedules?.map((s) => s.route?.routeName).filter(Boolean),
+      ),
+    ].join(", ");
     const matchesSearch =
       train.trainName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      train.trainCode.toLowerCase().includes(searchQuery.toLowerCase());
+      train.trainCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      uniqueRoutes.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType ? train.trainType === filterType : true;
     const status = getTrainStatus(train);
     const matchesStatus = filterStatus
@@ -525,7 +531,7 @@ export function AdminTrainPanel() {
                     Số hiệu
                   </th>
                   <th className="px-6 py-4 font-semibold text-xs text-on-surface-variant uppercase tracking-wider">
-                    Mã Tàu
+                    Lộ Trình
                   </th>
                   <th className="px-6 py-4 font-semibold text-xs text-on-surface-variant uppercase tracking-wider">
                     Loại Tàu
@@ -561,8 +567,14 @@ export function AdminTrainPanel() {
                           {train.trainName}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-semibold text-sm text-on-surface">
-                        {train.trainCode}
+                      <td className="px-6 py-4 text-sm font-medium text-on-surface-variant">
+                        {[
+                          ...new Set(
+                            train.schedules
+                              ?.map((s) => s.route?.routeName)
+                              .filter(Boolean),
+                          ),
+                        ].join(", ") || "Chưa xếp lịch"}
                       </td>
                       <td className="px-6 py-4">
                         <span
