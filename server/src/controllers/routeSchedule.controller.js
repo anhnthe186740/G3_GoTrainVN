@@ -17,6 +17,24 @@ export const getStations = asyncHandler(async (_req, res) => {
 // ============================================================
 export const getTrains = asyncHandler(async (_req, res) => {
   const trains = await prisma.train.findMany({
+    include: {
+      carriages: {
+        include: {
+          seats: true,
+        },
+        orderBy: { carriageNumber: "asc" },
+      },
+      maintenance: true,
+      schedules: {
+        include: {
+          route: {
+            select: {
+              routeName: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: { trainName: "asc" },
   });
   res.json({ trains });
@@ -466,4 +484,177 @@ export const deleteRoute = asyncHandler(async (req, res) => {
   const { id } = req.params;
   await prisma.route.update({ where: { id }, data: { isActive: false } });
   res.json({ message: "Tuyến đường đã được vô hiệu hóa." });
+});
+
+// ============================================================
+// POST /api/v1/trains - Tạo tàu và sinh ghế
+// ============================================================
+export const createTrain = asyncHandler(async (req, res) => {
+  const {
+    trainName,
+    trainCode,
+    trainType,
+    operatingCompany = "GoTrain VN",
+    carriages,
+  } = req.body;
+
+  if (
+    !trainName ||
+    !trainCode ||
+    !trainType ||
+    !carriages ||
+    !Array.isArray(carriages) ||
+    carriages.length !== 5
+  ) {
+    return res.status(400).json({
+      message: "Thông tin tàu không hợp lệ. Cần nhập đầy đủ và cấu hình 5 toa.",
+    });
+  }
+
+  // Check unique constraints
+  const existingName = await prisma.train.findFirst({
+    where: { OR: [{ trainName }, { trainCode }] },
+  });
+  if (existingName) {
+    return res
+      .status(400)
+      .json({ message: "Số hiệu tàu hoặc mã tàu đã tồn tại trên hệ thống." });
+  }
+
+  // Calculate total seats and validate carriage types
+  let totalCapacity = 0;
+  const carriageConfigs = carriages.map((type, idx) => {
+    let seatsCount = 0;
+    if (type === "NORMAL_SEAT") seatsCount = 40;
+    else if (type === "AC_SEAT") seatsCount = 28;
+    else if (type === "SLEEPER_6") seatsCount = 24;
+    else if (type === "SLEEPER_4") seatsCount = 16;
+    else {
+      throw new Error(`Loại toa không hợp lệ: ${type}`);
+    }
+    totalCapacity += seatsCount;
+    return {
+      carriageNumber: idx + 1,
+      carriageType: type,
+      totalSeats: seatsCount,
+    };
+  });
+
+  // Start a transaction
+  const train = await prisma.$transaction(async (tx) => {
+    // 1. Create train
+    const newTrain = await tx.train.create({
+      data: {
+        trainName,
+        trainCode,
+        trainType,
+        operatingCompany,
+        totalCarriages: 5,
+        totalCapacity,
+      },
+    });
+
+    // 2. Create carriages and seats
+    for (const config of carriageConfigs) {
+      const carriage = await tx.carriage.create({
+        data: {
+          trainId: newTrain.id,
+          carriageNumber: config.carriageNumber,
+          carriageType: config.carriageType,
+          totalSeats: config.totalSeats,
+        },
+      });
+
+      // Generate seats for this carriage
+      const seatsData = [];
+      if (config.carriageType === "NORMAL_SEAT") {
+        for (let i = 1; i <= 40; i++) {
+          const colIndex = (i - 1) % 4; // 0, 1, 2, 3
+          const seatType =
+            colIndex === 0 || colIndex === 3 ? "WINDOW" : "AISLE";
+          seatsData.push({
+            carriageId: carriage.id,
+            seatNumber: String(i),
+            seatType,
+            status: "AVAILABLE",
+            basePrice: 100000.0, // basePrice in VND
+          });
+        }
+      } else if (config.carriageType === "AC_SEAT") {
+        for (let i = 1; i <= 28; i++) {
+          const colIndex = (i - 1) % 4;
+          const seatType =
+            colIndex === 0 || colIndex === 3 ? "WINDOW" : "AISLE";
+          seatsData.push({
+            carriageId: carriage.id,
+            seatNumber: String(i),
+            seatType,
+            status: "AVAILABLE",
+            basePrice: 120000.0, // 1.2 factor
+          });
+        }
+      } else if (config.carriageType === "SLEEPER_6") {
+        // 4 compartments, each 6 beds
+        for (let comp = 1; comp <= 4; comp++) {
+          // Floors 1, 2, 3
+          for (const floor of ["1", "2", "3"]) {
+            // Side A, B
+            for (const side of ["A", "B"]) {
+              let seatType = "WINDOW";
+              if (floor === "2") seatType = "MIDDLE";
+              if (floor === "3") seatType = "AISLE";
+
+              seatsData.push({
+                carriageId: carriage.id,
+                seatNumber: `K${comp}-T${floor}-${side}`,
+                seatType,
+                status: "AVAILABLE",
+                basePrice: 150000.0, // 1.5 factor
+              });
+            }
+          }
+        }
+      } else if (config.carriageType === "SLEEPER_4") {
+        // 4 compartments, each 4 beds
+        for (let comp = 1; comp <= 4; comp++) {
+          // Floors 1, 2
+          for (const floor of ["1", "2"]) {
+            // Side A, B
+            for (const side of ["A", "B"]) {
+              let seatType = floor === "1" ? "WINDOW" : "AISLE";
+
+              seatsData.push({
+                carriageId: carriage.id,
+                seatNumber: `K${comp}-T${floor}-${side}`,
+                seatType,
+                status: "AVAILABLE",
+                basePrice: 180000.0, // 1.8 factor
+              });
+            }
+          }
+        }
+      }
+
+      await tx.seat.createMany({
+        data: seatsData,
+      });
+    }
+
+    return newTrain;
+  });
+
+  res
+    .status(201)
+    .json({ message: "Đoàn tàu đã được tạo và sinh ghế thành công!", train });
+});
+
+// ============================================================
+// DELETE /api/v1/trains/:id - Xóa đoàn tàu
+// ============================================================
+export const deleteTrain = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await prisma.train.delete({
+    where: { id },
+  });
+  res.json({ message: "Đoàn tàu đã được xóa thành công." });
 });

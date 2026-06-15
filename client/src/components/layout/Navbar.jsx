@@ -17,7 +17,7 @@ export function Navbar() {
     { to: "/", label: "Trang Chủ" },
     { to: "/schedule", label: "Lịch Trình" },
     { to: "/promotions", label: "Khuyến Mãi" },
-    { to: "/dashboard", label: "Tra Cứu Vé" },
+    { to: "/tra-cuu-ve", label: "Tra Cứu Vé" },
   ];
 
   return (
