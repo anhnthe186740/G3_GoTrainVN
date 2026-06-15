@@ -2,7 +2,11 @@
  * Seed script - Nhập dữ liệu mẫu vào MongoDB cho UC-15
  * Chạy: node server/prisma/seed.js
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@gotrain/prisma-client-v2";
+import {
+  buildDefaultCarriageTypes,
+  createTrainInventory,
+} from "../src/utils/trainInventory.js";
 
 const prisma = new PrismaClient();
 
@@ -179,11 +183,28 @@ async function main() {
   let trainCount = 0;
   for (const train of TRAINS) {
     try {
-      await prisma.train.upsert({
+      const savedTrain = await prisma.train.upsert({
         where: { trainCode: train.trainCode },
         update: { trainName: train.trainName, trainType: train.trainType },
         create: train,
       });
+
+      const inventoryCount = await prisma.carriage.count({
+        where: { trainId: savedTrain.id },
+      });
+      if (inventoryCount === 0) {
+        const inventory = await prisma.$transaction(async (tx) =>
+          createTrainInventory(
+            tx,
+            savedTrain.id,
+            buildDefaultCarriageTypes(train.totalCarriages),
+          ),
+        );
+        await prisma.train.update({
+          where: { id: savedTrain.id },
+          data: inventory,
+        });
+      }
       trainCount++;
     } catch (e) {
       console.warn(`  ⚠️  Bỏ qua train ${train.trainCode}: ${e.message}`);

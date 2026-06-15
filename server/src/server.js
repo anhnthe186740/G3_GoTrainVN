@@ -1,11 +1,42 @@
+import "dotenv/config";
+import { createServer } from "node:http";
 import app from "./app.js";
 import { connectDatabase } from "./config/database.js";
+import {
+  emitSeatState,
+  emitSessionExpired,
+  initializeSeatRealtime,
+} from "./realtime/seatRealtime.js";
+import { cleanupExpiredHolds } from "./services/seatSelection.service.js";
 
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   await connectDatabase();
-  app.listen(PORT, () => {
+  const httpServer = createServer(app);
+  initializeSeatRealtime(httpServer);
+
+  const cleanupTimer = setInterval(async () => {
+    try {
+      const { expiredHolds, expiredSessions } = await cleanupExpiredHolds();
+      for (const hold of expiredHolds) {
+        emitSeatState(hold.scheduleId, {
+          seatId: hold.seatId,
+          state: "AVAILABLE",
+        });
+      }
+      for (const session of expiredSessions) {
+        if (session.userId) {
+          emitSessionExpired(session.userId, { sessionId: session.id });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to clean expired seat holds", error);
+    }
+  }, 15_000);
+  cleanupTimer.unref();
+
+  httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 }

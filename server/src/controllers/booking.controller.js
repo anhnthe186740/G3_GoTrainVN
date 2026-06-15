@@ -1,5 +1,34 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import {
+  checkoutBooking,
+  confirmQrPayment,
+  quoteBooking,
+} from "../services/bookingCheckout.service.js";
+
+export const getBookingQuote = asyncHandler(async (req, res) => {
+  const quote = await quoteBooking(req.bookingIdentity, req.body);
+  res.json({ quote });
+});
+
+export const createBookingCheckout = asyncHandler(async (req, res) => {
+  const result = await checkoutBooking(req.bookingIdentity, req.body);
+  res.status(201).json({
+    message:
+      result.booking.paymentStatus === "COMPLETED"
+        ? "Đặt vé và thanh toán thành công."
+        : "Đơn hàng đã được tạo. Vui lòng xác nhận thanh toán.",
+    ...result,
+  });
+});
+
+export const confirmBookingQrPayment = asyncHandler(async (req, res) => {
+  const booking = await confirmQrPayment(req.bookingIdentity, req.params.id);
+  res.json({
+    message: "Thanh toán thành công. Vé điện tử đang được gửi qua email.",
+    booking,
+  });
+});
 
 // ============================================================
 // GET /api/v1/bookings/lookup - Look up ticket by code or contact info

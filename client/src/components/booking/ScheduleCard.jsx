@@ -60,7 +60,7 @@ export function ScheduleCard({ schedule, onSelect }) {
             </p>
             <p className="text-xs font-semibold text-slate-600 mt-1 flex items-center gap-0.5">
               <MapPin className="h-3 w-3 text-slate-400" />
-              {schedule.startStationName}
+              {schedule.fromStation?.name}
             </p>
           </div>
 
@@ -92,7 +92,7 @@ export function ScheduleCard({ schedule, onSelect }) {
             </p>
             <p className="text-xs font-semibold text-slate-600 mt-1 flex items-center gap-0.5">
               <MapPin className="h-3 w-3 text-slate-400" />
-              {schedule.endStationName}
+              {schedule.toStation?.name}
             </p>
           </div>
         </div>

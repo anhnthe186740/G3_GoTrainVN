@@ -11,6 +11,8 @@ import { Wallet } from "./pages/Wallet";
 import { TicketLookup } from "./pages/TicketLookup";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
+import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
+import { PassengerDetailsPage } from "./components/booking/PassengerDetailsPage";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
 
@@ -68,6 +70,8 @@ export default function App() {
         <Route index element={<Home />} />
 
         <Route path="schedule" element={<CustomerBooking />} />
+        <Route path="booking/seats" element={<SeatSelectionPage />} />
+        <Route path="booking/passengers" element={<PassengerDetailsPage />} />
 
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
 

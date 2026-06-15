@@ -1,8 +1,9 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 
 export function ProtectedRoute({ children }) {
   const { user, isHydrating } = useAuthStore();
+  const location = useLocation();
 
   // Wait for the hydration API call before deciding to redirect
   if (isHydrating) {
@@ -18,5 +19,13 @@ export function ProtectedRoute({ children }) {
     );
   }
 
-  return user ? children : <Navigate to="/login" replace />;
+  return user ? (
+    children
+  ) : (
+    <Navigate
+      to="/login"
+      replace
+      state={{ from: `${location.pathname}${location.search}` }}
+    />
+  );
 }
