@@ -167,28 +167,41 @@ async function getCandidateSchedules(range) {
 async function getBookedSeatsBySchedule(scheduleIds, now) {
   if (scheduleIds.length === 0) return new Map();
 
-  const bookings = await prisma.booking.findMany({
-    where: {
-      scheduleId: { in: scheduleIds },
-      status: { in: ACTIVE_BOOKING_STATUSES },
-    },
-    select: {
-      scheduleId: true,
-      status: true,
-      expiresAt: true,
-      bookingDetails: {
-        where: { status: { not: "CANCELLED" } },
-        select: {
-          seatId: true,
-          seat: {
-            select: {
-              carriage: { select: { carriageType: true } },
+  const [bookings, activeHolds] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        scheduleId: { in: scheduleIds },
+        status: { in: ACTIVE_BOOKING_STATUSES },
+      },
+      select: {
+        scheduleId: true,
+        status: true,
+        expiresAt: true,
+        bookingDetails: {
+          where: { status: { not: "CANCELLED" } },
+          select: {
+            seatId: true,
+            seat: {
+              select: {
+                carriage: { select: { carriageType: true } },
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.seatHold.findMany({
+      where: {
+        scheduleId: { in: scheduleIds },
+        expiresAt: { gt: now },
+      },
+      select: {
+        scheduleId: true,
+        seatId: true,
+        carriageType: true,
+      },
+    }),
+  ]);
 
   const bookedBySchedule = new Map();
   for (const booking of bookings) {
@@ -210,6 +223,17 @@ async function getBookedSeatsBySchedule(scheduleIds, now) {
       if (!byType.has(carriageType)) byType.set(carriageType, new Set());
       byType.get(carriageType).add(detail.seatId);
     }
+  }
+
+  for (const hold of activeHolds) {
+    if (!bookedBySchedule.has(hold.scheduleId)) {
+      bookedBySchedule.set(hold.scheduleId, new Map());
+    }
+    const byType = bookedBySchedule.get(hold.scheduleId);
+    if (!byType.has(hold.carriageType)) {
+      byType.set(hold.carriageType, new Set());
+    }
+    byType.get(hold.carriageType).add(hold.seatId);
   }
 
   return bookedBySchedule;

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@gotrain/prisma-client";
+import { PrismaClient } from "@gotrain/prisma-client-v2";
 
 const prisma = new PrismaClient();
 

@@ -159,13 +159,24 @@ export function CustomerBooking() {
     }
 
     if (isRoundTrip) {
-      toast.success(
-        `Đã chọn ${selectedOutbound.trainCode} lượt đi và ${schedule.trainCode} lượt về.`,
-      );
+      const params = new URLSearchParams({
+        outboundScheduleId: selectedOutbound.id,
+        outboundFromStationId: fromStationId,
+        outboundToStationId: toStationId,
+        returnScheduleId: schedule.id,
+        returnFromStationId: toStationId,
+        returnToStationId: fromStationId,
+      });
+      navigate(`/booking/seats?${params.toString()}`);
       return;
     }
 
-    toast.success(`Đã chọn chuyến tàu ${schedule.trainCode}.`);
+    const params = new URLSearchParams({
+      outboundScheduleId: schedule.id,
+      outboundFromStationId: fromStationId,
+      outboundToStationId: toStationId,
+    });
+    navigate(`/booking/seats?${params.toString()}`);
   };
 
   const displayedDate = activeLeg === "outbound" ? departureDate : returnDate;
