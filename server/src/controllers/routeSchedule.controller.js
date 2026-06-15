@@ -25,6 +25,15 @@ export const getTrains = asyncHandler(async (_req, res) => {
         orderBy: { carriageNumber: "asc" },
       },
       maintenance: true,
+      schedules: {
+        include: {
+          route: {
+            select: {
+              routeName: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { trainName: "asc" },
   });
