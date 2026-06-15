@@ -24,13 +24,13 @@ export function initializeSeatRealtime(httpServer) {
     const token =
       tokenFromCookie(socket.handshake.headers.cookie) ||
       socket.handshake.auth?.token;
-    if (!token) return next(new Error("Unauthorized"));
+    if (!token) return next();
 
     try {
       socket.user = jwt.verify(token, process.env.JWT_SECRET);
       next();
     } catch {
-      next(new Error("Unauthorized"));
+      next();
     }
   });
 

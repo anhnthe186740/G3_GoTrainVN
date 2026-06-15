@@ -9,7 +9,7 @@ import { emitSeatState } from "../realtime/seatRealtime.js";
 
 export const confirmSeatHolds = asyncHandler(async (req, res) => {
   const { session, releasedHolds } = await confirmSeatSelection(
-    req.user.id,
+    req.bookingIdentity,
     req.body,
   );
   for (const hold of releasedHolds) {
@@ -28,13 +28,13 @@ export const confirmSeatHolds = asyncHandler(async (req, res) => {
 });
 
 export const getSeatSession = asyncHandler(async (req, res) => {
-  const session = await getSession(req.user.id, req.params.sessionId);
+  const session = await getSession(req.bookingIdentity, req.params.sessionId);
   res.json({ session });
 });
 
 export const getScheduleSeatMap = asyncHandler(async (req, res) => {
   const seatMap = await getSeatMap({
-    userId: req.user.id,
+    identity: req.bookingIdentity,
     sessionId: req.query.sessionId,
     scheduleId: req.params.scheduleId,
     fromStationId: req.query.fromStationId,
@@ -44,7 +44,10 @@ export const getScheduleSeatMap = asyncHandler(async (req, res) => {
 });
 
 export const deleteSeatSession = asyncHandler(async (req, res) => {
-  const released = await releaseSession(req.user.id, req.params.sessionId);
+  const released = await releaseSession(
+    req.bookingIdentity,
+    req.params.sessionId,
+  );
   for (const hold of released.holds) {
     emitSeatState(hold.scheduleId, {
       seatId: hold.seatId,

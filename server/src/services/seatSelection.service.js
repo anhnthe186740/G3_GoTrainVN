@@ -5,7 +5,7 @@ import { resolveJourneySegment } from "../utils/journey.js";
 export const HOLD_DURATION_MS = 10 * 60 * 1000;
 export const MAX_SEATS_PER_LEG = 4;
 
-const ACTIVE_BOOKING_STATUSES = ["PENDING", "CONFIRMED"];
+const ACTIVE_BOOKING_STATUSES = ["PENDING", "CONFIRMED", "COMPLETED"];
 const SELLABLE_SCHEDULE_STATUSES = ["ACTIVE", "DELAYED"];
 const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
 
@@ -21,6 +21,27 @@ function httpError(statusCode, message, details = null) {
   error.statusCode = statusCode;
   if (details) error.details = details;
   return error;
+}
+
+function ownerWhere(identity) {
+  const owners = [
+    identity.userId ? { userId: identity.userId } : null,
+    identity.guestToken ? { guestToken: identity.guestToken } : null,
+  ].filter(Boolean);
+  return owners.length === 1 ? owners[0] : { OR: owners };
+}
+
+function ownerData(identity) {
+  return identity.userId
+    ? { userId: identity.userId, guestToken: null }
+    : { userId: null, guestToken: identity.guestToken };
+}
+
+function isOwnedHold(hold, identity) {
+  return Boolean(
+    (identity.userId && hold.userId === identity.userId) ||
+    (identity.guestToken && hold.guestToken === identity.guestToken),
+  );
 }
 
 export function isSeatConflictError(error) {
@@ -126,7 +147,7 @@ function journeySelect() {
   };
 }
 
-async function getJourney(scheduleId, fromStationId, toStationId) {
+export async function getJourney(scheduleId, fromStationId, toStationId) {
   assertObjectId(scheduleId, "Mã chuyến");
   assertObjectId(fromStationId, "Ga lên tàu");
   assertObjectId(toStationId, "Ga xuống tàu");
@@ -354,7 +375,7 @@ async function findConflictSeatIds(requests, now) {
   return conflicts.filter(Boolean);
 }
 
-export async function confirmSeatSelection(userId, payload) {
+export async function confirmSeatSelection(identity, payload) {
   const { outbound, inbound } = normalizeSelectionPayload(payload);
   const now = new Date();
   await cleanupExpiredHolds(now);
@@ -374,7 +395,11 @@ export async function confirmSeatSelection(userId, payload) {
   }
 
   const existingSessions = await prisma.seatHoldSession.findMany({
-    where: { userId, status: "ACTIVE", expiresAt: { gt: now } },
+    where: {
+      ...ownerWhere(identity),
+      status: "ACTIVE",
+      expiresAt: { gt: now },
+    },
     include: { holds: true },
   });
   const releasedHolds = existingSessions.flatMap((session) =>
@@ -414,7 +439,7 @@ export async function confirmSeatSelection(userId, payload) {
 
       const session = await tx.seatHoldSession.create({
         data: {
-          userId,
+          ...ownerData(identity),
           bookingType: inbound ? "ROUND_TRIP" : "ONE_WAY",
           outboundScheduleId: outbound.scheduleId,
           outboundFromStationId: outbound.fromStationId,
@@ -430,7 +455,7 @@ export async function confirmSeatSelection(userId, payload) {
         await tx.seatHold.create({
           data: {
             sessionId: session.id,
-            userId,
+            ...ownerData(identity),
             ...request,
             expiresAt,
           },
@@ -440,7 +465,7 @@ export async function confirmSeatSelection(userId, payload) {
     });
 
     return {
-      session: await getSession(userId, sessionId),
+      session: await getSession(identity, sessionId),
       releasedHolds,
     };
   } catch (error) {
@@ -462,12 +487,12 @@ export async function confirmSeatSelection(userId, payload) {
   }
 }
 
-export async function getSession(userId, sessionId) {
+export async function getSession(identity, sessionId) {
   assertObjectId(sessionId, "Phiên giữ chỗ");
   await cleanupExpiredHolds();
 
   const session = await prisma.seatHoldSession.findFirst({
-    where: { id: sessionId, userId },
+    where: { id: sessionId, ...ownerWhere(identity) },
     include: {
       holds: {
         include: {
@@ -490,7 +515,7 @@ export async function getSession(userId, sessionId) {
 }
 
 export async function getSeatMap({
-  userId,
+  identity,
   sessionId,
   scheduleId,
   fromStationId,
@@ -507,6 +532,7 @@ export async function getSeatMap({
         seatId: true,
         sessionId: true,
         userId: true,
+        guestToken: true,
         expiresAt: true,
       },
     }),
@@ -529,7 +555,7 @@ export async function getSeatMap({
         else if (bookedSeats.has(seat.id)) state = "SOLD";
         else if (hold) {
           state =
-            hold.sessionId === sessionId && hold.userId === userId
+            hold.sessionId === sessionId && isOwnedHold(hold, identity)
               ? "SELECTED"
               : "LOCKED";
         }
@@ -599,15 +625,17 @@ export async function getSeatMap({
   };
 }
 
-export async function releaseSession(userId, sessionId) {
-  const session = await getSession(userId, sessionId);
+export async function releaseSession(identity, sessionId) {
+  const session = await getSession(identity, sessionId);
   const holds = session.holds.map((hold) => ({
     scheduleId: hold.scheduleId,
     seatId: hold.seatId,
   }));
 
   await prisma.$transaction([
-    prisma.seatHold.deleteMany({ where: { sessionId, userId } }),
+    prisma.seatHold.deleteMany({
+      where: { sessionId, ...ownerWhere(identity) },
+    }),
     prisma.seatHoldSession.update({
       where: { id: sessionId },
       data: { status: "RELEASED" },

@@ -70,22 +70,8 @@ export default function App() {
         <Route index element={<Home />} />
 
         <Route path="schedule" element={<CustomerBooking />} />
-        <Route
-          path="booking/seats"
-          element={
-            <ProtectedRoute>
-              <SeatSelectionPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="booking/passengers"
-          element={
-            <ProtectedRoute>
-              <PassengerDetailsPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="booking/seats" element={<SeatSelectionPage />} />
+        <Route path="booking/passengers" element={<PassengerDetailsPage />} />
 
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
 

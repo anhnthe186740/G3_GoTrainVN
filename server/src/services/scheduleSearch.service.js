@@ -7,7 +7,7 @@ import {
 } from "../utils/journey.js";
 
 const SELLABLE_SCHEDULE_STATUSES = ["ACTIVE", "DELAYED"];
-const ACTIVE_BOOKING_STATUSES = ["PENDING", "CONFIRMED"];
+const ACTIVE_BOOKING_STATUSES = ["PENDING", "CONFIRMED", "COMPLETED"];
 
 const CARRIAGE_NAMES = {
   NORMAL_SEAT: "Ghế thường",

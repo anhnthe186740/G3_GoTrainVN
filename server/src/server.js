@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer } from "node:http";
 import app from "./app.js";
 import { connectDatabase } from "./config/database.js";
@@ -25,7 +26,9 @@ async function startServer() {
         });
       }
       for (const session of expiredSessions) {
-        emitSessionExpired(session.userId, { sessionId: session.id });
+        if (session.userId) {
+          emitSessionExpired(session.userId, { sessionId: session.id });
+        }
       }
     } catch (error) {
       console.error("Failed to clean expired seat holds", error);
