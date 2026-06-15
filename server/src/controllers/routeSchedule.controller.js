@@ -77,42 +77,12 @@ export const getSchedules = asyncHandler(async (_req, res) => {
 
   const now = new Date();
 
-  // Ensure default pricing policies and availability snapshots exist for all schedules
+  // Availability is still maintained here for the legacy booking screen.
+  // Pricing is managed exclusively through the admin pricing configuration flow.
   for (const s of schedules) {
     let needsUpdate = false;
 
-    // 1. Check if pricing policies exist, if not create them
-    if (!s.pricing || s.pricing.length === 0) {
-      const defaultPolicies = [
-        {
-          passengerType: "ADULT",
-          carriageType: "SEAT",
-          basePrice: 350000,
-          effectiveFrom: now,
-        },
-        {
-          passengerType: "ADULT",
-          carriageType: "AC_SEAT",
-          basePrice: 490000,
-          effectiveFrom: now,
-        },
-        {
-          passengerType: "ADULT",
-          carriageType: "SLEEPER",
-          basePrice: 820000,
-          effectiveFrom: now,
-        },
-      ];
-      await prisma.pricingPolicy.createMany({
-        data: defaultPolicies.map((p) => ({
-          scheduleId: s.id,
-          ...p,
-        })),
-      });
-      needsUpdate = true;
-    }
-
-    // 2. Check if availability snapshots exist, if not create them
+    // Check if availability snapshots exist, if not create them
     if (!s.availabilitySnapshots || s.availabilitySnapshots.length === 0) {
       const defaultSnapshots = [
         {

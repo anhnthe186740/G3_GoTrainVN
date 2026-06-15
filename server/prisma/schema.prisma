@@ -8,6 +8,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../../node_modules/@gotrain/prisma-client"
 }
 
 // ============================================
@@ -206,6 +207,7 @@ model Route {
   estimatedDuration Int            // minutes
   stations          RouteStation[] // Embedded array of intermediate stops
   schedules         Schedule[]
+  pricingPolicies   PricingPolicy[]
   popularity        Int            @default(0)  // Track booking count
   isActive          Boolean        @default(true)
   createdAt         DateTime       @default(now())
@@ -267,23 +269,35 @@ model ScheduleStop {
 
 model PricingPolicy {
   id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  policyCode            String?
+  policyName            String?
+  scopeType             String    @default("SCHEDULE") // SYSTEM, ROUTE, SCHEDULE
+  scopeKey              String?
+  routeId               String?   @db.ObjectId
+  route                 Route?    @relation(fields: [routeId], references: [id])
+  scheduleId            String?   @db.ObjectId
+  schedule              Schedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   passengerType         String    // ADULT, CHILD, STUDENT, SENIOR
-  carriageType          String    // SEAT, SLEEPER, AC_SEAT
+  carriageType          String    // NORMAL_SEAT, AC_SEAT, SLEEPER_6, SLEEPER_4
   basePrice             Float     @db.Double
   pricePerKm            Float?    @db.Double
+  classSurcharge        Float     @default(0) @db.Double
   discountPercentage    Float     @default(0)
+  taxPercentage         Float     @default(0)
   minPrice              Float?    @db.Double
   maxPrice              Float?    @db.Double
   active                Boolean   @default(true)
   effectiveFrom         DateTime
   effectiveTo           DateTime?
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   
-  @@unique([scheduleId, passengerType, carriageType])
+  @@index([policyCode])
+  @@index([scopeType, scopeKey])
+  @@index([routeId])
   @@index([scheduleId])
   @@index([active])
+  @@index([effectiveFrom])
 }
 
 model Voucher {
