@@ -47,7 +47,7 @@ export const getRoutes = asyncHandler(async (_req, res) => {
 // GET /api/v1/schedules - Lấy danh sách lịch trình
 // ============================================================
 export const getSchedules = asyncHandler(async (_req, res) => {
-  const schedules = await prisma.schedule.findMany({
+  let schedules = await prisma.schedule.findMany({
     include: {
       route: {
         select: {
@@ -57,9 +57,129 @@ export const getSchedules = asyncHandler(async (_req, res) => {
         },
       },
       train: { select: { trainName: true, trainCode: true } },
+      pricing: true,
+      availabilitySnapshots: true,
     },
     orderBy: { departureTime: "asc" },
   });
+
+  const now = new Date();
+
+  // Ensure default pricing policies and availability snapshots exist for all schedules
+  for (const s of schedules) {
+    let needsUpdate = false;
+
+    // 1. Check if pricing policies exist, if not create them
+    if (!s.pricing || s.pricing.length === 0) {
+      const defaultPolicies = [
+        {
+          passengerType: "ADULT",
+          carriageType: "SEAT",
+          basePrice: 350000,
+          effectiveFrom: now,
+        },
+        {
+          passengerType: "ADULT",
+          carriageType: "AC_SEAT",
+          basePrice: 490000,
+          effectiveFrom: now,
+        },
+        {
+          passengerType: "ADULT",
+          carriageType: "SLEEPER",
+          basePrice: 820000,
+          effectiveFrom: now,
+        },
+      ];
+      await prisma.pricingPolicy.createMany({
+        data: defaultPolicies.map((p) => ({
+          scheduleId: s.id,
+          ...p,
+        })),
+      });
+      needsUpdate = true;
+    }
+
+    // 2. Check if availability snapshots exist, if not create them
+    if (!s.availabilitySnapshots || s.availabilitySnapshots.length === 0) {
+      const defaultSnapshots = [
+        {
+          carriageType: "SEAT",
+          availableSeats: 35,
+          bookedSeats: 45,
+          occupancyPercentage: 56.25,
+        },
+        {
+          carriageType: "AC_SEAT",
+          availableSeats: 18,
+          bookedSeats: 42,
+          occupancyPercentage: 70.0,
+        },
+        {
+          carriageType: "SLEEPER",
+          availableSeats: 6,
+          bookedSeats: 26,
+          occupancyPercentage: 81.25,
+        },
+      ];
+      await prisma.availabilitySnapshot.createMany({
+        data: defaultSnapshots.map((snap) => ({
+          scheduleId: s.id,
+          ...snap,
+          snapshotTime: now,
+        })),
+      });
+      needsUpdate = true;
+    } else {
+      // If snapshots exist, check if we need to randomly update them to simulate live booking (e.g. if older than 2 minutes)
+      const lastSnapshot = s.availabilitySnapshots[0];
+      const timeDiffMs =
+        now.getTime() - new Date(lastSnapshot.snapshotTime).getTime();
+      const twoMinutesMs = 2 * 60 * 1000;
+
+      if (timeDiffMs > twoMinutesMs) {
+        for (const snap of s.availabilitySnapshots) {
+          const delta = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
+          let newBooked = Math.max(0, snap.bookedSeats + delta);
+          // Set capacity limits
+          const totalSeats = snap.carriageType === "SLEEPER" ? 32 : 80;
+          if (newBooked > totalSeats) newBooked = totalSeats;
+          const newAvailable = totalSeats - newBooked;
+          const newPercentage =
+            Math.round((newBooked / totalSeats) * 10000) / 100;
+
+          await prisma.availabilitySnapshot.update({
+            where: { id: snap.id },
+            data: {
+              availableSeats: newAvailable,
+              bookedSeats: newBooked,
+              occupancyPercentage: newPercentage,
+              snapshotTime: now,
+            },
+          });
+        }
+        needsUpdate = true;
+      }
+    }
+  }
+
+  // Refetch if any updates were made to return fresh data
+  schedules = await prisma.schedule.findMany({
+    include: {
+      route: {
+        select: {
+          routeName: true,
+          startStation: { select: { stationName: true } },
+          endStation: { select: { stationName: true } },
+        },
+      },
+      train: { select: { trainName: true, trainCode: true } },
+      pricing: true,
+      availabilitySnapshots: true,
+    },
+    orderBy: { departureTime: "asc" },
+  });
+
   res.json({ schedules });
 });
 

@@ -32,6 +32,13 @@ export function AppLayout() {
           <Outlet />
         </main>
       ) : (
+
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 pt-20">
+          <main className="min-w-0 w-full">
+            <Outlet />
+          </main>
+        </div>
+
         <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 pt-[88px]">
           <Outlet />
         </main>

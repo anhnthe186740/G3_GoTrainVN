@@ -1,12 +1,21 @@
+import { useSearchParams, Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { AdminDashboard } from "../components/dashboard/AdminDashboard";
 import { Card } from "../components/ui/Card";
 
 export function Dashboard() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
 
   if (user?.role === "ADMIN") {
     return <AdminDashboard />;
+  }
+
+  // Check if we are in the customer booking flow
+  const isBookingFlow = searchParams.get("from") && searchParams.get("to");
+
+  if (isBookingFlow) {
+    return <Navigate to={`/schedule?${searchParams.toString()}`} replace />;
   }
 
   return (
