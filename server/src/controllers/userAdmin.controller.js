@@ -2,6 +2,11 @@ import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import bcrypt from "bcryptjs";
 
+// Helper filter to match active (non-deleted) users in MongoDB
+const notDeleted = {
+  OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+};
+
 // Get user list with pagination, search, and filters
 export const getAdminUsers = asyncHandler(async (req, res) => {
   const { search, userType, isActive, page = 1, limit = 10 } = req.query;
@@ -9,7 +14,7 @@ export const getAdminUsers = asyncHandler(async (req, res) => {
   const take = Number(limit);
 
   const where = {
-    deletedAt: null,
+    ...notDeleted,
   };
 
   if (search) {
@@ -113,8 +118,7 @@ export const createAdminUser = asyncHandler(async (req, res) => {
 
   const existingUser = await prisma.user.findFirst({
     where: {
-      OR: [{ email }, { phoneNumber }],
-      deletedAt: null,
+      AND: [{ OR: [{ email }, { phoneNumber }] }, notDeleted],
     },
   });
 
@@ -166,7 +170,10 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     req.body;
 
   const user = await prisma.user.findFirst({
-    where: { id, deletedAt: null },
+    where: {
+      id,
+      ...notDeleted,
+    },
   });
 
   if (!user) {
@@ -177,8 +184,7 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     const existing = await prisma.user.findFirst({
       where: {
         id: { not: id },
-        OR: [{ email }, { phoneNumber }],
-        deletedAt: null,
+        AND: [{ OR: [{ email }, { phoneNumber }] }, notDeleted],
       },
     });
 
@@ -228,7 +234,10 @@ export const deleteAdminUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const user = await prisma.user.findFirst({
-    where: { id, deletedAt: null },
+    where: {
+      id,
+      ...notDeleted,
+    },
   });
 
   if (!user) {
@@ -256,12 +265,12 @@ export const getAdminRolesStats = asyncHandler(async (req, res) => {
     totalAnalysts,
     totalBanned,
   ] = await Promise.all([
-    prisma.user.count({ where: { deletedAt: null } }),
-    prisma.user.count({ where: { userType: "CUSTOMER", deletedAt: null } }),
-    prisma.user.count({ where: { userType: "ADMIN", deletedAt: null } }),
-    prisma.user.count({ where: { userType: "STAFF", deletedAt: null } }),
-    prisma.user.count({ where: { userType: "ANALYST", deletedAt: null } }),
-    prisma.user.count({ where: { isActive: false, deletedAt: null } }),
+    prisma.user.count({ where: { ...notDeleted } }),
+    prisma.user.count({ where: { userType: "CUSTOMER", ...notDeleted } }),
+    prisma.user.count({ where: { userType: "ADMIN", ...notDeleted } }),
+    prisma.user.count({ where: { userType: "STAFF", ...notDeleted } }),
+    prisma.user.count({ where: { userType: "ANALYST", ...notDeleted } }),
+    prisma.user.count({ where: { isActive: false, ...notDeleted } }),
   ]);
 
   res.json({
