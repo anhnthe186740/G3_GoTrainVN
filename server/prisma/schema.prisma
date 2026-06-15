@@ -42,6 +42,7 @@ model User {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   isActive              Boolean   @default(true)
+  lockReason            String?
   deletedAt             DateTime?  // Soft delete
   lastLogin             DateTime?
   
