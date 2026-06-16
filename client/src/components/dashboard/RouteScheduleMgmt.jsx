@@ -35,10 +35,10 @@ const STATUS_BADGE = {
 };
 
 // ─── Haversine distance calculator (returns km) ──────────────
-// Hệ số 1.2 để tính đường sắt thực tế (dài hơn đường thẳng)
-const RAIL_FACTOR = 1.2;
-// Tốc độ tàu SE trung bình Việt Nam ~80 km/h
-const AVG_SPEED_KMH = 80;
+// Hệ số 1.45 để tính đường sắt thực tế (dài hơn đường thẳng)
+const RAIL_FACTOR = 1.45;
+// Tốc độ trung bình Việt Nam ~55 km/h
+const AVG_SPEED_KMH = 55;
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -53,36 +53,67 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return Math.round(R * c * RAIL_FACTOR);
 }
 
-// ─── On-route validation (detour ratio) ────────────────────────
-// Nếu đi qua ga trung gian làm tăng quãng đường > 50% so với đường thẳng
-// thì ga đó không thuộc tuyến đường này.
-const DETOUR_THRESHOLD = 1.5;
+// ─── On-route validation (Bearing deviation approach) ──────────
+// Tính góc phương vị (bearing) từ điểm 1 đến điểm 2 (0° = Bắc, 90° = Đông, ...)
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const y = Math.sin(dLng) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Tính góc lệch nhỏ nhất giữa 2 góc phương vị (0–180°)
+function angleDiff(a, b) {
+  let diff = Math.abs(a - b) % 360;
+  if (diff > 180) diff = 360 - diff;
+  return diff;
+}
+
+// Ngưỡng lệch góc phương vị tối đa (45° để lọc các ga rẽ hướng quá nhiều)
+const MAX_BEARING_DEV = 45;
 
 function isStopOnRoute(startSt, endSt, stopSt) {
   // Chặn ga trùng với ga đầu/cuối tuyến
   if (stopSt.id === startSt.id || stopSt.id === endSt.id) return false;
-  if (!startSt?.latitude || !endSt?.latitude || !stopSt?.latitude) return true; // không có tọa độ → cho qua
-  const direct = haversineKm(
+  // Không có tọa độ → không thể validate, cho qua
+  if (!startSt?.latitude || !endSt?.latitude || !stopSt?.latitude) return true;
+
+  // Kiểm tra 1: Từ ga đầu, nhìn về ga trung gian phải cùng hướng với nhìn về ga cuối
+  const bStartEnd = bearingDeg(
     startSt.latitude,
     startSt.longitude,
     endSt.latitude,
     endSt.longitude,
   );
-  if (direct === 0) return true;
-  const viaStop =
-    haversineKm(
-      startSt.latitude,
-      startSt.longitude,
-      stopSt.latitude,
-      stopSt.longitude,
-    ) +
-    haversineKm(
-      stopSt.latitude,
-      stopSt.longitude,
-      endSt.latitude,
-      endSt.longitude,
-    );
-  return viaStop / direct <= DETOUR_THRESHOLD;
+  const bStartStop = bearingDeg(
+    startSt.latitude,
+    startSt.longitude,
+    stopSt.latitude,
+    stopSt.longitude,
+  );
+  if (angleDiff(bStartStop, bStartEnd) > MAX_BEARING_DEV) return false;
+
+  // Kiểm tra 2: Từ ga cuối, nhìn về ga trung gian phải cùng hướng với nhìn về ga đầu
+  const bEndStart = bearingDeg(
+    endSt.latitude,
+    endSt.longitude,
+    startSt.latitude,
+    startSt.longitude,
+  );
+  const bEndStop = bearingDeg(
+    endSt.latitude,
+    endSt.longitude,
+    stopSt.latitude,
+    stopSt.longitude,
+  );
+  if (angleDiff(bEndStop, bEndStart) > MAX_BEARING_DEV) return false;
+
+  return true;
 }
 
 // ─── Tabs ───────────────────────────────────────────────────────
@@ -476,11 +507,13 @@ export function RouteScheduleMgmt({ mode }) {
                     className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
                   >
                     <option value="">-- Chọn ga --</option>
-                    {stations.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.stationName}
-                      </option>
-                    ))}
+                    {stations
+                      .filter((s) => s.id !== routeForm.endStationId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.stationName}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -496,11 +529,13 @@ export function RouteScheduleMgmt({ mode }) {
                     className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
                   >
                     <option value="">-- Chọn ga --</option>
-                    {stations.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.stationName}
-                      </option>
-                    ))}
+                    {stations
+                      .filter((s) => s.id !== routeForm.startStationId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.stationName}
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
