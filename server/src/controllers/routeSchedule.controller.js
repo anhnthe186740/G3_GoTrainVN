@@ -152,7 +152,7 @@ export const searchSchedules = asyncHandler(async (req, res) => {
 // ============================================================
 
 // ── Haversine (server-side) ──────────────────────────────────
-const RAIL_FACTOR_SRV = 1.2;
+const RAIL_FACTOR_SRV = 1.45;
 const DETOUR_THRESHOLD_SRV = 1.5;
 
 function haversineKmSrv(lat1, lng1, lat2, lng2) {
@@ -167,6 +167,27 @@ function haversineKmSrv(lat1, lng1, lat2, lng2) {
     R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * RAIL_FACTOR_SRV,
   );
 }
+
+// ── Bearing Deviation (server-side) ───────────────────────────
+function bearingDegSrv(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const y = Math.sin(dLng) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function angleDiffSrv(a, b) {
+  let diff = Math.abs(a - b) % 360;
+  if (diff > 180) diff = 360 - diff;
+  return diff;
+}
+
+const MAX_BEARING_DEV_SRV = 45;
 
 export const generateRoute = asyncHandler(async (req, res) => {
   const {
@@ -206,13 +227,6 @@ export const generateRoute = asyncHandler(async (req, res) => {
 
   // 3. Validate intermediate stops are geographically on route
   if (stations.length > 0 && startStation.latitude && endStation.latitude) {
-    const directDist = haversineKmSrv(
-      startStation.latitude,
-      startStation.longitude,
-      endStation.latitude,
-      endStation.longitude,
-    );
-
     const offRouteStops = [];
     for (const stop of stations) {
       if (!stop.stationId) continue;
@@ -221,28 +235,45 @@ export const generateRoute = asyncHandler(async (req, res) => {
       });
       if (!stopStation?.latitude) continue;
 
-      const viaDist =
-        haversineKmSrv(
-          startStation.latitude,
-          startStation.longitude,
-          stopStation.latitude,
-          stopStation.longitude,
-        ) +
-        haversineKmSrv(
-          stopStation.latitude,
-          stopStation.longitude,
-          endStation.latitude,
-          endStation.longitude,
-        );
+      // Kiểm tra 1: Từ ga đầu, nhìn về ga trung gian phải cùng hướng với nhìn về ga cuối
+      const bStartEnd = bearingDegSrv(
+        startStation.latitude,
+        startStation.longitude,
+        endStation.latitude,
+        endStation.longitude,
+      );
+      const bStartStop = bearingDegSrv(
+        startStation.latitude,
+        startStation.longitude,
+        stopStation.latitude,
+        stopStation.longitude,
+      );
+      if (angleDiffSrv(bStartStop, bStartEnd) > MAX_BEARING_DEV_SRV) {
+        offRouteStops.push(stopStation.stationName);
+        continue;
+      }
 
-      if (directDist > 0 && viaDist / directDist > DETOUR_THRESHOLD_SRV) {
+      // Kiểm tra 2: Từ ga cuối, nhìn về ga trung gian phải cùng hướng với nhìn về ga đầu
+      const bEndStart = bearingDegSrv(
+        endStation.latitude,
+        endStation.longitude,
+        startStation.latitude,
+        startStation.longitude,
+      );
+      const bEndStop = bearingDegSrv(
+        endStation.latitude,
+        endStation.longitude,
+        stopStation.latitude,
+        stopStation.longitude,
+      );
+      if (angleDiffSrv(bEndStop, bEndStart) > MAX_BEARING_DEV_SRV) {
         offRouteStops.push(stopStation.stationName);
       }
     }
 
     if (offRouteStops.length > 0) {
       return res.status(422).json({
-        message: `Ga trung gian không nằm trên tuyến đường (đi vòng > ${Math.round((DETOUR_THRESHOLD_SRV - 1) * 100)}%): ${offRouteStops.join(", ")}. Vui lòng chọn ga phù hợp với lộ trình.`,
+        message: `Ga trung gian không nằm trên tuyến đường (lệch hướng > ${MAX_BEARING_DEV_SRV}°): ${offRouteStops.join(", ")}. Vui lòng chọn ga phù hợp với lộ trình.`,
         offRouteStops,
       });
     }
