@@ -1,6 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment, useMemo } from "react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
+import {
+  getRoutes,
+  getSchedules,
+  getStations,
+  getTrains,
+} from "../../services/referenceDataApi";
 
 // ─── Helpers ───────────────────────────────────────────────────
 const formatDateTime = (iso) => {
@@ -29,10 +35,10 @@ const STATUS_BADGE = {
 };
 
 // ─── Haversine distance calculator (returns km) ──────────────
-// Hệ số 1.2 để tính đường sắt thực tế (dài hơn đường thẳng)
-const RAIL_FACTOR = 1.2;
-// Tốc độ tàu SE trung bình Việt Nam ~80 km/h
-const AVG_SPEED_KMH = 80;
+// Hệ số 1.45 để tính đường sắt thực tế (dài hơn đường thẳng)
+const RAIL_FACTOR = 1.45;
+// Tốc độ trung bình Việt Nam ~55 km/h
+const AVG_SPEED_KMH = 55;
 
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -47,34 +53,67 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return Math.round(R * c * RAIL_FACTOR);
 }
 
-// ─── On-route validation (detour ratio) ────────────────────────
-// Nếu đi qua ga trung gian làm tăng quãng đường > 50% so với đường thẳng
-// thì ga đó không thuộc tuyến đường này.
-const DETOUR_THRESHOLD = 1.5;
+// ─── On-route validation (Bearing deviation approach) ──────────
+// Tính góc phương vị (bearing) từ điểm 1 đến điểm 2 (0° = Bắc, 90° = Đông, ...)
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const y = Math.sin(dLng) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Tính góc lệch nhỏ nhất giữa 2 góc phương vị (0–180°)
+function angleDiff(a, b) {
+  let diff = Math.abs(a - b) % 360;
+  if (diff > 180) diff = 360 - diff;
+  return diff;
+}
+
+// Ngưỡng lệch góc phương vị tối đa (45° để lọc các ga rẽ hướng quá nhiều)
+const MAX_BEARING_DEV = 45;
 
 function isStopOnRoute(startSt, endSt, stopSt) {
-  if (!startSt?.latitude || !endSt?.latitude || !stopSt?.latitude) return true; // không có tọa độ → bỏ qua
-  const direct = haversineKm(
+  // Chặn ga trùng với ga đầu/cuối tuyến
+  if (stopSt.id === startSt.id || stopSt.id === endSt.id) return false;
+  // Không có tọa độ → không thể validate, cho qua
+  if (!startSt?.latitude || !endSt?.latitude || !stopSt?.latitude) return true;
+
+  // Kiểm tra 1: Từ ga đầu, nhìn về ga trung gian phải cùng hướng với nhìn về ga cuối
+  const bStartEnd = bearingDeg(
     startSt.latitude,
     startSt.longitude,
     endSt.latitude,
     endSt.longitude,
   );
-  if (direct === 0) return true;
-  const viaStop =
-    haversineKm(
-      startSt.latitude,
-      startSt.longitude,
-      stopSt.latitude,
-      stopSt.longitude,
-    ) +
-    haversineKm(
-      stopSt.latitude,
-      stopSt.longitude,
-      endSt.latitude,
-      endSt.longitude,
-    );
-  return viaStop / direct <= DETOUR_THRESHOLD;
+  const bStartStop = bearingDeg(
+    startSt.latitude,
+    startSt.longitude,
+    stopSt.latitude,
+    stopSt.longitude,
+  );
+  if (angleDiff(bStartStop, bStartEnd) > MAX_BEARING_DEV) return false;
+
+  // Kiểm tra 2: Từ ga cuối, nhìn về ga trung gian phải cùng hướng với nhìn về ga đầu
+  const bEndStart = bearingDeg(
+    endSt.latitude,
+    endSt.longitude,
+    startSt.latitude,
+    startSt.longitude,
+  );
+  const bEndStop = bearingDeg(
+    endSt.latitude,
+    endSt.longitude,
+    stopSt.latitude,
+    stopSt.longitude,
+  );
+  if (angleDiff(bEndStop, bEndStart) > MAX_BEARING_DEV) return false;
+
+  return true;
 }
 
 // ─── Tabs ───────────────────────────────────────────────────────
@@ -100,7 +139,7 @@ export function RouteScheduleMgmt({ mode }) {
     estimatedDuration: "",
   });
   const [autoCalcDistance, setAutoCalcDistance] = useState(false);
-  const [intermediateStops, setIntermediateStops] = useState([]);
+  const [selectedStopIds, setSelectedStopIds] = useState(new Set());
   const [routeSubmitting, setRouteSubmitting] = useState(false);
 
   // Schedule form state
@@ -116,24 +155,41 @@ export function RouteScheduleMgmt({ mode }) {
   const [conflicts, setConflicts] = useState([]);
 
   // ── Load reference data ───────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    try {
-      setLoadingRef(true);
-      const [stRes, trRes, rtRes, scRes] = await Promise.all([
-        api.get("/stations"),
-        api.get("/trains"),
-        api.get("/routes"),
-        api.get("/schedules"),
-      ]);
-      setStations(stRes.data.stations || []);
-      setTrains(trRes.data.trains || []);
-      setRoutes(rtRes.data.routes || []);
-      setSchedules(scRes.data.schedules || []);
-    } catch {
-      toast.error("Không thể tải dữ liệu. Kiểm tra kết nối server.");
-    } finally {
-      setLoadingRef(false);
+  const loadAll = useCallback(async ({ force = false } = {}) => {
+    setLoadingRef(true);
+    const requests = [
+      ["stations", getStations({ force })],
+      ["trains", getTrains({ force })],
+      ["routes", getRoutes({ force })],
+      ["schedules", getSchedules({ force })],
+    ];
+    const results = await Promise.allSettled(
+      requests.map(([, request]) => request),
+    );
+    const failed = [];
+
+    results.forEach((result, index) => {
+      const resource = requests[index][0];
+      if (result.status === "rejected") {
+        failed.push(resource);
+        return;
+      }
+
+      if (resource === "stations") {
+        setStations(result.value.stations || []);
+      } else if (resource === "trains") {
+        setTrains(result.value.trains || []);
+      } else if (resource === "routes") {
+        setRoutes(result.value.routes || []);
+      } else {
+        setSchedules(result.value.schedules || []);
+      }
+    });
+
+    if (failed.length > 0) {
+      toast.error(`Không thể tải: ${failed.join(", ")}.`);
     }
+    setLoadingRef(false);
   }, []);
 
   useEffect(() => {
@@ -168,81 +224,55 @@ export function RouteScheduleMgmt({ mode }) {
   );
 
   const handleStationChange = (field, value) => {
-    const newForm = { ...routeForm, [field]: value };
+    let newForm = { ...routeForm, [field]: value };
+
+    // Đảm bảo ga bắt đầu và ga kết thúc không bao giờ trùng nhau
+    if (field === "startStationId" && value === routeForm.endStationId) {
+      newForm.endStationId = "";
+    } else if (field === "endStationId" && value === routeForm.startStationId) {
+      newForm.startStationId = "";
+    }
+
     setRouteForm(newForm);
     setAutoCalcDistance(false);
-    // Trigger auto-calc when both are set
-    const startId = field === "startStationId" ? value : newForm.startStationId;
-    const endId = field === "endStationId" ? value : newForm.endStationId;
+    setSelectedStopIds(new Set()); // Reset ga trung gian khi đổi ga đầu/cuối
+    const startId = newForm.startStationId;
+    const endId = newForm.endStationId;
     calcAndFill(startId, endId);
   };
 
-  // ── Intermediate stops helpers ────────────────────────────────
-  const addStop = () =>
-    setIntermediateStops((prev) => [
-      ...prev,
-      {
-        stationId: "",
-        stationName: "",
-        stopOrder: prev.length + 1,
-        distanceFromStart: "",
-      },
-    ]);
-
-  const removeStop = (i) =>
-    setIntermediateStops((prev) =>
-      prev
-        .filter((_, idx) => idx !== i)
-        .map((s, idx) => ({ ...s, stopOrder: idx + 1 })),
-    );
-
-  const updateStop = (i, field, value) =>
-    setIntermediateStops((prev) => {
-      const updated = [...prev];
-      updated[i] = { ...updated[i], [field]: value };
-      if (field === "stationId") {
-        const st = stations.find((s) => s.id === value);
-        updated[i].stationName = st ? st.stationName : "";
-        // Auto-fill distanceFromStart for stop based on haversine from start station
-        if (st?.latitude && routeForm.startStationId) {
-          const startSt = stations.find(
-            (s) => s.id === routeForm.startStationId,
-          );
-          if (startSt?.latitude) {
-            updated[i].distanceFromStart = String(
-              haversineKm(
-                startSt.latitude,
-                startSt.longitude,
-                st.latitude,
-                st.longitude,
-              ),
-            );
-          }
-        }
-      }
-      return updated;
-    });
-
-  // ── Validate intermediate stops are geographically on route ──
-  const getInvalidStops = useCallback(() => {
+  // ── Eligible intermediate stops (auto-computed) ───────────────
+  // Tất cả ga nằm trên tuyến (theo Haversine), trừ ga đầu và ga cuối
+  const eligibleStops = useMemo(() => {
     const startSt = stations.find((s) => s.id === routeForm.startStationId);
     const endSt = stations.find((s) => s.id === routeForm.endStationId);
-    if (!startSt || !endSt) return [];
-    return intermediateStops
-      .map((stop, i) => {
-        const stopSt = stations.find((s) => s.id === stop.stationId);
-        if (!stopSt) return null;
-        return isStopOnRoute(startSt, endSt, stopSt)
-          ? null
-          : { i, name: stopSt.stationName };
-      })
-      .filter(Boolean);
-  }, [
-    stations,
-    routeForm.startStationId,
-    routeForm.endStationId,
-    intermediateStops,
-  ]);
+    if (!startSt || !endSt || startSt.id === endSt.id) return [];
+
+    return stations
+      .filter((s) => isStopOnRoute(startSt, endSt, s))
+      .map((s) => ({
+        ...s,
+        distanceFromStart:
+          startSt.latitude && s.latitude
+            ? haversineKm(
+                startSt.latitude,
+                startSt.longitude,
+                s.latitude,
+                s.longitude,
+              )
+            : 0,
+      }))
+      .sort((a, b) => a.distanceFromStart - b.distanceFromStart);
+  }, [stations, routeForm.startStationId, routeForm.endStationId]);
+
+  const toggleStop = (stationId) => {
+    setSelectedStopIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(stationId)) next.delete(stationId);
+      else next.add(stationId);
+      return next;
+    });
+  };
 
   // ── Submit Route ──────────────────────────────────────────────
   const handleCreateRoute = async (e) => {
@@ -251,25 +281,23 @@ export function RouteScheduleMgmt({ mode }) {
       toast.error("Ga khởi hành và ga kết thúc không được trùng nhau.");
       return;
     }
-    // Validate intermediate stops are on route
-    const invalidStops = getInvalidStops();
-    if (invalidStops.length > 0) {
-      toast.error(
-        `Ga trung gian không nằm trên tuyến đường: ${invalidStops.map((s) => s.name).join(", ")}. Vui lòng chọn ga phù hợp với lộ trình.`,
-        { duration: 6000 },
-      );
-      return;
-    }
     setRouteSubmitting(true);
     try {
+      // Build stations array từ các ga đã chọn, giữ thứ tự theo distanceFromStart
+      const selectedStops = eligibleStops
+        .filter((s) => selectedStopIds.has(s.id))
+        .map((s, idx) => ({
+          stationId: s.id,
+          stationName: s.stationName,
+          stopOrder: idx + 1,
+          distanceFromStart: s.distanceFromStart,
+        }));
+
       const payload = {
         ...routeForm,
         distance: parseInt(routeForm.distance),
         estimatedDuration: parseInt(routeForm.estimatedDuration),
-        stations: intermediateStops.map((s) => ({
-          ...s,
-          distanceFromStart: parseInt(s.distanceFromStart) || 0,
-        })),
+        stations: selectedStops,
       };
       await api.post("/routes/auto-generate", payload);
       toast.success("Tuyến đường đã được tạo thành công!");
@@ -280,9 +308,9 @@ export function RouteScheduleMgmt({ mode }) {
         distance: "",
         estimatedDuration: "",
       });
-      setIntermediateStops([]);
+      setSelectedStopIds(new Set());
       setAutoCalcDistance(false);
-      loadAll();
+      loadAll({ force: true });
     } catch (err) {
       toast.error(err.response?.data?.message || "Lỗi khi tạo tuyến đường.");
     } finally {
@@ -317,7 +345,7 @@ export function RouteScheduleMgmt({ mode }) {
         departureTimes: "08:00",
         bufferMinutes: "60",
       });
-      loadAll();
+      loadAll({ force: true });
     } catch (err) {
       const { message, conflicts: c = [] } = err.response?.data || {};
       toast.error(message || "Lỗi khi tạo lịch trình.");
@@ -333,7 +361,7 @@ export function RouteScheduleMgmt({ mode }) {
     try {
       await api.delete(`/routes/${id}`);
       toast.success("Đã vô hiệu hóa tuyến đường.");
-      loadAll();
+      loadAll({ force: true });
     } catch {
       toast.error("Lỗi khi xóa tuyến đường.");
     }
@@ -362,7 +390,7 @@ export function RouteScheduleMgmt({ mode }) {
           <p className="text-sm text-[#3f4852] mt-1">{displaySubtitle}</p>
         </div>
         <button
-          onClick={loadAll}
+          onClick={() => loadAll({ force: true })}
           className="flex items-center gap-1.5 bg-[#f2f4f6] hover:bg-[#eceef0] text-[#3f4852] px-4 py-2 rounded-xl font-semibold text-sm transition-all"
         >
           <span className="material-symbols-outlined text-[18px]">refresh</span>
@@ -487,11 +515,13 @@ export function RouteScheduleMgmt({ mode }) {
                     className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
                   >
                     <option value="">-- Chọn ga --</option>
-                    {stations.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.stationName}
-                      </option>
-                    ))}
+                    {stations
+                      .filter((s) => s.id !== routeForm.endStationId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.stationName}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -507,11 +537,13 @@ export function RouteScheduleMgmt({ mode }) {
                     className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
                   >
                     <option value="">-- Chọn ga --</option>
-                    {stations.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.stationName}
-                      </option>
-                    ))}
+                    {stations
+                      .filter((s) => s.id !== routeForm.startStationId)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.stationName}
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
@@ -607,120 +639,80 @@ export function RouteScheduleMgmt({ mode }) {
                 </div>
               )}
 
-              {/* Ga trung gian */}
+              {/* Ga trung gian — Checkbox list tự động */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-[#3f4852]">
-                    Ga dừng trung gian
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addStop}
-                    className="flex items-center gap-1 text-[#00629d] hover:bg-[#cfe5ff]/40 px-2 py-1 rounded-lg text-xs font-semibold transition-all"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">
-                      add
-                    </span>{" "}
-                    Thêm ga
-                  </button>
-                </div>
-                {intermediateStops.length === 0 && (
-                  <p className="text-xs text-[#3f4852]/60 italic text-center py-3 border border-dashed border-[#bec7d4] rounded-xl">
-                    Chưa có ga trung gian. Nhấn "Thêm ga" để bổ sung.
+                <label className="block text-xs font-semibold text-[#3f4852] mb-2 flex items-center gap-2">
+                  Ga dừng trung gian
+                  {selectedStopIds.size > 0 && (
+                    <span className="bg-[#00629d] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                      {selectedStopIds.size} đã chọn
+                    </span>
+                  )}
+                </label>
+
+                {!routeForm.startStationId || !routeForm.endStationId ? (
+                  <p className="text-xs text-[#3f4852]/60 italic text-center py-4 border border-dashed border-[#bec7d4] rounded-xl">
+                    Chọn ga khởi hành và ga kết thúc để xem danh sách ga trung
+                    gian.
                   </p>
-                )}
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {intermediateStops.map((stop, i) => {
-                    const stopSt = stations.find(
-                      (s) => s.id === stop.stationId,
-                    );
-                    const startSt = stations.find(
-                      (s) => s.id === routeForm.startStationId,
-                    );
-                    const endSt = stations.find(
-                      (s) => s.id === routeForm.endStationId,
-                    );
-                    const isOffRoute =
-                      stop.stationId && startSt && endSt && stopSt
-                        ? !isStopOnRoute(startSt, endSt, stopSt)
-                        : false;
-                    return (
-                      <div
-                        key={i}
-                        className={`flex items-center gap-2 rounded-xl p-2 transition-all ${
-                          isOffRoute
-                            ? "bg-[#ffdad6]/40 border border-[#ba1a1a]/30"
-                            : "bg-[#f2f4f6]"
-                        }`}
-                      >
-                        <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                            isOffRoute
-                              ? "bg-[#ba1a1a] text-white"
-                              : "bg-[#00629d] text-white"
-                          }`}
-                        >
-                          {isOffRoute ? "!" : stop.stopOrder}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <select
-                            value={stop.stationId}
-                            onChange={(e) =>
-                              updateStop(i, "stationId", e.target.value)
-                            }
-                            className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 ${
-                              isOffRoute
-                                ? "border-[#ba1a1a]/40 bg-[#ffdad6]/20 focus:ring-[#ba1a1a]"
-                                : "border-[#bec7d4]/40 bg-white focus:ring-[#00a3ff]"
+                ) : eligibleStops.length === 0 ? (
+                  <p className="text-xs text-[#3f4852]/60 italic text-center py-4 border border-dashed border-[#bec7d4] rounded-xl">
+                    Không có ga trung gian phù hợp với tuyến này.
+                  </p>
+                ) : (
+                  <div className="border border-[#bec7d4]/40 rounded-xl overflow-hidden">
+                    <div className="max-h-52 overflow-y-auto divide-y divide-[#bec7d4]/20">
+                      {eligibleStops.map((s) => {
+                        const checked = selectedStopIds.has(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                              checked ? "bg-[#cfe5ff]/30" : "hover:bg-[#f7f9fb]"
                             }`}
                           >
-                            <option value="">Chọn ga</option>
-                            {stations.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.stationName}
-                              </option>
-                            ))}
-                          </select>
-                          {isOffRoute && (
-                            <p className="text-[10px] text-[#ba1a1a] font-semibold mt-0.5 flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[12px]">
-                                warning
-                              </span>
-                              Ga này không nằm trên tuyến đường!
-                            </p>
-                          )}
-                        </div>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            value={stop.distanceFromStart}
-                            onChange={(e) =>
-                              updateStop(i, "distanceFromStart", e.target.value)
-                            }
-                            placeholder="km"
-                            className="w-20 bg-white border border-[#bec7d4]/40 rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[#00a3ff]"
-                          />
-                          {stop.stationId && stop.distanceFromStart && (
-                            <span
-                              className="absolute -top-1 -right-1 w-2 h-2 bg-[#00629d] rounded-full"
-                              title="Đã tính tự động"
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleStop(s.id)}
+                              className="accent-[#00629d] w-4 h-4 flex-shrink-0"
                             />
-                          )}
-                        </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-[#191c1e] truncate">
+                                {s.stationName}
+                              </p>
+                              {s.city && (
+                                <p className="text-[10px] text-[#3f4852]/70">
+                                  {s.city}
+                                </p>
+                              )}
+                            </div>
+                            {s.distanceFromStart > 0 && (
+                              <span className="text-[10px] text-[#00629d] font-semibold bg-[#cfe5ff]/50 px-1.5 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap">
+                                {s.distanceFromStart} km
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="px-3 py-2 bg-[#f7f9fb] border-t border-[#bec7d4]/20 flex items-center justify-between">
+                      <span className="text-[10px] text-[#3f4852]/60">
+                        {eligibleStops.length} ga khả dụng · Sắp theo khoảng
+                        cách
+                      </span>
+                      {selectedStopIds.size > 0 && (
                         <button
                           type="button"
-                          onClick={() => removeStop(i)}
-                          className="text-[#ba1a1a] hover:bg-[#ffdad6]/60 p-1 rounded-lg transition-all"
+                          onClick={() => setSelectedStopIds(new Set())}
+                          className="text-[10px] text-[#ba1a1a] hover:underline font-semibold"
                         >
-                          <span className="material-symbols-outlined text-[16px]">
-                            close
-                          </span>
+                          Bỏ chọn tất cả
                         </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
@@ -813,7 +805,44 @@ export function RouteScheduleMgmt({ mode }) {
                           {formatDuration(r.estimatedDuration)}
                         </td>
                         <td className="px-5 py-4 text-sm">
-                          {(r.stations?.length || 0) + 2} ga
+                          <div className="flex flex-col gap-1.5">
+                            <span className="font-semibold text-xs text-[#00629d]">
+                              {(r.stations?.length || 0) + 2} ga dừng:
+                            </span>
+                            <div className="flex flex-wrap gap-1 items-center max-w-[300px]">
+                              {/* Ga khởi hành */}
+                              <span className="px-1.5 py-0.5 bg-[#f2f4f6] text-[#3f4852] rounded text-[10px] font-medium">
+                                {r.startStation?.stationName || "Ga đi"}
+                              </span>
+
+                              {/* Các ga trung gian */}
+                              {r.stations &&
+                                r.stations.length > 0 &&
+                                [...r.stations]
+                                  .sort((a, b) => a.stopOrder - b.stopOrder)
+                                  .map((s, idx) => (
+                                    <Fragment key={idx}>
+                                      <span className="text-[10px] text-[#6f7883]">
+                                        →
+                                      </span>
+                                      <span
+                                        className="px-1.5 py-0.5 bg-[#cfe5ff]/50 text-[#00629d] rounded text-[10px] font-medium cursor-help"
+                                        title={`Cách ga khởi hành ${s.distanceFromStart} km`}
+                                      >
+                                        {s.stationName}
+                                      </span>
+                                    </Fragment>
+                                  ))}
+
+                              {/* Ga kết thúc */}
+                              <span className="text-[10px] text-[#6f7883]">
+                                →
+                              </span>
+                              <span className="px-1.5 py-0.5 bg-[#f2f4f6] text-[#3f4852] rounded text-[10px] font-medium">
+                                {r.endStation?.stationName || "Ga đến"}
+                              </span>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-4">
                           <span

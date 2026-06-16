@@ -1,5 +1,14 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { searchJourneys } from "../services/scheduleSearch.service.js";
+import {
+  buildCarriageConfigs,
+  createTrainInventory,
+} from "../utils/trainInventory.js";
+import {
+  generateSchedulesForDay30,
+  generateSchedulesForRange,
+} from "../services/autoSchedule.service.js";
 
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
@@ -17,20 +26,32 @@ export const getStations = asyncHandler(async (_req, res) => {
 // ============================================================
 export const getTrains = asyncHandler(async (_req, res) => {
   const trains = await prisma.train.findMany({
-    include: {
-      carriages: {
-        include: {
-          seats: true,
+    select: {
+      id: true,
+      trainName: true,
+      trainCode: true,
+      trainType: true,
+      operatingCompany: true,
+      totalCarriages: true,
+      totalCapacity: true,
+      createdAt: true,
+      updatedAt: true,
+      maintenance: {
+        select: {
+          id: true,
+          maintenanceType: true,
+          startDate: true,
+          endDate: true,
+          status: true,
         },
-        orderBy: { carriageNumber: "asc" },
       },
-      maintenance: true,
       schedules: {
-        include: {
+        select: {
+          id: true,
+          status: true,
+          departureTime: true,
           route: {
-            select: {
-              routeName: true,
-            },
+            select: { routeName: true },
           },
         },
       },
@@ -38,6 +59,36 @@ export const getTrains = asyncHandler(async (_req, res) => {
     orderBy: { trainName: "asc" },
   });
   res.json({ trains });
+});
+
+export const getTrainById = asyncHandler(async (req, res) => {
+  const train = await prisma.train.findUnique({
+    where: { id: req.params.id },
+    include: {
+      carriages: {
+        include: {
+          seats: {
+            orderBy: { seatNumber: "asc" },
+          },
+        },
+        orderBy: { carriageNumber: "asc" },
+      },
+      maintenance: true,
+      schedules: {
+        include: {
+          route: { select: { routeName: true } },
+        },
+        orderBy: { departureTime: "desc" },
+        take: 20,
+      },
+    },
+  });
+
+  if (!train) {
+    return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+  }
+
+  res.json({ train });
 });
 
 // ============================================================
@@ -59,135 +110,30 @@ export const getRoutes = asyncHandler(async (_req, res) => {
 // GET /api/v1/schedules - Lấy danh sách lịch trình
 // ============================================================
 export const getSchedules = asyncHandler(async (_req, res) => {
-  let schedules = await prisma.schedule.findMany({
-    include: {
+  const schedules = await prisma.schedule.findMany({
+    select: {
+      id: true,
+      trainId: true,
+      routeId: true,
+      startStationId: true,
+      endStationId: true,
+      departureTime: true,
+      arrivalTime: true,
+      distance: true,
+      duration: true,
+      status: true,
+      delayMinutes: true,
+      notes: true,
+      createdAt: true,
       route: {
         select: {
           routeName: true,
+          stations: true,
           startStation: { select: { stationName: true } },
           endStation: { select: { stationName: true } },
         },
       },
       train: { select: { trainName: true, trainCode: true } },
-      pricing: true,
-      availabilitySnapshots: true,
-    },
-    orderBy: { departureTime: "asc" },
-  });
-
-  const now = new Date();
-
-  // Ensure default pricing policies and availability snapshots exist for all schedules
-  for (const s of schedules) {
-    let needsUpdate = false;
-
-    // 1. Check if pricing policies exist, if not create them
-    if (!s.pricing || s.pricing.length === 0) {
-      const defaultPolicies = [
-        {
-          passengerType: "ADULT",
-          carriageType: "SEAT",
-          basePrice: 350000,
-          effectiveFrom: now,
-        },
-        {
-          passengerType: "ADULT",
-          carriageType: "AC_SEAT",
-          basePrice: 490000,
-          effectiveFrom: now,
-        },
-        {
-          passengerType: "ADULT",
-          carriageType: "SLEEPER",
-          basePrice: 820000,
-          effectiveFrom: now,
-        },
-      ];
-      await prisma.pricingPolicy.createMany({
-        data: defaultPolicies.map((p) => ({
-          scheduleId: s.id,
-          ...p,
-        })),
-      });
-      needsUpdate = true;
-    }
-
-    // 2. Check if availability snapshots exist, if not create them
-    if (!s.availabilitySnapshots || s.availabilitySnapshots.length === 0) {
-      const defaultSnapshots = [
-        {
-          carriageType: "SEAT",
-          availableSeats: 35,
-          bookedSeats: 45,
-          occupancyPercentage: 56.25,
-        },
-        {
-          carriageType: "AC_SEAT",
-          availableSeats: 18,
-          bookedSeats: 42,
-          occupancyPercentage: 70.0,
-        },
-        {
-          carriageType: "SLEEPER",
-          availableSeats: 6,
-          bookedSeats: 26,
-          occupancyPercentage: 81.25,
-        },
-      ];
-      await prisma.availabilitySnapshot.createMany({
-        data: defaultSnapshots.map((snap) => ({
-          scheduleId: s.id,
-          ...snap,
-          snapshotTime: now,
-        })),
-      });
-      needsUpdate = true;
-    } else {
-      // If snapshots exist, check if we need to randomly update them to simulate live booking (e.g. if older than 2 minutes)
-      const lastSnapshot = s.availabilitySnapshots[0];
-      const timeDiffMs =
-        now.getTime() - new Date(lastSnapshot.snapshotTime).getTime();
-      const twoMinutesMs = 2 * 60 * 1000;
-
-      if (timeDiffMs > twoMinutesMs) {
-        for (const snap of s.availabilitySnapshots) {
-          const delta = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
-          let newBooked = Math.max(0, snap.bookedSeats + delta);
-          // Set capacity limits
-          const totalSeats = snap.carriageType === "SLEEPER" ? 32 : 80;
-          if (newBooked > totalSeats) newBooked = totalSeats;
-          const newAvailable = totalSeats - newBooked;
-          const newPercentage =
-            Math.round((newBooked / totalSeats) * 10000) / 100;
-
-          await prisma.availabilitySnapshot.update({
-            where: { id: snap.id },
-            data: {
-              availableSeats: newAvailable,
-              bookedSeats: newBooked,
-              occupancyPercentage: newPercentage,
-              snapshotTime: now,
-            },
-          });
-        }
-        needsUpdate = true;
-      }
-    }
-  }
-
-  // Refetch if any updates were made to return fresh data
-  schedules = await prisma.schedule.findMany({
-    include: {
-      route: {
-        select: {
-          routeName: true,
-          startStation: { select: { stationName: true } },
-          endStation: { select: { stationName: true } },
-        },
-      },
-      train: { select: { trainName: true, trainCode: true } },
-      pricing: true,
-      availabilitySnapshots: true,
     },
     orderBy: { departureTime: "asc" },
   });
@@ -195,12 +141,22 @@ export const getSchedules = asyncHandler(async (_req, res) => {
   res.json({ schedules });
 });
 
+export const searchSchedules = asyncHandler(async (req, res) => {
+  const result = await searchJourneys({
+    fromStationId: req.query.fromStationId,
+    toStationId: req.query.toStationId,
+    departureDate: req.query.departureDate,
+    returnDate: req.query.returnDate,
+  });
+  res.json(result);
+});
+
 // ============================================================
 // POST /api/v1/routes/auto-generate - Tự động tạo tuyến đường mới
 // ============================================================
 
 // ── Haversine (server-side) ──────────────────────────────────
-const RAIL_FACTOR_SRV = 1.2;
+const RAIL_FACTOR_SRV = 1.45;
 const DETOUR_THRESHOLD_SRV = 1.5;
 
 function haversineKmSrv(lat1, lng1, lat2, lng2) {
@@ -215,6 +171,27 @@ function haversineKmSrv(lat1, lng1, lat2, lng2) {
     R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * RAIL_FACTOR_SRV,
   );
 }
+
+// ── Bearing Deviation (server-side) ───────────────────────────
+function bearingDegSrv(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const y = Math.sin(dLng) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function angleDiffSrv(a, b) {
+  let diff = Math.abs(a - b) % 360;
+  if (diff > 180) diff = 360 - diff;
+  return diff;
+}
+
+const MAX_BEARING_DEV_SRV = 45;
 
 export const generateRoute = asyncHandler(async (req, res) => {
   const {
@@ -254,13 +231,6 @@ export const generateRoute = asyncHandler(async (req, res) => {
 
   // 3. Validate intermediate stops are geographically on route
   if (stations.length > 0 && startStation.latitude && endStation.latitude) {
-    const directDist = haversineKmSrv(
-      startStation.latitude,
-      startStation.longitude,
-      endStation.latitude,
-      endStation.longitude,
-    );
-
     const offRouteStops = [];
     for (const stop of stations) {
       if (!stop.stationId) continue;
@@ -269,28 +239,45 @@ export const generateRoute = asyncHandler(async (req, res) => {
       });
       if (!stopStation?.latitude) continue;
 
-      const viaDist =
-        haversineKmSrv(
-          startStation.latitude,
-          startStation.longitude,
-          stopStation.latitude,
-          stopStation.longitude,
-        ) +
-        haversineKmSrv(
-          stopStation.latitude,
-          stopStation.longitude,
-          endStation.latitude,
-          endStation.longitude,
-        );
+      // Kiểm tra 1: Từ ga đầu, nhìn về ga trung gian phải cùng hướng với nhìn về ga cuối
+      const bStartEnd = bearingDegSrv(
+        startStation.latitude,
+        startStation.longitude,
+        endStation.latitude,
+        endStation.longitude,
+      );
+      const bStartStop = bearingDegSrv(
+        startStation.latitude,
+        startStation.longitude,
+        stopStation.latitude,
+        stopStation.longitude,
+      );
+      if (angleDiffSrv(bStartStop, bStartEnd) > MAX_BEARING_DEV_SRV) {
+        offRouteStops.push(stopStation.stationName);
+        continue;
+      }
 
-      if (directDist > 0 && viaDist / directDist > DETOUR_THRESHOLD_SRV) {
+      // Kiểm tra 2: Từ ga cuối, nhìn về ga trung gian phải cùng hướng với nhìn về ga đầu
+      const bEndStart = bearingDegSrv(
+        endStation.latitude,
+        endStation.longitude,
+        startStation.latitude,
+        startStation.longitude,
+      );
+      const bEndStop = bearingDegSrv(
+        endStation.latitude,
+        endStation.longitude,
+        stopStation.latitude,
+        stopStation.longitude,
+      );
+      if (angleDiffSrv(bEndStop, bEndStart) > MAX_BEARING_DEV_SRV) {
         offRouteStops.push(stopStation.stationName);
       }
     }
 
     if (offRouteStops.length > 0) {
       return res.status(422).json({
-        message: `Ga trung gian không nằm trên tuyến đường (đi vòng > ${Math.round((DETOUR_THRESHOLD_SRV - 1) * 100)}%): ${offRouteStops.join(", ")}. Vui lòng chọn ga phù hợp với lộ trình.`,
+        message: `Ga trung gian không nằm trên tuyến đường (lệch hướng > ${MAX_BEARING_DEV_SRV}°): ${offRouteStops.join(", ")}. Vui lòng chọn ga phù hợp với lộ trình.`,
         offRouteStops,
       });
     }
@@ -366,6 +353,39 @@ export const generateSchedules = asyncHandler(async (req, res) => {
   const route = await prisma.route.findUnique({ where: { id: routeId } });
   if (!route)
     return res.status(404).json({ message: "Không tìm thấy tuyến đường." });
+
+  const train = await prisma.train.findUnique({
+    where: { id: trainId },
+    select: {
+      id: true,
+      trainCode: true,
+      carriages: {
+        select: {
+          id: true,
+          totalSeats: true,
+          seats: {
+            where: { status: { not: "BLOCKED" } },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+  if (!train) {
+    return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+  }
+
+  const sellableSeatCount = train.carriages.reduce(
+    (total, carriage) =>
+      total +
+      (carriage.seats.length > 0 ? carriage.seats.length : carriage.totalSeats),
+    0,
+  );
+  if (train.carriages.length === 0 || sellableSeatCount === 0) {
+    return res.status(422).json({
+      message: `Tàu ${train.trainCode} chưa được cấu hình toa và ghế nên không thể tạo lịch bán vé.`,
+    });
+  }
 
   const durationMs = route.estimatedDuration * 60 * 1000;
   const bufferMs = parseInt(bufferMinutes) * 60 * 1000;
@@ -446,16 +466,47 @@ export const generateSchedules = asyncHandler(async (req, res) => {
 
   for (const trip of valid) {
     try {
-      await prisma.schedule.create({
-        data: {
-          trainId,
-          routeId,
-          startStationId: routeWithStations.startStationId,
-          endStationId: routeWithStations.endStationId,
-          departureTime: trip.departure,
-          arrivalTime: trip.arrival,
-          status: "ACTIVE",
-        },
+      await prisma.$transaction(async (tx) => {
+        const schedule = await tx.schedule.create({
+          data: {
+            trainId,
+            routeId,
+            startStationId: routeWithStations.startStationId,
+            endStationId: routeWithStations.endStationId,
+            departureTime: trip.departure,
+            arrivalTime: trip.arrival,
+            distance: routeWithStations.distance,
+            duration: routeWithStations.estimatedDuration,
+            status: "ACTIVE",
+          },
+        });
+
+        if (routeWithStations.stations.length > 0) {
+          const tripDurationMs =
+            trip.arrival.getTime() - trip.departure.getTime();
+          await tx.scheduleStop.createMany({
+            data: routeWithStations.stations.map((stop) => {
+              const progress = Math.min(
+                1,
+                Math.max(
+                  0,
+                  stop.distanceFromStart / routeWithStations.distance,
+                ),
+              );
+              const stopTime = new Date(
+                trip.departure.getTime() + tripDurationMs * progress,
+              );
+
+              return {
+                scheduleId: schedule.id,
+                stationId: stop.stationId,
+                stopOrder: stop.stopOrder,
+                arrivalTime: stopTime,
+                departureTime: stopTime,
+              };
+            }),
+          });
+        }
       });
       insertedCount++;
     } catch (dbErr) {
@@ -521,24 +572,11 @@ export const createTrain = asyncHandler(async (req, res) => {
       .json({ message: "Số hiệu tàu hoặc mã tàu đã tồn tại trên hệ thống." });
   }
 
-  // Calculate total seats and validate carriage types
-  let totalCapacity = 0;
-  const carriageConfigs = carriages.map((type, idx) => {
-    let seatsCount = 0;
-    if (type === "NORMAL_SEAT") seatsCount = 40;
-    else if (type === "AC_SEAT") seatsCount = 28;
-    else if (type === "SLEEPER_6") seatsCount = 24;
-    else if (type === "SLEEPER_4") seatsCount = 16;
-    else {
-      throw new Error(`Loại toa không hợp lệ: ${type}`);
-    }
-    totalCapacity += seatsCount;
-    return {
-      carriageNumber: idx + 1,
-      carriageType: type,
-      totalSeats: seatsCount,
-    };
-  });
+  const carriageConfigs = buildCarriageConfigs(carriages);
+  const totalCapacity = carriageConfigs.reduce(
+    (total, carriage) => total + carriage.totalSeats,
+    0,
+  );
 
   // Start a transaction
   const train = await prisma.$transaction(async (tx) => {
@@ -554,91 +592,7 @@ export const createTrain = asyncHandler(async (req, res) => {
       },
     });
 
-    // 2. Create carriages and seats
-    for (const config of carriageConfigs) {
-      const carriage = await tx.carriage.create({
-        data: {
-          trainId: newTrain.id,
-          carriageNumber: config.carriageNumber,
-          carriageType: config.carriageType,
-          totalSeats: config.totalSeats,
-        },
-      });
-
-      // Generate seats for this carriage
-      const seatsData = [];
-      if (config.carriageType === "NORMAL_SEAT") {
-        for (let i = 1; i <= 40; i++) {
-          const colIndex = (i - 1) % 4; // 0, 1, 2, 3
-          const seatType =
-            colIndex === 0 || colIndex === 3 ? "WINDOW" : "AISLE";
-          seatsData.push({
-            carriageId: carriage.id,
-            seatNumber: String(i),
-            seatType,
-            status: "AVAILABLE",
-            basePrice: 100000.0, // basePrice in VND
-          });
-        }
-      } else if (config.carriageType === "AC_SEAT") {
-        for (let i = 1; i <= 28; i++) {
-          const colIndex = (i - 1) % 4;
-          const seatType =
-            colIndex === 0 || colIndex === 3 ? "WINDOW" : "AISLE";
-          seatsData.push({
-            carriageId: carriage.id,
-            seatNumber: String(i),
-            seatType,
-            status: "AVAILABLE",
-            basePrice: 120000.0, // 1.2 factor
-          });
-        }
-      } else if (config.carriageType === "SLEEPER_6") {
-        // 4 compartments, each 6 beds
-        for (let comp = 1; comp <= 4; comp++) {
-          // Floors 1, 2, 3
-          for (const floor of ["1", "2", "3"]) {
-            // Side A, B
-            for (const side of ["A", "B"]) {
-              let seatType = "WINDOW";
-              if (floor === "2") seatType = "MIDDLE";
-              if (floor === "3") seatType = "AISLE";
-
-              seatsData.push({
-                carriageId: carriage.id,
-                seatNumber: `K${comp}-T${floor}-${side}`,
-                seatType,
-                status: "AVAILABLE",
-                basePrice: 150000.0, // 1.5 factor
-              });
-            }
-          }
-        }
-      } else if (config.carriageType === "SLEEPER_4") {
-        // 4 compartments, each 4 beds
-        for (let comp = 1; comp <= 4; comp++) {
-          // Floors 1, 2
-          for (const floor of ["1", "2"]) {
-            // Side A, B
-            for (const side of ["A", "B"]) {
-              let seatType = floor === "1" ? "WINDOW" : "AISLE";
-
-              seatsData.push({
-                carriageId: carriage.id,
-                seatNumber: `K${comp}-T${floor}-${side}`,
-                seatType,
-                status: "AVAILABLE",
-                basePrice: 180000.0, // 1.8 factor
-              });
-            }
-          }
-        }
-      }
-
-      await tx.seat.createMany({
-        data: seatsData,
-      });
-    }
+    await createTrainInventory(tx, newTrain.id, carriages);
 
     return newTrain;
   });
@@ -657,4 +611,321 @@ export const deleteTrain = asyncHandler(async (req, res) => {
     where: { id },
   });
   res.json({ message: "Đoàn tàu đã được xóa thành công." });
+});
+
+// ============================================================
+// POST /api/v1/schedules/trigger-auto-generate - Kích hoạt thủ công tạo lịch trình ngày thứ 30
+// ============================================================
+export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
+  const result = await generateSchedulesForDay30();
+  res.json({
+    message: result.message,
+    created: result.created,
+    skipped: result.skipped,
+  });
+});
+
+// ============================================================
+// GET /api/v1/route-templates - Lấy danh sách templates mẫu lịch chạy
+// ============================================================
+export const getRouteTemplates = asyncHandler(async (req, res) => {
+  const templates = await prisma.routeTemplate.findMany({
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json({ templates });
+});
+
+// ============================================================
+// POST /api/v1/route-templates - Tạo template mới
+// ============================================================
+export const createRouteTemplate = asyncHandler(async (req, res) => {
+  const { routeId, trainId, departureTimes, bufferMinutes, isActive } =
+    req.body;
+
+  if (
+    !routeId ||
+    !trainId ||
+    !departureTimes ||
+    !Array.isArray(departureTimes)
+  ) {
+    return res.status(400).json({
+      message:
+        "Thiếu thông tin bắt buộc hoặc giờ khởi hành không đúng định dạng.",
+    });
+  }
+
+  // Check unique constraint: one template per (route, train)
+  const existing = await prisma.routeTemplate.findUnique({
+    where: {
+      routeId_trainId: { routeId, trainId },
+    },
+  });
+  if (existing) {
+    return res.status(400).json({
+      message: "Mẫu lịch chạy cho Tuyến đường và Tàu này đã tồn tại.",
+    });
+  }
+
+  const template = await prisma.routeTemplate.create({
+    data: {
+      routeId,
+      trainId,
+      departureTimes,
+      bufferMinutes: bufferMinutes ? parseInt(bufferMinutes, 10) : 60,
+      isActive: isActive !== undefined ? isActive : true,
+    },
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+  });
+
+  res.status(201).json({
+    message: "Tạo mẫu lịch chạy thành công!",
+    template,
+  });
+});
+
+// ============================================================
+// PUT /api/v1/route-templates/:id - Cập nhật template
+// ============================================================
+export const updateRouteTemplate = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { departureTimes, bufferMinutes, isActive } = req.body;
+
+  const updateData = {};
+  if (departureTimes !== undefined && Array.isArray(departureTimes)) {
+    updateData.departureTimes = departureTimes;
+  }
+  if (bufferMinutes !== undefined) {
+    updateData.bufferMinutes = parseInt(bufferMinutes, 10);
+  }
+  if (isActive !== undefined) {
+    updateData.isActive = isActive;
+  }
+
+  const template = await prisma.routeTemplate.update({
+    where: { id },
+    data: updateData,
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+  });
+
+  res.json({
+    message: "Cập nhật mẫu lịch chạy thành công!",
+    template,
+  });
+});
+
+// ============================================================
+// DELETE /api/v1/route-templates/:id - Xóa/vô hiệu template
+// ============================================================
+export const deleteRouteTemplate = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  await prisma.routeTemplate.delete({
+    where: { id },
+  });
+
+  res.json({
+    message: "Đã xóa mẫu lịch chạy thành công.",
+  });
+});
+
+// ============================================================
+// POST /api/v1/schedules/generate-range - Gen lịch từ templates theo khoảng ngày
+// ============================================================
+export const generateSchedulesByRange = asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.body;
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({
+      message: "Vui lòng nhập đầy đủ ngày bắt đầu và ngày kết thúc.",
+    });
+  }
+
+  const result = await generateSchedulesForRange(startDate, endDate);
+
+  res.json({
+    message: result.message,
+    created: result.created,
+    skipped: result.skipped,
+  });
+});
+
+// ============================================================
+// Helper: Xây dựng full timeline từ một Schedule
+// ============================================================
+function buildTimeline(schedule) {
+  const { route, scheduleStops, departureTime, arrivalTime } = schedule;
+
+  // Tính khoảng cách từ ga đầu cho từng ScheduleStop
+  // Ưu tiên dùng RouteStation embedded data (route.stations[])
+  const distanceMap = {};
+  if (route.stations && route.stations.length > 0) {
+    for (const rs of route.stations) {
+      distanceMap[rs.stationId] = rs.distanceFromStart;
+    }
+  }
+
+  // Điểm 0: Ga khởi hành
+  const points = [
+    {
+      type: "START",
+      stationId: route.startStation.id,
+      stationName: route.startStation.stationName,
+      city: route.startStation.city,
+      stopOrder: 0,
+      arrivalTime: null,
+      departureTime: departureTime,
+      distanceFromStart: 0,
+    },
+  ];
+
+  // Điểm 1..N: Các ga trung gian (ScheduleStop)
+  const sortedStops = [...scheduleStops].sort(
+    (a, b) => a.stopOrder - b.stopOrder,
+  );
+  for (const stop of sortedStops) {
+    points.push({
+      type: "STOP",
+      stationId: stop.station.id,
+      stationName: stop.station.stationName,
+      city: stop.station.city,
+      stopOrder: stop.stopOrder,
+      arrivalTime: stop.arrivalTime,
+      departureTime: stop.departureTime,
+      distanceFromStart: distanceMap[stop.station.id] ?? null,
+    });
+  }
+
+  // Điểm cuối: Ga kết thúc
+  points.push({
+    type: "END",
+    stationId: route.endStation.id,
+    stationName: route.endStation.stationName,
+    city: route.endStation.city,
+    stopOrder: sortedStops.length + 1,
+    arrivalTime: arrivalTime,
+    departureTime: null,
+    distanceFromStart: route.distance,
+  });
+
+  // Tính thời gian di chuyển mỗi chặng (phút)
+  for (let i = 1; i < points.length; i++) {
+    const prevTime = points[i - 1].departureTime ?? points[i - 1].arrivalTime;
+    const currTime = points[i].arrivalTime ?? points[i].departureTime;
+    if (prevTime && currTime) {
+      const diffMs =
+        new Date(currTime).getTime() - new Date(prevTime).getTime();
+      points[i].segmentMinutes = Math.round(diffMs / 60000);
+      // Khoảng cách chặng này (km)
+      if (
+        points[i].distanceFromStart != null &&
+        points[i - 1].distanceFromStart != null
+      ) {
+        points[i].segmentDistanceKm =
+          points[i].distanceFromStart - points[i - 1].distanceFromStart;
+      }
+    }
+  }
+
+  return points;
+}
+
+// ============================================================
+// GET /api/v1/schedules/:id/timeline - Lịch Trình Nối Tiếp Liên Tục
+// ============================================================
+export const getScheduleTimeline = asyncHandler(async (req, res) => {
+  const schedule = await prisma.schedule.findUnique({
+    where: { id: req.params.id },
+    include: {
+      train: {
+        select: {
+          trainName: true,
+          trainCode: true,
+          trainType: true,
+          totalCapacity: true,
+        },
+      },
+      route: {
+        include: {
+          startStation: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+          endStation: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+        },
+      },
+      scheduleStops: {
+        include: {
+          station: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+        },
+        orderBy: { stopOrder: "asc" },
+      },
+    },
+  });
+
+  if (!schedule) {
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  }
+
+  const timeline = buildTimeline(schedule);
+
+  res.json({
+    schedule: {
+      id: schedule.id,
+      status: schedule.status,
+      departureTime: schedule.departureTime,
+      arrivalTime: schedule.arrivalTime,
+      distance: schedule.distance,
+      duration: schedule.duration,
+      delayMinutes: schedule.delayMinutes,
+      train: schedule.train,
+      routeName: schedule.route.routeName,
+    },
+    timeline,
+  });
 });

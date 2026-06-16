@@ -9,6 +9,8 @@ import { userRoutes } from "./routes/user.routes.js";
 import { routeScheduleRoutes } from "./routes/routeSchedule.routes.js";
 import { walletRoutes } from "./routes/wallet.routes.js";
 import { bookingRoutes } from "./routes/booking.routes.js";
+import { pricingRoutes } from "./routes/pricing.routes.js";
+import { seatSelectionRoutes } from "./routes/seatSelection.routes.js";
 
 const app = express();
 
@@ -23,6 +25,8 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1", routeScheduleRoutes);
 app.use("/api/v1/wallet", walletRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
+app.use("/api/v1/pricing", pricingRoutes);
+app.use("/api/v1", seatSelectionRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

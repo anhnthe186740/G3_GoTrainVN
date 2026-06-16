@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, Train, ArrowRight, Loader2, Chrome } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Train,
+  ArrowRight,
+  Loader2,
+  Chrome,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
@@ -11,6 +20,7 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const {
     register,
@@ -34,9 +44,11 @@ export function Login() {
       setAuth({ user, token });
 
       toast.success(`Chào mừng trở lại, ${user.name}!`, { id: toastId });
-      navigate("/dashboard");
+      navigate(location.state?.from || "/dashboard", { replace: true });
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại!";
+      const errorMsg =
+        error.response?.data?.message ||
+        "Đăng nhập thất bại. Vui lòng kiểm tra lại!";
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -63,30 +75,41 @@ export function Login() {
 
         <div className="relative z-10 my-auto max-w-lg space-y-6">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-            Hệ thống đặt vé tàu trực tuyến <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">GoTrain VN</span>
+            Hệ thống đặt vé tàu trực tuyến{" "}
+            <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+              GoTrain VN
+            </span>
           </h1>
           <p className="text-lg text-slate-300">
-            Trải nghiệm dịch vụ đặt vé thế hệ mới với giao diện trực quan, sơ đồ toa tàu thời gian thực và phương thức ví điện tử tiện lợi.
+            Trải nghiệm dịch vụ đặt vé thế hệ mới với giao diện trực quan, sơ đồ
+            toa tàu thời gian thực và phương thức ví điện tử tiện lợi.
           </p>
 
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
-              <span className="text-sm font-medium text-slate-200">Đồng bộ sơ đồ ghế thời gian thực bằng Socket.io</span>
+              <span className="text-sm font-medium text-slate-200">
+                Đồng bộ sơ đồ ghế thời gian thực bằng Socket.io
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
-              <span className="text-sm font-medium text-slate-200">Tích hợp ví điện tử, nạp rút nhanh chóng</span>
+              <span className="text-sm font-medium text-slate-200">
+                Tích hợp ví điện tử, nạp rút nhanh chóng
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
-              <span className="text-sm font-medium text-slate-200">Định vị trực tiếp lộ trình chạy tàu giả lập</span>
+              <span className="text-sm font-medium text-slate-200">
+                Định vị trực tiếp lộ trình chạy tàu giả lập
+              </span>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 text-sm text-slate-400">
-          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI Redesign.
+          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI
+          Redesign.
         </div>
       </div>
 
@@ -115,7 +138,9 @@ export function Login() {
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             {/* Email Input */}
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Địa chỉ Email</label>
+              <label className="text-sm font-semibold text-slate-700">
+                Địa chỉ Email
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Mail className="h-5 w-5 text-slate-400" />
@@ -132,19 +157,25 @@ export function Login() {
                   })}
                   placeholder="name@example.com"
                   className={`block w-full rounded-xl border ${
-                    errors.email ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.email
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-3 pl-10 pr-4 text-slate-900 outline-none transition focus:ring-4`}
                 />
               </div>
               {errors.email && (
-                <p className="text-xs font-medium text-red-600">{errors.email.message}</p>
+                <p className="text-xs font-medium text-red-600">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
             {/* Password Input */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-semibold text-slate-700">Mật khẩu</label>
+                <label className="text-sm font-semibold text-slate-700">
+                  Mật khẩu
+                </label>
                 <Link
                   to="/forgot-password"
                   className="text-sm font-semibold text-blue-600 hover:text-blue-500 transition"
@@ -164,7 +195,9 @@ export function Login() {
                   })}
                   placeholder="••••••••"
                   className={`block w-full rounded-xl border ${
-                    errors.password ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.password
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-3 pl-10 pr-10 text-slate-900 outline-none transition focus:ring-4`}
                 />
                 <button
@@ -172,11 +205,17 @@ export function Login() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs font-medium text-red-600">{errors.password.message}</p>
+                <p className="text-xs font-medium text-red-600">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -188,7 +227,10 @@ export function Login() {
                 type="checkbox"
                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <label htmlFor="remember-me" className="ml-2 block text-sm font-medium text-slate-700 select-none">
+              <label
+                htmlFor="remember-me"
+                className="ml-2 block text-sm font-medium text-slate-700 select-none"
+              >
                 Ghi nhớ đăng nhập
               </label>
             </div>
@@ -220,7 +262,9 @@ export function Login() {
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-sm font-medium">
-                <span className="bg-slate-50 px-3 text-slate-500">Hoặc tiếp tục bằng</span>
+                <span className="bg-slate-50 px-3 text-slate-500">
+                  Hoặc tiếp tục bằng
+                </span>
               </div>
             </div>
 

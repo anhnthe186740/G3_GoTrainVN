@@ -7,6 +7,16 @@ export function Navbar() {
   const { user, clearAuth } = useAuth();
   const navigate = useNavigate();
 
+  const loyaltyPoints = user?.loyaltyPoints || 0;
+  const membershipRank = (() => {
+    if (user?.role === "ADMIN") return "Quản trị viên";
+    if (user?.role === "STAFF") return "Nhân viên ga";
+    if (loyaltyPoints >= 2000) return "Thành viên Kim Cương";
+    if (loyaltyPoints >= 500) return "Thành viên Vàng";
+    if (loyaltyPoints >= 100) return "Thành viên Bạc";
+    return "Thành viên Đồng";
+  })();
+
   const handleLogout = () => {
     clearAuth();
     toast.success("Đăng xuất thành công!");
@@ -66,7 +76,7 @@ export function Navbar() {
                 </Link>
               )}
               <Link
-                to="/dashboard"
+                to="/profile"
                 className="flex items-center gap-sm cursor-pointer group"
               >
                 <div className="w-10 h-10 rounded-full bg-secondary-fixed border-2 border-primary/20 overflow-hidden flex items-center justify-center">
@@ -77,9 +87,7 @@ export function Navbar() {
                     {user.fullName || user.name || "Khách"}
                   </span>
                   <span className="text-[10px] text-primary uppercase font-bold tracking-tighter">
-                    {user.role === "ADMIN"
-                      ? "Quản trị viên"
-                      : "Thành viên Vàng"}
+                    {membershipRank}
                   </span>
                 </div>
               </Link>

@@ -8,6 +8,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../../node_modules/@gotrain/prisma-client-v2"
 }
 
 // ============================================
@@ -15,19 +16,19 @@ generator client {
 // ============================================
 
 model User {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  email                 String    @unique
-  password              String    // Hash with bcrypt
+  id                    String                @id @default(auto()) @map("_id") @db.ObjectId
+  email                 String                @unique
+  password              String // Hash with bcrypt
   fullName              String
   phoneNumber           String
-  nationalId            String?            // Should be encrypted in production
-  nationalIdType        String?   // CCCD, HCDC (Hộ chiếu)
+  nationalId            String? // Should be encrypted in production
+  nationalIdType        String? // CCCD, HCDC (Hộ chiếu)
   nationalIdExpiry      DateTime?
   address               String?
   dateOfBirth           DateTime?
-  gender                String?   // MALE, FEMALE, OTHER
-  userType              String    @default("CUSTOMER") // ADMIN or CUSTOMER
-  loyaltyPoints         Int       @default(0)
+  gender                String? // MALE, FEMALE, OTHER
+  userType              String                @default("CUSTOMER") // ADMIN or CUSTOMER
+  loyaltyPoints         Int                   @default(0)
   wallet                Wallet?
   bookings              Booking[]
   passengers            Passenger[]
@@ -35,9 +36,11 @@ model User {
   reviews               Review[]
   searchHistory         SearchHistory[]
   loyaltyHistory        LoyaltyPoint[]
-  adminLogs             AdminLog[]  // Track what this admin did
-  securityLogs          SecurityLog[]  // Track login/access
+  adminLogs             AdminLog[] // Track what this admin did
+  securityLogs          SecurityLog[] // Track login/access
   selectedSeats         Seat[]
+  seatHoldSessions      SeatHoldSession[]
+  seatHolds             SeatHold[]
   approvedCancellations CancellationRequest[]
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -45,50 +48,50 @@ model User {
   lockReason            String?
   deletedAt             DateTime?  // Soft delete
   lastLogin             DateTime?
-  
+
   @@index([phoneNumber])
   @@index([userType])
   @@index([deletedAt])
 }
 
 model LoyaltyPoint {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String    @db.ObjectId
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  points          Int
-  type            String    // EARNED, REDEEMED, EXPIRED
-  source          String    // BOOKING, REFERRAL, PROMOTION
-  relatedBookingId String?  @db.ObjectId
-  expiresAt       DateTime?
-  createdAt       DateTime  @default(now())
-  
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String    @db.ObjectId
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points           Int
+  type             String // EARNED, REDEEMED, EXPIRED
+  source           String // BOOKING, REFERRAL, PROMOTION
+  relatedBookingId String?   @db.ObjectId
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+
   @@index([userId])
   @@index([createdAt])
 }
 
 model Wallet {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId                String    @unique @db.ObjectId
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance               Float     @default(0)
-  currency              String    @default("VND")
-  transactions          WalletTransaction[]
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String              @unique @db.ObjectId
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance      Float               @default(0)
+  currency     String              @default("VND")
+  transactions WalletTransaction[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 }
 
 model WalletTransaction {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  walletId              String    @db.ObjectId
-  wallet                Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  type                  String    // DEPOSIT, WITHDRAWAL, REFUND, PAYMENT
-  amount                Float
-  description           String?
-  relatedBookingId      String?   @db.ObjectId
-  relatedBooking        Booking?  @relation(fields: [relatedBookingId], references: [id])
-  status                String    @default("PENDING") // PENDING, COMPLETED, FAILED
-  createdAt             DateTime  @default(now())
-  
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  walletId         String   @db.ObjectId
+  wallet           Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type             String // DEPOSIT, WITHDRAWAL, REFUND, PAYMENT
+  amount           Float
+  description      String?
+  relatedBookingId String?  @db.ObjectId
+  relatedBooking   Booking? @relation(fields: [relatedBookingId], references: [id])
+  status           String   @default("PENDING") // PENDING, COMPLETED, FAILED
+  createdAt        DateTime @default(now())
+
   @@index([walletId])
   @@index([relatedBookingId])
   @@index([status])
@@ -99,72 +102,74 @@ model WalletTransaction {
 // ============================================
 
 model Train {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  trainName             String    @unique // SE1, TN2, etc.
-  trainCode             String    @unique
-  trainType             String    // SE (Express), TN (Night), etc.
-  operatingCompany      String?
-  totalCarriages        Int
-  carriages             Carriage[]
-  schedules             Schedule[]
-  totalCapacity         Int // Total seats across all carriages
-  maintenance           VehicleMaintenance[]
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  id               String               @id @default(auto()) @map("_id") @db.ObjectId
+  trainName        String               @unique // SE1, TN2, etc.
+  trainCode        String               @unique
+  trainType        String // SE (Express), TN (Night), etc.
+  operatingCompany String?
+  totalCarriages   Int
+  carriages        Carriage[]
+  schedules        Schedule[]
+  routeTemplates   RouteTemplate[]      @relation("trainTemplates")
+  totalCapacity    Int // Total seats across all carriages
+  maintenance      VehicleMaintenance[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
   @@index([trainType])
 }
 
 model VehicleMaintenance {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  trainId         String    @db.ObjectId
-  train           Train     @relation(fields: [trainId], references: [id], onDelete: Cascade)
-  maintenanceType String    // ROUTINE, EMERGENCY, INSPECTION
-  description     String
-  startDate       DateTime
-  endDate         DateTime
-  affectedScheduleIds String[]  // Schedule IDs to cancel/reschedule
-  status          String    @default("SCHEDULED")  // SCHEDULED, IN_PROGRESS, COMPLETED
-  notes           String?
-  createdAt       DateTime  @default(now())
-  
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  trainId             String   @db.ObjectId
+  train               Train    @relation(fields: [trainId], references: [id], onDelete: Cascade)
+  maintenanceType     String // ROUTINE, EMERGENCY, INSPECTION
+  description         String
+  startDate           DateTime
+  endDate             DateTime
+  affectedScheduleIds String[] // Schedule IDs to cancel/reschedule
+  status              String   @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED
+  notes               String?
+  createdAt           DateTime @default(now())
+
   @@index([trainId])
   @@index([status])
 }
 
 model Carriage {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  trainId               String    @db.ObjectId
-  train                 Train     @relation(fields: [trainId], references: [id], onDelete: Cascade)
-  carriageNumber        Int       // 1, 2, 3, etc.
-  carriageType          String    // SEAT, SLEEPER, AC_SEAT, NORMAL_SEAT
-  totalSeats            Int
-  seats                 Seat[]
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  trainId        String   @db.ObjectId
+  train          Train    @relation(fields: [trainId], references: [id], onDelete: Cascade)
+  carriageNumber Int // 1, 2, 3, etc.
+  carriageType   String // SEAT, SLEEPER, AC_SEAT, NORMAL_SEAT
+  totalSeats     Int
+  seats          Seat[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
   @@unique([trainId, carriageNumber])
   @@index([trainId])
 }
 
 model Seat {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  carriageId            String    @db.ObjectId
-  carriage              Carriage  @relation(fields: [carriageId], references: [id], onDelete: Cascade)
-  seatNumber            String    // A1, A2, B1, etc.
-  seatType              String    // WINDOW, MIDDLE, AISLE
-  status                String    @default("AVAILABLE") // AVAILABLE, BOOKED, SELECTED, BLOCKED
-  basePrice             Float
-  selectedBy            String?   @db.ObjectId
-  selectedUser          User?     @relation(fields: [selectedBy], references: [id])
-  selectedAt            DateTime?
-  selectionExpiry       DateTime?
-  blockReason           String?   // MAINTENANCE, DEFECT, SAFETY, RESERVED
-  blockUntil            DateTime?
-  bookings              BookingDetail[]
-  passengers            Passenger[]
-  createdAt             DateTime  @default(now())
-  
+  id              String          @id @default(auto()) @map("_id") @db.ObjectId
+  carriageId      String          @db.ObjectId
+  carriage        Carriage        @relation(fields: [carriageId], references: [id], onDelete: Cascade)
+  seatNumber      String // A1, A2, B1, etc.
+  seatType        String // WINDOW, MIDDLE, AISLE
+  status          String          @default("AVAILABLE") // AVAILABLE, BOOKED, SELECTED, BLOCKED
+  basePrice       Float
+  selectedBy      String?         @db.ObjectId
+  selectedUser    User?           @relation(fields: [selectedBy], references: [id])
+  selectedAt      DateTime?
+  selectionExpiry DateTime?
+  blockReason     String? // MAINTENANCE, DEFECT, SAFETY, RESERVED
+  blockUntil      DateTime?
+  bookings        BookingDetail[]
+  passengers      Passenger[]
+  seatHolds       SeatHold[]
+  createdAt       DateTime        @default(now())
+
   @@unique([carriageId, seatNumber])
   @@index([carriageId])
   @@index([status])
@@ -177,153 +182,188 @@ model Seat {
 // ============================================
 
 model Station {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  stationCode           String    @unique // HAN, SGN, DN, etc.
-  stationName           String
-  city                  String
-  province              String
-  country               String    @default("Vietnam")
-  latitude              Float?
-  longitude             Float?
-  isActive              Boolean   @default(true)
-  schedulesAsStart      Schedule[]  @relation("startStation")
-  schedulesAsEnd        Schedule[]  @relation("endStation")
-  scheduleStops         ScheduleStop[]
-  routesAsStart         Route[]  @relation("routeStart")
-  routesAsEnd           Route[]  @relation("routeEnd")
-  createdAt             DateTime  @default(now())
-  
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  stationCode      String         @unique // HAN, SGN, DN, etc.
+  stationName      String
+  city             String
+  province         String
+  country          String         @default("Vietnam")
+  latitude         Float?
+  longitude        Float?
+  isActive         Boolean        @default(true)
+  schedulesAsStart Schedule[]     @relation("startStation")
+  schedulesAsEnd   Schedule[]     @relation("endStation")
+  scheduleStops    ScheduleStop[]
+  routesAsStart    Route[]        @relation("routeStart")
+  routesAsEnd      Route[]        @relation("routeEnd")
+  createdAt        DateTime       @default(now())
+
   @@index([city])
 }
 
 model Route {
-  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
   routeName         String
-  startStationId    String         @db.ObjectId
-  startStation      Station        @relation("routeStart", fields: [startStationId], references: [id])
-  endStationId      String         @db.ObjectId
-  endStation        Station        @relation("routeEnd", fields: [endStationId], references: [id])
-  distance          Int            // km
-  estimatedDuration Int            // minutes
+  startStationId    String          @db.ObjectId
+  startStation      Station         @relation("routeStart", fields: [startStationId], references: [id])
+  endStationId      String          @db.ObjectId
+  endStation        Station         @relation("routeEnd", fields: [endStationId], references: [id])
+  distance          Int // km
+  estimatedDuration Int // minutes
   stations          RouteStation[] // Embedded array of intermediate stops
   schedules         Schedule[]
-  popularity        Int            @default(0)  // Track booking count
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  
+  routeTemplates    RouteTemplate[] @relation("routeTemplates")
+  pricingPolicies   PricingPolicy[]
+  popularity        Int             @default(0) // Track booking count
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+
   @@unique([startStationId, endStationId])
   @@index([startStationId])
   @@index([endStationId])
 }
 
 model Schedule {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  trainId               String    @db.ObjectId
-  train                 Train     @relation(fields: [trainId], references: [id], onDelete: Cascade)
-  routeId               String    @db.ObjectId
-  route                 Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  startStationId        String    @db.ObjectId
-  startStation          Station   @relation("startStation", fields: [startStationId], references: [id])
-  endStationId          String    @db.ObjectId
-  endStation            Station   @relation("endStation", fields: [endStationId], references: [id])
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
+  trainId               String                 @db.ObjectId
+  train                 Train                  @relation(fields: [trainId], references: [id], onDelete: Cascade)
+  routeId               String                 @db.ObjectId
+  route                 Route                  @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  startStationId        String                 @db.ObjectId
+  startStation          Station                @relation("startStation", fields: [startStationId], references: [id])
+  endStationId          String                 @db.ObjectId
+  endStation            Station                @relation("endStation", fields: [endStationId], references: [id])
   departureTime         DateTime
   arrivalTime           DateTime
-  distance              Int?      // kilometers
-  duration              Int?      // minutes
+  distance              Int? // kilometers
+  duration              Int? // minutes
   scheduleStops         ScheduleStop[]
-  bookings              Booking[] @relation("BookingSchedule")
-  returnBookings        Booking[] @relation("BookingReturnSchedule")
+  bookings              Booking[]              @relation("BookingSchedule")
+  returnBookings        Booking[]              @relation("BookingReturnSchedule")
   pricing               PricingPolicy[]
   availabilitySnapshots AvailabilitySnapshot[]
-  status                String    @default("ACTIVE") // ACTIVE, CANCELLED, DELAYED
-  delayMinutes          Int       @default(0)
+  bookingDetails        BookingDetail[]
+  seatHolds             SeatHold[]
+  status                String                 @default("ACTIVE") // ACTIVE, CANCELLED, DELAYED
+  delayMinutes          Int                    @default(0)
   notes                 String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([trainId, startStationId, endStationId, departureTime])
   @@index([trainId])
   @@index([departureTime])
   @@index([status])
   @@index([routeId])
-  @@unique([trainId, startStationId, endStationId, departureTime])
 }
 
 model ScheduleStop {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  stationId             String    @db.ObjectId
-  station               Station   @relation(fields: [stationId], references: [id])
-  stopOrder             Int       // 1, 2, 3, etc.
-  arrivalTime           DateTime
-  departureTime         DateTime?
-  
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleId    String    @db.ObjectId
+  schedule      Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  stationId     String    @db.ObjectId
+  station       Station   @relation(fields: [stationId], references: [id])
+  stopOrder     Int // 1, 2, 3, etc.
+  arrivalTime   DateTime
+  departureTime DateTime?
+
   @@unique([scheduleId, stationId])
   @@index([scheduleId])
 }
+
+model RouteTemplate {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  routeId        String   @db.ObjectId
+  route          Route    @relation("routeTemplates", fields: [routeId], references: [id], onDelete: Cascade)
+  trainId        String   @db.ObjectId
+  train          Train    @relation("trainTemplates", fields: [trainId], references: [id], onDelete: Cascade)
+  departureTimes String[] // ["06:00", "12:00", "20:00"]
+  bufferMinutes  Int      @default(60)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([routeId, trainId])
+  @@index([routeId])
+  @@index([trainId])
+  @@index([isActive])
+}
+
 
 // ============================================
 // 4. PRICING & DISCOUNT ENTITIES
 // ============================================
 
 model PricingPolicy {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  passengerType         String    // ADULT, CHILD, STUDENT, SENIOR
-  carriageType          String    // SEAT, SLEEPER, AC_SEAT
-  basePrice             Float     @db.Double
-  pricePerKm            Float?    @db.Double
-  discountPercentage    Float     @default(0)
-  minPrice              Float?    @db.Double
-  maxPrice              Float?    @db.Double
-  active                Boolean   @default(true)
-  effectiveFrom         DateTime
-  effectiveTo           DateTime?
-  createdAt             DateTime  @default(now())
-  
-  @@unique([scheduleId, passengerType, carriageType])
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  policyCode         String?
+  policyName         String?
+  scopeType          String    @default("SCHEDULE") // SYSTEM, ROUTE, SCHEDULE
+  scopeKey           String?
+  routeId            String?   @db.ObjectId
+  route              Route?    @relation(fields: [routeId], references: [id])
+  scheduleId         String?   @db.ObjectId
+  schedule           Schedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  passengerType      String // ADULT, CHILD, STUDENT, SENIOR
+  carriageType       String // NORMAL_SEAT, AC_SEAT, SLEEPER_6, SLEEPER_4
+  basePrice          Float     @db.Double
+  pricePerKm         Float?    @db.Double
+  classSurcharge     Float     @default(0) @db.Double
+  discountPercentage Float     @default(0)
+  taxPercentage      Float     @default(0)
+  minPrice           Float?    @db.Double
+  maxPrice           Float?    @db.Double
+  active             Boolean   @default(true)
+  effectiveFrom      DateTime
+  effectiveTo        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([policyCode])
+  @@index([scopeType, scopeKey])
+  @@index([routeId])
   @@index([scheduleId])
   @@index([active])
+  @@index([effectiveFrom])
 }
 
 model Voucher {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  voucherCode           String    @unique
-  description           String?
-  discountType          String    // PERCENTAGE, FIXED_AMOUNT
-  discountValue         Float     @db.Double
-  maxUsageCount         Int?
-  currentUsageCount     Int       @default(0)
-  minBookingAmount      Float?    @db.Double
-  maxDiscountAmount     Float?    @db.Double
-  applicableTo          String?   // ALL, SPECIFIC_ROUTES, SPECIFIC_TRAINS
-  validFrom             DateTime
-  validTo               DateTime
-  active                Boolean   @default(true)
-  bookings              Booking[]
-  createdAt             DateTime  @default(now())
-  
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  voucherCode       String    @unique
+  description       String?
+  discountType      String // PERCENTAGE, FIXED_AMOUNT
+  discountValue     Float     @db.Double
+  maxUsageCount     Int?
+  currentUsageCount Int       @default(0)
+  minBookingAmount  Float?    @db.Double
+  maxDiscountAmount Float?    @db.Double
+  applicableTo      String? // ALL, SPECIFIC_ROUTES, SPECIFIC_TRAINS
+  validFrom         DateTime
+  validTo           DateTime
+  active            Boolean   @default(true)
+  bookings          Booking[]
+  createdAt         DateTime  @default(now())
+
   @@index([validFrom])
   @@index([validTo])
   @@index([active])
 }
 
 model Promotion {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  title           String
-  description     String?
-  discountType    String    // PERCENTAGE, FIXED_AMOUNT, FREE_UPGRADE
-  discountValue   Float     @db.Double
-  routeIds        String[]  // Route IDs or empty for ALL
-  trainIds        String[]  // Train IDs or empty for ALL
-  validFrom       DateTime
-  validTo         DateTime
-  maxBudget       Float?    @db.Double
-  usedBudget      Float     @default(0) @db.Double
-  status          String    @default("ACTIVE")
-  createdAt       DateTime  @default(now())
-  
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  description   String?
+  discountType  String // PERCENTAGE, FIXED_AMOUNT, FREE_UPGRADE
+  discountValue Float    @db.Double
+  routeIds      String[] // Route IDs or empty for ALL
+  trainIds      String[] // Train IDs or empty for ALL
+  validFrom     DateTime
+  validTo       DateTime
+  maxBudget     Float?   @db.Double
+  usedBudget    Float    @default(0) @db.Double
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
+
   @@index([status])
   @@index([validFrom])
   @@index([validTo])
@@ -334,54 +374,56 @@ model Promotion {
 // ============================================
 
 model Booking {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingCode           String    @unique
-  userId                String    @db.ObjectId
-  user                  User      @relation(fields: [userId], references: [id])
-  scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation("BookingSchedule", fields: [scheduleId], references: [id])
-  passengers            Passenger[]
-  bookingDetails        BookingDetail[]
-  voucherId             String?   @db.ObjectId
-  voucher               Voucher?  @relation(fields: [voucherId], references: [id])
-  bookingType           String    // ONE_WAY, ROUND_TRIP
-  returnScheduleId      String?   @db.ObjectId
-  returnSchedule        Schedule? @relation("BookingReturnSchedule", fields: [returnScheduleId], references: [id])
-  
+  id               String          @id @default(auto()) @map("_id") @db.ObjectId
+  bookingCode      String          @unique
+  userId           String?         @db.ObjectId
+  user             User?           @relation(fields: [userId], references: [id])
+  guestToken       String?
+  scheduleId       String          @db.ObjectId
+  schedule         Schedule        @relation("BookingSchedule", fields: [scheduleId], references: [id])
+  passengers       Passenger[]
+  bookingDetails   BookingDetail[]
+  voucherId        String?         @db.ObjectId
+  voucher          Voucher?        @relation(fields: [voucherId], references: [id])
+  bookingType      String // ONE_WAY, ROUND_TRIP
+  returnScheduleId String?         @db.ObjectId
+  returnSchedule   Schedule?       @relation("BookingReturnSchedule", fields: [returnScheduleId], references: [id])
+
   // Pricing
-  totalPassengers       Int
-  subtotal              Float     @db.Double
-  discountAmount        Float     @default(0) @db.Double
-  taxAmount             Float     @default(0) @db.Double
-  totalAmount           Float     @db.Double
-  
+  totalPassengers Int
+  subtotal        Float @db.Double
+  discountAmount  Float @default(0) @db.Double
+  taxAmount       Float @default(0) @db.Double
+  totalAmount     Float @db.Double
+
   // Payment
-  paymentMethod         String    // WALLET, CARD, BANK_TRANSFER
-  paymentStatus         String    @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
-  paymentId             String?   // External payment gateway ID (encrypted)
-  paymentHistory        BookingPaymentHistory[]
-  
+  paymentMethod  String // WALLET, CARD, BANK_TRANSFER
+  paymentStatus  String                  @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
+  paymentId      String? // External payment gateway ID (encrypted)
+  paymentHistory BookingPaymentHistory[]
+
   // Booking status
-  status                String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED, REFUNDED, COMPLETED
-  confirmationEmail     String?
-  cancelReason          String?
-  cancelledAt           DateTime?
-  refundAmount          Float?    @db.Double
-  
+  status            String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED, REFUNDED, COMPLETED
+  confirmationEmail String?
+  cancelReason      String?
+  cancelledAt       DateTime?
+  refundAmount      Float?    @db.Double
+
   // Refund tracking
-  cancellationRequest   CancellationRequest?
-  refund                Refund?
-  reviews               Review[]
-  
+  cancellationRequest CancellationRequest?
+  refund              Refund?
+  reviews             Review[]
+
   // Timestamps
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  expiresAt             DateTime? // Booking timeout
-  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime? // Booking timeout
+
   // Wallet transactions
-  walletTransactions    WalletTransaction[]
-  
+  walletTransactions WalletTransaction[]
+
   @@index([userId])
+  @@index([guestToken])
   @@index([scheduleId])
   @@index([status])
   @@index([paymentStatus])
@@ -389,73 +431,76 @@ model Booking {
 }
 
 model BookingPaymentHistory {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId       String    @db.ObjectId
-  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  paymentMethod   String
-  amount          Float     @db.Double
-  status          String    // PENDING, SUCCESS, FAILED
-  failureReason   String?
-  transactionId   String?   // From payment gateway (encrypted)
-  attemptNumber   Int       // 1st, 2nd, 3rd attempt
-  createdAt       DateTime  @default(now())
-  
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId     String   @db.ObjectId
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  paymentMethod String
+  amount        Float    @db.Double
+  status        String // PENDING, SUCCESS, FAILED
+  failureReason String?
+  transactionId String? // From payment gateway (encrypted)
+  attemptNumber Int // 1st, 2nd, 3rd attempt
+  createdAt     DateTime @default(now())
+
   @@index([bookingId])
   @@index([status])
 }
 
 model Passenger {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId             String    @db.ObjectId
-  booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  userId                String?   @db.ObjectId
-  user                  User?     @relation(fields: [userId], references: [id])
-  
-  fullName              String
-  nationalId            String?   // Should be encrypted
-  nationalIdType        String?
-  dateOfBirth           DateTime?
-  phoneNumber           String?
-  email                 String?
-  
-  passengerType         String    // ADULT, CHILD, STUDENT, SENIOR
-  discountPercentage    Float     @default(0)
-  discountReason        String?
-  
-  ticketCode            String?
-  seat                  Seat?     @relation(fields: [seatId], references: [id])
-  seatId                String?   @db.ObjectId
-  carriageNumber        Int?
-  
-  specialNeeds          String?
-  boardingAt            DateTime?
-  
-  bookingDetails        BookingDetail[]
-  cancellationRequest   CancellationRequest?
-  
-  createdAt             DateTime  @default(now())
-  
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId String  @db.ObjectId
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId    String? @db.ObjectId
+  user      User?   @relation(fields: [userId], references: [id])
+
+  fullName       String
+  nationalId     String? // Should be encrypted
+  nationalIdType String?
+  dateOfBirth    DateTime?
+  phoneNumber    String?
+  email          String?
+
+  passengerType      String // ADULT, CHILD, STUDENT, SENIOR
+  discountPercentage Float   @default(0)
+  discountReason     String?
+
+  ticketCode     String?
+  seat           Seat?   @relation(fields: [seatId], references: [id])
+  seatId         String? @db.ObjectId
+  carriageNumber Int?
+
+  specialNeeds String?
+  boardingAt   DateTime?
+
+  bookingDetails      BookingDetail[]
+  cancellationRequest CancellationRequest?
+
+  createdAt DateTime @default(now())
+
   @@index([bookingId])
   @@index([userId])
   @@index([nationalId])
 }
 
 model BookingDetail {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId             String    @db.ObjectId
-  booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  passengerId           String    @db.ObjectId
-  passenger             Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
-  seatId                String    @db.ObjectId
-  seat                  Seat      @relation(fields: [seatId], references: [id])
-  
-  carriageType          String
-  basePrice             Float     @db.Double
-  discountAmount        Float     @default(0) @db.Double
-  finalPrice            Float     @db.Double
-  status                String    @default("CONFIRMED")
-  
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId   String    @db.ObjectId
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  passengerId String    @db.ObjectId
+  passenger   Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  seatId      String    @db.ObjectId
+  seat        Seat      @relation(fields: [seatId], references: [id])
+  scheduleId  String?   @db.ObjectId
+  schedule    Schedule? @relation(fields: [scheduleId], references: [id])
+
+  carriageType   String
+  basePrice      Float  @db.Double
+  discountAmount Float  @default(0) @db.Double
+  finalPrice     Float  @db.Double
+  status         String @default("CONFIRMED")
+
   @@index([bookingId])
+  @@index([scheduleId])
   @@index([seatId])
   @@index([passengerId])
 }
@@ -465,68 +510,68 @@ model BookingDetail {
 // ============================================
 
 model CancellationPolicy {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  name                  String
-  description           String?
-  rules                 CancellationRule[]
-  isDefault             Boolean   @default(false)
-  createdAt             DateTime  @default(now())
+  id          String             @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  rules       CancellationRule[]
+  isDefault   Boolean            @default(false)
+  createdAt   DateTime           @default(now())
 }
 
 model CancellationRule {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  policyId              String    @db.ObjectId
-  policy                CancellationPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
-  hoursBeforeDeparture  Int
-  refundPercentage      Float
-  minRefundAmount       Float?
-  description           String?
-  
+  id                   String             @id @default(auto()) @map("_id") @db.ObjectId
+  policyId             String             @db.ObjectId
+  policy               CancellationPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  hoursBeforeDeparture Int
+  refundPercentage     Float
+  minRefundAmount      Float?
+  description          String?
+
   @@unique([policyId, hoursBeforeDeparture])
 }
 
 model CancellationRequest {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId             String    @unique @db.ObjectId
-  booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  passengerId           String    @unique @db.ObjectId
-  passenger             Passenger @relation(fields: [passengerId], references: [id])
-  
-  status                String    @default("PENDING") // PENDING, APPROVED, REJECTED
-  requestReason         String?
-  refundReason          RefundReason?
-  refundAmount          Float?    @db.Double
-  approvedBy            String?   @db.ObjectId
-  approvedByAdmin       User?     @relation(fields: [approvedBy], references: [id])  // Admin who approved
-  approvedAt            DateTime?
-  
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId   String    @unique @db.ObjectId
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  passengerId String    @unique @db.ObjectId
+  passenger   Passenger @relation(fields: [passengerId], references: [id])
+
+  status          String        @default("PENDING") // PENDING, APPROVED, REJECTED
+  requestReason   String?
+  refundReason    RefundReason?
+  refundAmount    Float?        @db.Double
+  approvedBy      String?       @db.ObjectId
+  approvedByAdmin User?         @relation(fields: [approvedBy], references: [id]) // Admin who approved
+  approvedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([status])
 }
 
 model RefundReason {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  cancellationRequestId String    @unique @db.ObjectId
+  id                    String              @id @default(auto()) @map("_id") @db.ObjectId
+  cancellationRequestId String              @unique @db.ObjectId
   cancellationRequest   CancellationRequest @relation(fields: [cancellationRequestId], references: [id], onDelete: Cascade)
-  reason                String    // USER_CHANGE_PLANS, SCHEDULE_CONFLICT, TRAIN_CANCELLED, HEALTH_ISSUE
+  reason                String // USER_CHANGE_PLANS, SCHEDULE_CONFLICT, TRAIN_CANCELLED, HEALTH_ISSUE
   details               String?
-  createdAt             DateTime  @default(now())
+  createdAt             DateTime            @default(now())
 }
 
 model Refund {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId             String    @unique @db.ObjectId
-  booking               Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  refundAmount          Float     @db.Double
-  refundMethod          String    // WALLET, ORIGINAL_PAYMENT, BANK_TRANSFER
-  status                String    @default("PENDING")
-  transactionId         String?   // Bank transfer ID (encrypted)
-  reason                String?
-  processedAt           DateTime?
-  createdAt             DateTime  @default(now())
-  
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId     String    @unique @db.ObjectId
+  booking       Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  refundAmount  Float     @db.Double
+  refundMethod  String // WALLET, ORIGINAL_PAYMENT, BANK_TRANSFER
+  status        String    @default("PENDING")
+  transactionId String? // Bank transfer ID (encrypted)
+  reason        String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
   @@index([status])
 }
 
@@ -535,90 +580,122 @@ model Refund {
 // ============================================
 
 model AvailabilitySnapshot {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  schedule              Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  
-  carriageType          String
-  availableSeats        Int
-  bookedSeats           Int
-  occupancyPercentage   Float
-  
-  snapshotTime          DateTime  @default(now())
-  
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleId String   @db.ObjectId
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  carriageType        String
+  availableSeats      Int
+  bookedSeats         Int
+  occupancyPercentage Float
+
+  snapshotTime DateTime @default(now())
+
   @@index([scheduleId])
   @@index([snapshotTime])
 }
 
-model SeatSelectionSession {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId                String    @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  
-  selectedSeats         String[]
+model SeatHoldSession {
+  id                    String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String?    @db.ObjectId
+  user                  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestToken            String?
+  bookingType           String     @default("ONE_WAY")
+  outboundScheduleId    String     @db.ObjectId
+  outboundFromStationId String     @db.ObjectId
+  outboundToStationId   String     @db.ObjectId
+  returnScheduleId      String?    @db.ObjectId
+  returnFromStationId   String?    @db.ObjectId
+  returnToStationId     String?    @db.ObjectId
+  status                String     @default("ACTIVE") // ACTIVE, EXPIRED, RELEASED, CONVERTED
   expiresAt             DateTime
-  
-  createdAt             DateTime  @default(now())
-  
+  holds                 SeatHold[]
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId, status])
+  @@index([guestToken, status])
+  @@index([expiresAt])
+}
+
+model SeatHold {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId     String          @db.ObjectId
+  session       SeatHoldSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId        String?         @db.ObjectId
+  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestToken    String?
+  scheduleId    String          @db.ObjectId
+  schedule      Schedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  seatId        String          @db.ObjectId
+  seat          Seat            @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  carriageType  String
+  priceSnapshot Float           @db.Double
+  expiresAt     DateTime
+  createdAt     DateTime        @default(now())
+
+  @@unique([scheduleId, seatId])
+  @@index([sessionId])
   @@index([userId])
+  @@index([guestToken])
   @@index([expiresAt])
 }
 
 model Notification {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId                String    @db.ObjectId
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type                  String    // BOOKING_CONFIRMED, REFUND_PROCESSED, PRICE_DROP, etc.
-  title                 String
-  message               String
-  relatedBookingId      String?   @db.ObjectId
-  relatedScheduleId     String?   @db.ObjectId
-  
-  status                String    @default("UNREAD")
-  readAt                DateTime?
-  
-  deliveryMethod        String[]
-  deliveryStatus        String    // PENDING, SENT, FAILED
-  
-  createdAt             DateTime  @default(now())
-  
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type              String // BOOKING_CONFIRMED, REFUND_PROCESSED, PRICE_DROP, etc.
+  title             String
+  message           String
+  relatedBookingId  String? @db.ObjectId
+  relatedScheduleId String? @db.ObjectId
+
+  status String    @default("UNREAD")
+  readAt DateTime?
+
+  deliveryMethod String[]
+  deliveryStatus String // PENDING, SENT, FAILED
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([status])
   @@index([createdAt])
 }
 
 model LiveTracking {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  scheduleId            String    @db.ObjectId
-  trainId               String    @db.ObjectId
-  
-  currentLocation       String?   // JSON: {latitude, longitude}
-  currentStation        String?
-  delayMinutes          Int       @default(0)
-  status                String    // ON_TIME, DELAYED, EARLY, COMPLETED, CANCELLED
-  lastUpdated           DateTime  @default(now())
-  
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  scheduleId String @db.ObjectId
+  trainId    String @db.ObjectId
+
+  currentLocation String? // JSON: {latitude, longitude}
+  currentStation  String?
+  delayMinutes    Int      @default(0)
+  status          String // ON_TIME, DELAYED, EARLY, COMPLETED, CANCELLED
+  lastUpdated     DateTime @default(now())
+
   @@index([scheduleId])
   @@index([trainId])
 }
 
 model SearchHistory {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId            String    @db.ObjectId
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  fromStationId     String?   @db.ObjectId
-  toStationId       String?   @db.ObjectId
-  departureDate     DateTime?
-  returnDate        DateTime?
-  
-  filtersApplied    String?
-  resultCount       Int       @default(0)
-  schedulesClicked  String[]
-  
-  createdAt         DateTime  @default(now())
-  
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fromStationId String?   @db.ObjectId
+  toStationId   String?   @db.ObjectId
+  departureDate DateTime?
+  returnDate    DateTime?
+
+  filtersApplied   String?
+  resultCount      Int      @default(0)
+  schedulesClicked String[]
+
+  createdAt DateTime @default(now())
+
   @@index([userId])
   @@index([createdAt])
 }
@@ -628,22 +705,22 @@ model SearchHistory {
 // ============================================
 
 model Review {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId       String    @db.ObjectId
-  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  userId          String    @db.ObjectId
-  user            User      @relation(fields: [userId], references: [id])
-  
-  rating          Int       // 1-5 stars
-  comment         String?
-  categories      String[]  // cleanliness, comfort, service, timing
-  
-  isAnonymous     Boolean   @default(false)
-  helpful         Int       @default(0)
-  status          String    @default("PENDING")
-  
-  createdAt       DateTime  @default(now())
-  
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId String  @db.ObjectId
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId    String  @db.ObjectId
+  user      User    @relation(fields: [userId], references: [id])
+
+  rating     Int // 1-5 stars
+  comment    String?
+  categories String[] // cleanliness, comfort, service, timing
+
+  isAnonymous Boolean @default(false)
+  helpful     Int     @default(0)
+  status      String  @default("PENDING")
+
+  createdAt DateTime @default(now())
+
   @@index([bookingId])
   @@index([userId])
   @@index([status])
@@ -654,33 +731,33 @@ model Review {
 // ============================================
 
 model AdminLog {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  adminId               String    @db.ObjectId
-  admin                 User      @relation(fields: [adminId], references: [id])  // Admin user
-  action                String    // CREATE, UPDATE, DELETE, APPROVE, REJECT
-  entity                String    // Train, Schedule, Pricing, Booking, User, etc.
-  entityId              String?   @db.ObjectId
-  changes               String?   // JSON string of changes
-  description           String?
-  ipAddress             String?
-  createdAt             DateTime  @default(now())
-  
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  adminId     String   @db.ObjectId
+  admin       User     @relation(fields: [adminId], references: [id]) // Admin user
+  action      String // CREATE, UPDATE, DELETE, APPROVE, REJECT
+  entity      String // Train, Schedule, Pricing, Booking, User, etc.
+  entityId    String?  @db.ObjectId
+  changes     String? // JSON string of changes
+  description String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
   @@index([adminId])
   @@index([action])
   @@index([createdAt])
 }
 
 model SecurityLog {
-  id              String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String?   @db.ObjectId
-  user            User?     @relation(fields: [userId], references: [id])
-  eventType       String    // LOGIN_SUCCESS, LOGIN_FAILED, PASSWORD_CHANGE, API_ACCESS
-  description     String
-  ipAddress       String?
-  userAgent       String?
-  status          String    // SUCCESS, FAILURE
-  createdAt       DateTime  @default(now())
-  
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String?  @db.ObjectId
+  user        User?    @relation(fields: [userId], references: [id])
+  eventType   String // LOGIN_SUCCESS, LOGIN_FAILED, PASSWORD_CHANGE, API_ACCESS
+  description String
+  ipAddress   String?
+  userAgent   String?
+  status      String // SUCCESS, FAILURE
+  createdAt   DateTime @default(now())
+
   @@index([userId])
   @@index([eventType])
   @@index([status])
@@ -688,23 +765,23 @@ model SecurityLog {
 }
 
 model RevenueReport {
-  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
-  period                String    // DAILY, WEEKLY, MONTHLY
-  periodStart           DateTime
-  periodEnd             DateTime
-  
-  totalBookings         Int
-  completedBookings     Int
-  cancelledBookings     Int
-  totalRevenue          Float     @db.Double
-  totalRefunds          Float     @db.Double
-  netRevenue            Float     @db.Double
-  
-  trainsData            String?   // JSON breakdown
-  routesData            String?   // JSON breakdown
-  
-  generatedAt           DateTime  @default(now())
-  
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  period      String // DAILY, WEEKLY, MONTHLY
+  periodStart DateTime
+  periodEnd   DateTime
+
+  totalBookings     Int
+  completedBookings Int
+  cancelledBookings Int
+  totalRevenue      Float @db.Double
+  totalRefunds      Float @db.Double
+  netRevenue        Float @db.Double
+
+  trainsData String? // JSON breakdown
+  routesData String? // JSON breakdown
+
+  generatedAt DateTime @default(now())
+
   @@unique([period, periodStart])
   @@index([periodStart])
 }
@@ -712,31 +789,28 @@ model RevenueReport {
 type RouteStation {
   stationId         String @db.ObjectId
   stationName       String
-  stopOrder         Int    // Sequential order (1, 2, 3...)
-  distanceFromStart Int    // Cumulative km from the start station
+  stopOrder         Int // Sequential order (1, 2, 3...)
+  distanceFromStart Int // Cumulative km from the start station
 }
 
 // ============================================
 // SUMMARY OF CHANGES FROM v2.0 → v2.1
 // ============================================
-/*
-Removed:
-- EmployeeStaff model (no longer needed)
-- Link from User to EmployeeStaff
-
-Simplified:
-- User.userType: Now only "ADMIN" or "CUSTOMER"
-- AdminLog.adminId: Now directly references User.id (no EmployeeStaff)
-- CancellationRequest.approvedBy: Now references User directly
-
-Added:
-- CancellationRequest.approvedByAdmin: User relation for tracking which admin approved
-- SecurityLog now has User relation
-
-Benefits:
-- Simpler user management
-- Less database tables (1 less model)
-- Easier role management
-- Direct admin tracking
-- Easier permission implementation
-*/
+/**
+ * Removed:
+ * - EmployeeStaff model (no longer needed)
+ * - Link from User to EmployeeStaff
+ * Simplified:
+ * - User.userType: Now only "ADMIN" or "CUSTOMER"
+ * - AdminLog.adminId: Now directly references User.id (no EmployeeStaff)
+ * - CancellationRequest.approvedBy: Now references User directly
+ * Added:
+ * - CancellationRequest.approvedByAdmin: User relation for tracking which admin approved
+ * - SecurityLog now has User relation
+ * Benefits:
+ * - Simpler user management
+ * - Less database tables (1 less model)
+ * - Easier role management
+ * - Direct admin tracking
+ * - Easier permission implementation
+ */

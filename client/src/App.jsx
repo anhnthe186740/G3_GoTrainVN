@@ -8,9 +8,12 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
+import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
+import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
+import { PassengerDetailsPage } from "./components/booking/PassengerDetailsPage";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
 
@@ -23,8 +26,10 @@ export default function App() {
   // log in again. On failure (401/network error) we call clearAuth() so
   // ProtectedRoute stops waiting and redirects to /login.
   useEffect(() => {
+    const controller = new AbortController();
+
     api
-      .get("/users/profile")
+      .get("/users/profile", { signal: controller.signal })
       .then(({ data }) => {
         const u = data.user;
         setAuth({
@@ -33,13 +38,16 @@ export default function App() {
             name: u.fullName,
             email: u.email,
             role: u.userType,
+            loyaltyPoints: u.loyaltyPoints || 0,
           },
           token: "session",
         });
       })
-      .catch(() => {
-        clearAuth();
+      .catch((error) => {
+        if (error.code !== "ERR_CANCELED") clearAuth();
       });
+
+    return () => controller.abort();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -64,6 +72,8 @@ export default function App() {
         <Route index element={<Home />} />
 
         <Route path="schedule" element={<CustomerBooking />} />
+        <Route path="booking/seats" element={<SeatSelectionPage />} />
+        <Route path="booking/passengers" element={<PassengerDetailsPage />} />
 
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
 
@@ -80,6 +90,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Wallet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />
