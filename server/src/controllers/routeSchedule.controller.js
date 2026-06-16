@@ -5,7 +5,10 @@ import {
   buildCarriageConfigs,
   createTrainInventory,
 } from "../utils/trainInventory.js";
-import { generateSchedulesForDay30 } from "../services/autoSchedule.service.js";
+import {
+  generateSchedulesForDay30,
+  generateSchedulesForRange,
+} from "../services/autoSchedule.service.js";
 
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
@@ -619,5 +622,310 @@ export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
     message: result.message,
     created: result.created,
     skipped: result.skipped,
+  });
+});
+
+// ============================================================
+// GET /api/v1/route-templates - Lấy danh sách templates mẫu lịch chạy
+// ============================================================
+export const getRouteTemplates = asyncHandler(async (req, res) => {
+  const templates = await prisma.routeTemplate.findMany({
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json({ templates });
+});
+
+// ============================================================
+// POST /api/v1/route-templates - Tạo template mới
+// ============================================================
+export const createRouteTemplate = asyncHandler(async (req, res) => {
+  const { routeId, trainId, departureTimes, bufferMinutes, isActive } =
+    req.body;
+
+  if (
+    !routeId ||
+    !trainId ||
+    !departureTimes ||
+    !Array.isArray(departureTimes)
+  ) {
+    return res.status(400).json({
+      message:
+        "Thiếu thông tin bắt buộc hoặc giờ khởi hành không đúng định dạng.",
+    });
+  }
+
+  // Check unique constraint: one template per (route, train)
+  const existing = await prisma.routeTemplate.findUnique({
+    where: {
+      routeId_trainId: { routeId, trainId },
+    },
+  });
+  if (existing) {
+    return res.status(400).json({
+      message: "Mẫu lịch chạy cho Tuyến đường và Tàu này đã tồn tại.",
+    });
+  }
+
+  const template = await prisma.routeTemplate.create({
+    data: {
+      routeId,
+      trainId,
+      departureTimes,
+      bufferMinutes: bufferMinutes ? parseInt(bufferMinutes, 10) : 60,
+      isActive: isActive !== undefined ? isActive : true,
+    },
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+  });
+
+  res.status(201).json({
+    message: "Tạo mẫu lịch chạy thành công!",
+    template,
+  });
+});
+
+// ============================================================
+// PUT /api/v1/route-templates/:id - Cập nhật template
+// ============================================================
+export const updateRouteTemplate = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { departureTimes, bufferMinutes, isActive } = req.body;
+
+  const updateData = {};
+  if (departureTimes !== undefined && Array.isArray(departureTimes)) {
+    updateData.departureTimes = departureTimes;
+  }
+  if (bufferMinutes !== undefined) {
+    updateData.bufferMinutes = parseInt(bufferMinutes, 10);
+  }
+  if (isActive !== undefined) {
+    updateData.isActive = isActive;
+  }
+
+  const template = await prisma.routeTemplate.update({
+    where: { id },
+    data: updateData,
+    include: {
+      route: {
+        include: {
+          startStation: true,
+          endStation: true,
+        },
+      },
+      train: true,
+    },
+  });
+
+  res.json({
+    message: "Cập nhật mẫu lịch chạy thành công!",
+    template,
+  });
+});
+
+// ============================================================
+// DELETE /api/v1/route-templates/:id - Xóa/vô hiệu template
+// ============================================================
+export const deleteRouteTemplate = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  await prisma.routeTemplate.delete({
+    where: { id },
+  });
+
+  res.json({
+    message: "Đã xóa mẫu lịch chạy thành công.",
+  });
+});
+
+// ============================================================
+// POST /api/v1/schedules/generate-range - Gen lịch từ templates theo khoảng ngày
+// ============================================================
+export const generateSchedulesByRange = asyncHandler(async (req, res) => {
+  const { startDate, endDate } = req.body;
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({
+      message: "Vui lòng nhập đầy đủ ngày bắt đầu và ngày kết thúc.",
+    });
+  }
+
+  const result = await generateSchedulesForRange(startDate, endDate);
+
+  res.json({
+    message: result.message,
+    created: result.created,
+    skipped: result.skipped,
+  });
+});
+
+// ============================================================
+// Helper: Xây dựng full timeline từ một Schedule
+// ============================================================
+function buildTimeline(schedule) {
+  const { route, scheduleStops, departureTime, arrivalTime } = schedule;
+
+  // Tính khoảng cách từ ga đầu cho từng ScheduleStop
+  // Ưu tiên dùng RouteStation embedded data (route.stations[])
+  const distanceMap = {};
+  if (route.stations && route.stations.length > 0) {
+    for (const rs of route.stations) {
+      distanceMap[rs.stationId] = rs.distanceFromStart;
+    }
+  }
+
+  // Điểm 0: Ga khởi hành
+  const points = [
+    {
+      type: "START",
+      stationId: route.startStation.id,
+      stationName: route.startStation.stationName,
+      city: route.startStation.city,
+      stopOrder: 0,
+      arrivalTime: null,
+      departureTime: departureTime,
+      distanceFromStart: 0,
+    },
+  ];
+
+  // Điểm 1..N: Các ga trung gian (ScheduleStop)
+  const sortedStops = [...scheduleStops].sort(
+    (a, b) => a.stopOrder - b.stopOrder,
+  );
+  for (const stop of sortedStops) {
+    points.push({
+      type: "STOP",
+      stationId: stop.station.id,
+      stationName: stop.station.stationName,
+      city: stop.station.city,
+      stopOrder: stop.stopOrder,
+      arrivalTime: stop.arrivalTime,
+      departureTime: stop.departureTime,
+      distanceFromStart: distanceMap[stop.station.id] ?? null,
+    });
+  }
+
+  // Điểm cuối: Ga kết thúc
+  points.push({
+    type: "END",
+    stationId: route.endStation.id,
+    stationName: route.endStation.stationName,
+    city: route.endStation.city,
+    stopOrder: sortedStops.length + 1,
+    arrivalTime: arrivalTime,
+    departureTime: null,
+    distanceFromStart: route.distance,
+  });
+
+  // Tính thời gian di chuyển mỗi chặng (phút)
+  for (let i = 1; i < points.length; i++) {
+    const prevTime = points[i - 1].departureTime ?? points[i - 1].arrivalTime;
+    const currTime = points[i].arrivalTime ?? points[i].departureTime;
+    if (prevTime && currTime) {
+      const diffMs =
+        new Date(currTime).getTime() - new Date(prevTime).getTime();
+      points[i].segmentMinutes = Math.round(diffMs / 60000);
+      // Khoảng cách chặng này (km)
+      if (
+        points[i].distanceFromStart != null &&
+        points[i - 1].distanceFromStart != null
+      ) {
+        points[i].segmentDistanceKm =
+          points[i].distanceFromStart - points[i - 1].distanceFromStart;
+      }
+    }
+  }
+
+  return points;
+}
+
+// ============================================================
+// GET /api/v1/schedules/:id/timeline - Lịch Trình Nối Tiếp Liên Tục
+// ============================================================
+export const getScheduleTimeline = asyncHandler(async (req, res) => {
+  const schedule = await prisma.schedule.findUnique({
+    where: { id: req.params.id },
+    include: {
+      train: {
+        select: {
+          trainName: true,
+          trainCode: true,
+          trainType: true,
+          totalCapacity: true,
+        },
+      },
+      route: {
+        include: {
+          startStation: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+          endStation: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+        },
+      },
+      scheduleStops: {
+        include: {
+          station: {
+            select: {
+              id: true,
+              stationName: true,
+              city: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
+        },
+        orderBy: { stopOrder: "asc" },
+      },
+    },
+  });
+
+  if (!schedule) {
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  }
+
+  const timeline = buildTimeline(schedule);
+
+  res.json({
+    schedule: {
+      id: schedule.id,
+      status: schedule.status,
+      departureTime: schedule.departureTime,
+      arrivalTime: schedule.arrivalTime,
+      distance: schedule.distance,
+      duration: schedule.duration,
+      delayMinutes: schedule.delayMinutes,
+      train: schedule.train,
+      routeName: schedule.route.routeName,
+    },
+    timeline,
   });
 });

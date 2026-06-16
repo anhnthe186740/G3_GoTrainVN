@@ -224,12 +224,20 @@ export function RouteScheduleMgmt({ mode }) {
   );
 
   const handleStationChange = (field, value) => {
-    const newForm = { ...routeForm, [field]: value };
+    let newForm = { ...routeForm, [field]: value };
+
+    // Đảm bảo ga bắt đầu và ga kết thúc không bao giờ trùng nhau
+    if (field === "startStationId" && value === routeForm.endStationId) {
+      newForm.endStationId = "";
+    } else if (field === "endStationId" && value === routeForm.startStationId) {
+      newForm.startStationId = "";
+    }
+
     setRouteForm(newForm);
     setAutoCalcDistance(false);
     setSelectedStopIds(new Set()); // Reset ga trung gian khi đổi ga đầu/cuối
-    const startId = field === "startStationId" ? value : newForm.startStationId;
-    const endId = field === "endStationId" ? value : newForm.endStationId;
+    const startId = newForm.startStationId;
+    const endId = newForm.endStationId;
     calcAndFill(startId, endId);
   };
 

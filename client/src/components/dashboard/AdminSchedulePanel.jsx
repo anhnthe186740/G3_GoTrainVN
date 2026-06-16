@@ -77,6 +77,23 @@ export function AdminSchedulePanel() {
   // Detail Modal
   const [activeDetails, setActiveDetails] = useState(null);
 
+  // Timeline Modal
+  const [timelineSchedule, setTimelineSchedule] = useState(null); // { schedule, timeline }
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
+  const handleViewTimeline = async (scheduleId) => {
+    setTimelineLoading(true);
+    setTimelineSchedule(null);
+    try {
+      const res = await api.get(`/schedules/${scheduleId}/timeline`);
+      setTimelineSchedule(res.data);
+    } catch {
+      toast.error("Không thể tải lịch trình chi tiết.");
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
   const [triggeringAuto, setTriggeringAuto] = useState(false);
 
   const handleTriggerAutoGenerate = async () => {
@@ -109,7 +126,6 @@ export function AdminSchedulePanel() {
 
       setRoutes(rtRes.routes || []);
       setTrains(trRes.trains || []);
-
       setSchedules(scRes.schedules || []);
     } catch (err) {
       toast.error("Không thể tải dữ liệu từ server.");
@@ -259,7 +275,7 @@ export function AdminSchedulePanel() {
           className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Gen lịch trình theo khoảng thời gian
+          Tạo lịch trình mới
         </button>
       </div>
 
@@ -354,8 +370,8 @@ export function AdminSchedulePanel() {
           <p className="text-xs text-[#3f4852]">
             Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày, tự động sinh
             lịch trình chạy tàu cho <strong>ngày thứ 30 tới</strong> dựa trên dữ
-            liệu mẫu của 7 ngày trước đó nhằm đảm bảo luôn mở bán vé trước cho
-            khách.
+            liệu các mẫu lịch chạy cố định hoặc nhân bản lịch trình 7 ngày trước
+            để đảm bảo luôn mở bán vé trước cho khách.
           </p>
         </div>
         <button
@@ -593,6 +609,15 @@ export function AdminSchedulePanel() {
                           >
                             <span className="material-symbols-outlined text-[20px]">
                               visibility
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => handleViewTimeline(s.id)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7c4dff] hover:bg-white hover:shadow-sm hover:text-[#5e35b1] transition-all cursor-pointer border-none bg-transparent"
+                            title="Xem lịch trình tuyến tính"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">
+                              route
                             </span>
                           </button>
                           <button
@@ -1040,6 +1065,248 @@ export function AdminSchedulePanel() {
           <span>Version 2.4.1-stable</span>
         </div>
       </footer>
+
+      {/* ── Timeline Loading Overlay ── */}
+      {timelineLoading && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-3 shadow-2xl">
+            <span className="material-symbols-outlined animate-spin text-4xl text-[#00629d]">
+              progress_activity
+            </span>
+            <p className="text-sm font-semibold text-[#191c1e]">
+              Đang tải lịch trình liên tục...
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Train Timeline Modal ── */}
+      {timelineSchedule && !timelineLoading && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-7 py-5 border-b border-[#bec7d4]/20 flex items-start justify-between bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-[#00629d] text-[20px]">
+                    train
+                  </span>
+                  <span className="font-extrabold text-lg text-[#191c1e]">
+                    {timelineSchedule.schedule.train?.trainName}
+                  </span>
+                  <span className="text-xs bg-[#00629d]/10 text-[#00629d] px-2 py-0.5 rounded-full font-bold">
+                    {timelineSchedule.schedule.train?.trainCode}
+                  </span>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border uppercase ${
+                      STATUS_BADGE_CLASS[
+                        getScheduleStatus(timelineSchedule.schedule)
+                      ] || "bg-[#f2f4f6] text-[#3f4852] border-[#bec7d4]"
+                    }`}
+                  >
+                    {getScheduleStatus(timelineSchedule.schedule)}
+                  </span>
+                </div>
+                <p className="text-sm text-[#3f4852] font-medium">
+                  {timelineSchedule.schedule.routeName} &nbsp;·&nbsp;
+                  <span className="text-[#00629d] font-semibold">
+                    {timelineSchedule.schedule.distance} km
+                  </span>
+                  &nbsp;·&nbsp;
+                  {Math.floor(
+                    (timelineSchedule.schedule.duration || 0) / 60,
+                  )}h {(timelineSchedule.schedule.duration || 0) % 60}m hành
+                  trình
+                </p>
+              </div>
+              <button
+                onClick={() => setTimelineSchedule(null)}
+                className="p-2 hover:bg-[#f2f4f6] rounded-xl transition-all text-[#3f4852] hover:text-[#191c1e] cursor-pointer border-none bg-transparent flex-shrink-0"
+              >
+                <span className="material-symbols-outlined text-[22px]">
+                  close
+                </span>
+              </button>
+            </div>
+
+            {/* Timeline body */}
+            <div className="overflow-y-auto flex-1 px-7 py-6">
+              <h4 className="text-xs font-bold text-[#3f4852] uppercase tracking-widest mb-5 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#7c4dff] text-[16px]">
+                  route
+                </span>
+                Lịch Trình Nối Tiếp Liên Tục
+              </h4>
+
+              <div className="relative">
+                {timelineSchedule.timeline.map((point, idx) => {
+                  const isStart = point.type === "START";
+                  const isEnd = point.type === "END";
+                  const isLast = idx === timelineSchedule.timeline.length - 1;
+
+                  const dotColor = isStart
+                    ? "bg-[#00629d] ring-[#00629d]/20"
+                    : isEnd
+                      ? "bg-[#7c4dff] ring-[#7c4dff]/20"
+                      : "bg-white ring-[#00629d]/30 border-2 border-[#00629d]";
+
+                  const labelColor = isStart
+                    ? "text-[#00629d]"
+                    : isEnd
+                      ? "text-[#7c4dff]"
+                      : "text-[#191c1e]";
+
+                  const timeDisplay = isStart
+                    ? formatDateTime(point.departureTime)
+                    : isEnd
+                      ? formatDateTime(point.arrivalTime)
+                      : `${formatDateTime(point.arrivalTime)} → ${formatDateTime(point.departureTime)}`;
+
+                  return (
+                    <div key={idx} className="flex gap-4">
+                      {/* Left: dot + connector line */}
+                      <div className="flex flex-col items-center flex-shrink-0">
+                        <div
+                          className={`w-5 h-5 rounded-full ring-4 flex items-center justify-center mt-0.5 flex-shrink-0 ${dotColor}`}
+                        >
+                          {(isStart || isEnd) && (
+                            <span className="material-symbols-outlined text-white text-[10px]">
+                              {isStart ? "play_arrow" : "flag"}
+                            </span>
+                          )}
+                        </div>
+                        {!isLast && (
+                          <div className="flex-1 w-px min-h-[40px] bg-gradient-to-b from-[#00629d]/40 to-[#7c4dff]/40 my-1" />
+                        )}
+                      </div>
+
+                      {/* Right: stop info */}
+                      <div
+                        className={`pb-6 ${isLast ? "pb-0" : ""} flex-1 min-w-0`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p
+                                className={`font-bold text-base leading-tight ${labelColor}`}
+                              >
+                                {point.stationName}
+                              </p>
+                              {isStart && (
+                                <span className="text-[10px] bg-[#00629d] text-white px-1.5 py-0.5 rounded-full font-bold">
+                                  GA ĐẦU
+                                </span>
+                              )}
+                              {isEnd && (
+                                <span className="text-[10px] bg-[#7c4dff] text-white px-1.5 py-0.5 rounded-full font-bold">
+                                  GA CUỐI
+                                </span>
+                              )}
+                              {!isStart && !isEnd && (
+                                <span className="text-[10px] bg-[#cfe5ff] text-[#00629d] px-1.5 py-0.5 rounded-full font-bold">
+                                  GA DỪNG #{point.stopOrder}
+                                </span>
+                              )}
+                            </div>
+                            {point.city && (
+                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
+                                {point.city}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-bold text-[#191c1e] font-mono">
+                              {timeDisplay}
+                            </p>
+                            {point.distanceFromStart != null && (
+                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
+                                📍 {point.distanceFromStart} km từ ga đầu
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Segment info between stops */}
+                        {!isLast && point.segmentMinutes != null && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-full">
+                              <span className="material-symbols-outlined text-[12px] text-[#6f7883]">
+                                schedule
+                              </span>
+                              <span className="text-[11px] text-[#6f7883] font-semibold">
+                                {Math.floor(point.segmentMinutes / 60) > 0
+                                  ? `${Math.floor(point.segmentMinutes / 60)}h `
+                                  : ""}
+                                {point.segmentMinutes % 60}m di chuyển
+                              </span>
+                              {point.segmentDistanceKm != null && (
+                                <>
+                                  <span className="text-[#bec7d4]">·</span>
+                                  <span className="text-[11px] text-[#6f7883] font-semibold">
+                                    {point.segmentDistanceKm} km
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary footer */}
+              <div className="mt-6 p-4 bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5 border border-[#bec7d4]/20 rounded-2xl grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
+                    Tổng ga dừng
+                  </p>
+                  <p className="text-xl font-extrabold text-[#00629d]">
+                    {timelineSchedule.timeline.length}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
+                    Khoảng cách
+                  </p>
+                  <p className="text-xl font-extrabold text-[#00629d]">
+                    {timelineSchedule.schedule.distance} km
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
+                    Hành trình
+                  </p>
+                  <p className="text-xl font-extrabold text-[#7c4dff]">
+                    {Math.floor((timelineSchedule.schedule.duration || 0) / 60)}
+                    h {(timelineSchedule.schedule.duration || 0) % 60}m
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-7 py-4 border-t border-[#bec7d4]/10 flex items-center justify-between gap-3 bg-[#f7f9fb]">
+              <p className="text-xs text-[#3f4852]/50">
+                💡 Dữ liệu này là nền tảng để hệ thống bán vé chặng lẻ
+              </p>
+              <button
+                onClick={() => setTimelineSchedule(null)}
+                className="px-5 py-2 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white font-semibold text-sm transition-all cursor-pointer border-none"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
