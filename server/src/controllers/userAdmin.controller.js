@@ -87,6 +87,7 @@ export const getAdminUsers = asyncHandler(async (req, res) => {
       phoneNumber: u.phoneNumber,
       userType: u.userType,
       isActive: u.isActive,
+      lockReason: u.lockReason,
       totalBookings: u._count.bookings,
       latestBookingRoute,
       createdAt: u.createdAt,
@@ -166,8 +167,15 @@ export const createAdminUser = asyncHandler(async (req, res) => {
 // Update user details
 export const updateAdminUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { fullName, email, phoneNumber, userType, isActive, password } =
-    req.body;
+  const {
+    fullName,
+    email,
+    phoneNumber,
+    userType,
+    isActive,
+    password,
+    lockReason,
+  } = req.body;
 
   const user = await prisma.user.findFirst({
     where: {
@@ -180,16 +188,22 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: "Không tìm thấy người dùng" });
   }
 
-  if (email !== user.email || phoneNumber !== user.phoneNumber) {
+  if (
+    (email && email !== user.email) ||
+    (phoneNumber && phoneNumber !== user.phoneNumber)
+  ) {
     const existing = await prisma.user.findFirst({
       where: {
         id: { not: id },
-        AND: [{ OR: [{ email }, { phoneNumber }] }, notDeleted],
+        AND: [
+          { OR: [{ email: email || "" }, { phoneNumber: phoneNumber || "" }] },
+          notDeleted,
+        ],
       },
     });
 
     if (existing) {
-      if (existing.email === email) {
+      if (email && existing.email === email) {
         return res.status(400).json({ message: "Email này đã được sử dụng" });
       }
       return res
@@ -199,12 +213,19 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
   }
 
   const data = {
-    fullName,
-    email,
-    phoneNumber,
-    userType,
+    fullName: fullName || user.fullName,
+    email: email || user.email,
+    phoneNumber: phoneNumber || user.phoneNumber,
+    userType: userType || user.userType,
     isActive: isActive !== undefined ? isActive : user.isActive,
   };
+
+  // Check if locking the account (changing isActive from true to false)
+  if (isActive === false && user.isActive === true) {
+    data.lockReason = lockReason || "Vi phạm điều khoản dịch vụ";
+  } else if (isActive === true) {
+    data.lockReason = null; // Clear lockReason on unlock
+  }
 
   if (password) {
     data.password = await bcrypt.hash(password, 10);
@@ -215,9 +236,16 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     data,
   });
 
+  let successMessage = "Cập nhật người dùng thành công";
+  if (isActive === false && user.isActive === true) {
+    successMessage = "Khóa tài khoản thành công";
+  } else if (isActive === true && user.isActive === false) {
+    successMessage = "Mở khóa tài khoản thành công";
+  }
+
   res.json({
     success: true,
-    message: "Cập nhật người dùng thành công",
+    message: successMessage,
     user: {
       id: updated.id,
       fullName: updated.fullName,
@@ -225,6 +253,7 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
       phoneNumber: updated.phoneNumber,
       userType: updated.userType,
       isActive: updated.isActive,
+      lockReason: updated.lockReason,
     },
   });
 });
@@ -257,21 +286,14 @@ export const deleteAdminUser = asyncHandler(async (req, res) => {
 
 // Roles statistics
 export const getAdminRolesStats = asyncHandler(async (req, res) => {
-  const [
-    totalUsers,
-    totalCustomers,
-    totalAdmins,
-    totalStaff,
-    totalAnalysts,
-    totalBanned,
-  ] = await Promise.all([
-    prisma.user.count({ where: { ...notDeleted } }),
-    prisma.user.count({ where: { userType: "CUSTOMER", ...notDeleted } }),
-    prisma.user.count({ where: { userType: "ADMIN", ...notDeleted } }),
-    prisma.user.count({ where: { userType: "STAFF", ...notDeleted } }),
-    prisma.user.count({ where: { userType: "ANALYST", ...notDeleted } }),
-    prisma.user.count({ where: { isActive: false, ...notDeleted } }),
-  ]);
+  const [totalUsers, totalCustomers, totalAdmins, totalStaff, totalBanned] =
+    await Promise.all([
+      prisma.user.count({ where: { ...notDeleted } }),
+      prisma.user.count({ where: { userType: "CUSTOMER", ...notDeleted } }),
+      prisma.user.count({ where: { userType: "ADMIN", ...notDeleted } }),
+      prisma.user.count({ where: { userType: "STAFF", ...notDeleted } }),
+      prisma.user.count({ where: { isActive: false, ...notDeleted } }),
+    ]);
 
   res.json({
     success: true,
@@ -280,7 +302,6 @@ export const getAdminRolesStats = asyncHandler(async (req, res) => {
       customer: totalCustomers,
       admin: totalAdmins,
       staff: totalStaff,
-      analyst: totalAnalysts,
       banned: totalBanned,
     },
   });

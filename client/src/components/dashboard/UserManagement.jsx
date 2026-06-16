@@ -19,41 +19,128 @@ function SkeletonRow({ cols = 5 }) {
   );
 }
 
-/* ── Modal Thêm/Sửa Người Dùng ────────────────────────────── */
-function UserModal({ isOpen, onClose, user, onSave, loading }) {
+/* ── Modal Nhập Lý Do Khóa Tài Khoản ────────────────────────── */
+function LockReasonModal({ isOpen, onClose, user, onConfirm, loading }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setReason("");
+      setError("");
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !user) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setError("Vui lòng nhập lý do khóa tài khoản");
+      return;
+    }
+    onConfirm(reason.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md overflow-hidden transform transition-all scale-100">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-[#bec7d4]/10 bg-slate-50/50 flex justify-between items-center text-left">
+          <h3 className="font-headline-md text-base font-bold text-[#ba1a1a]">
+            Khóa Tài Khoản Người Dùng
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-slate-200 text-slate-500 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-left">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Bạn đang thực hiện khóa tài khoản của thành viên{" "}
+            <strong className="text-slate-800">{user.fullName}</strong> (
+            {user.email}). Người dùng này sẽ không thể đăng nhập vào hệ thống
+            sau khi bị khóa.
+          </p>
+
+          {/* Lý do khóa */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Lý do khóa tài khoản *
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value);
+                if (e.target.value.trim()) setError("");
+              }}
+              rows={3}
+              className={`w-full px-3 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm bg-white resize-none ${
+                error ? "border-red-500" : "border-[#bec7d4]/60"
+              }`}
+              placeholder="Nhập lý do chi tiết (ví dụ: Vi phạm điều khoản, spam đặt vé...)..."
+            />
+            {error && (
+              <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
+                {error}
+              </span>
+            )}
+          </div>
+
+          {/* Modal Actions */}
+          <div className="flex gap-3 pt-4 border-t border-[#bec7d4]/10 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors"
+            >
+              Hủy bỏ
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-xl bg-[#ba1a1a] hover:bg-red-600 text-white text-sm font-semibold transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60"
+            >
+              {loading && (
+                <span className="material-symbols-outlined text-[16px] animate-spin">
+                  progress_activity
+                </span>
+              )}
+              Khóa tài khoản
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── Modal Thêm Nhân Viên Mới ────────────────────────────── */
+function CreateStaffModal({ isOpen, onClose, onSave, loading }) {
   const [form, setForm] = useState({
     fullName: "",
     email: "",
     phoneNumber: "",
     password: "",
-    userType: "CUSTOMER",
-    isActive: true,
   });
 
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    if (user) {
-      setForm({
-        fullName: user.fullName || "",
-        email: user.email || "",
-        phoneNumber: user.phoneNumber || "",
-        password: "", // Always clear password in edit mode
-        userType: user.userType || "CUSTOMER",
-        isActive: user.isActive !== undefined ? user.isActive : true,
-      });
-    } else {
+    if (isOpen) {
       setForm({
         fullName: "",
         email: "",
         phoneNumber: "",
         password: "",
-        userType: "CUSTOMER",
-        isActive: true,
       });
+      setErrors({});
     }
-    setErrors({});
-  }, [user, isOpen]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -70,9 +157,9 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
     } else if (!/^\d{9,11}$/.test(form.phoneNumber.trim())) {
       err.phoneNumber = "SĐT phải chứa từ 9 đến 11 chữ số";
     }
-    if (!user && !form.password) {
-      err.password = "Mật khẩu không được để trống khi tạo mới";
-    } else if (form.password && form.password.length < 6) {
+    if (!form.password) {
+      err.password = "Mật khẩu không được để trống";
+    } else if (form.password.length < 6) {
       err.password = "Mật khẩu phải từ 6 ký tự trở lên";
     }
     setErrors(err);
@@ -92,7 +179,7 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-[#bec7d4]/10 bg-slate-50/50 flex justify-between items-center">
           <h3 className="font-headline-md text-base font-bold text-[#191c1e]">
-            {user ? "Chỉnh Sửa Người Dùng" : "Thêm Người Dùng Mới"}
+            Thêm Nhân Viên Điều Hành Mới
           </h3>
           <button
             onClick={onClose}
@@ -116,10 +203,10 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
               className={`w-full px-3 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm ${
                 errors.fullName ? "border-red-500" : "border-[#bec7d4]/60"
               }`}
-              placeholder="Nhập họ và tên..."
+              placeholder="Nhập họ và tên nhân viên..."
             />
             {errors.fullName && (
-              <span className="text-red-500 text-[11px] mt-0.5 block">
+              <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
                 {errors.fullName}
               </span>
             )}
@@ -140,7 +227,7 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
               placeholder="Nhập địa chỉ email..."
             />
             {errors.email && (
-              <span className="text-red-500 text-[11px] mt-0.5 block">
+              <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
                 {errors.email}
               </span>
             )}
@@ -163,7 +250,7 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
               placeholder="Ví dụ: 0901234567..."
             />
             {errors.phoneNumber && (
-              <span className="text-red-500 text-[11px] mt-0.5 block">
+              <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
                 {errors.phoneNumber}
               </span>
             )}
@@ -172,7 +259,7 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
           {/* Mật khẩu */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Mật khẩu {user && "(Bỏ trống nếu giữ nguyên)"} *
+              Mật khẩu *
             </label>
             <input
               type="password"
@@ -184,45 +271,10 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
               placeholder="Tối thiểu 6 ký tự..."
             />
             {errors.password && (
-              <span className="text-red-500 text-[11px] mt-0.5 block">
+              <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
                 {errors.password}
               </span>
             )}
-          </div>
-
-          {/* Hàng ngang: Vai trò & Trạng thái */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Vai Trò
-              </label>
-              <select
-                value={form.userType}
-                onChange={(e) => setForm({ ...form, userType: e.target.value })}
-                className="w-full px-3 py-2 border border-[#bec7d4]/60 rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm bg-white"
-              >
-                <option value="CUSTOMER">Khách Hàng</option>
-                <option value="ADMIN">Quản Trị Viên</option>
-                <option value="STAFF">Điều Hành Viên</option>
-                <option value="ANALYST">Phân Tích Viên</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Trạng Thái
-              </label>
-              <select
-                value={form.isActive ? "true" : "false"}
-                onChange={(e) =>
-                  setForm({ ...form, isActive: e.target.value === "true" })
-                }
-                className="w-full px-3 py-2 border border-[#bec7d4]/60 rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm bg-white"
-              >
-                <option value="true">Hoạt động</option>
-                <option value="false">Khóa tài khoản</option>
-              </select>
-            </div>
           </div>
 
           {/* Modal Actions */}
@@ -244,53 +296,10 @@ function UserModal({ isOpen, onClose, user, onSave, loading }) {
                   progress_activity
                 </span>
               )}
-              Lưu thay đổi
+              Tạo nhân viên
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-/* ── Confirm Dialog ──────────────────────────────────── */
-function ConfirmDialog({ message, onConfirm, onCancel, loading }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-sm p-6 text-left">
-        <div className="flex items-start gap-3 mb-5">
-          <div className="p-2.5 bg-amber-100 rounded-xl text-amber-600 shrink-0">
-            <span className="material-symbols-outlined text-[22px]">
-              warning
-            </span>
-          </div>
-          <div>
-            <p className="font-headline-md text-[#191c1e] font-bold text-base mb-1">
-              Xác nhận xóa tài khoản
-            </p>
-            <p className="text-[#3f4852] text-sm leading-relaxed">{message}</p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors"
-          >
-            Hủy
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="flex-1 py-2.5 rounded-xl bg-[#ba1a1a] hover:bg-red-600 text-white text-sm font-semibold transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60"
-          >
-            {loading && (
-              <span className="material-symbols-outlined text-[16px] animate-spin">
-                progress_activity
-              </span>
-            )}
-            Đồng ý xóa
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -310,9 +319,8 @@ export function UserManagement() {
   });
 
   // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [lockConfirmUser, setLockConfirmUser] = useState(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
 
   // Debouncing search
@@ -337,7 +345,8 @@ export function UserManagement() {
     queryFn: () => {
       let typeParam = "";
       if (activeTab === "CUSTOMER") typeParam = "&userType=CUSTOMER";
-      if (activeTab === "STAFF") typeParam = "&userType=STAFF_ALL";
+      if (activeTab === "STAFF") typeParam = "&userType=STAFF";
+      if (activeTab === "ADMIN") typeParam = "&userType=ADMIN";
 
       return api
         .get(
@@ -355,12 +364,17 @@ export function UserManagement() {
   });
 
   /* ── TanStack Mutations ─────────────────────────────── */
-  // 1. Create User
-  const createUserMutation = useMutation({
-    mutationFn: (newUser) => api.post("/users/admin/create", newUser),
+  // Create staff user mutation
+  const createStaffMutation = useMutation({
+    mutationFn: (newStaff) =>
+      api.post("/users/admin/create", {
+        ...newStaff,
+        userType: "STAFF",
+        isActive: true,
+      }),
     onSuccess: (res) => {
-      toast.success(res.data.message || "Tạo tài khoản thành công!");
-      setIsModalOpen(false);
+      toast.success(res.data.message || "Tạo tài khoản nhân sự thành công!");
+      setIsCreateModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
       queryClient.invalidateQueries({ queryKey: ["adminUsersStats"] });
     },
@@ -369,43 +383,14 @@ export function UserManagement() {
     },
   });
 
-  // 2. Update User
-  const updateUserMutation = useMutation({
-    mutationFn: ({ id, updatedData }) =>
-      api.put(`/users/admin/update/${id}`, updatedData),
-    onSuccess: (res) => {
-      toast.success(res.data.message || "Cập nhật tài khoản thành công!");
-      setIsModalOpen(false);
-      setSelectedUser(null);
-      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
-      queryClient.invalidateQueries({ queryKey: ["adminUsersStats"] });
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Cập nhật thất bại!");
-    },
-  });
-
-  // 3. Delete User
-  const deleteUserMutation = useMutation({
-    mutationFn: (id) => api.delete(`/users/admin/delete/${id}`),
-    onSuccess: (res) => {
-      toast.success(res.data.message || "Đã xóa tài khoản!");
-      setDeleteConfirm(null);
-      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
-      queryClient.invalidateQueries({ queryKey: ["adminUsersStats"] });
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "Xóa thất bại!");
-    },
-  });
-
-  // 4. Toggle active status
+  // Toggle active status (includes lockReason when locking)
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ id, isActive }) =>
-      api.put(`/users/admin/update/${id}`, { isActive }),
+    mutationFn: ({ id, isActive, lockReason }) =>
+      api.put(`/users/admin/update/${id}`, { isActive, lockReason }),
     onSuccess: (res) => {
       toast.success(res.data.message || "Cập nhật trạng thái thành công!");
       setActiveDropdown(null);
+      setLockConfirmUser(null);
       queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
       queryClient.invalidateQueries({ queryKey: ["adminUsersStats"] });
     },
@@ -414,27 +399,14 @@ export function UserManagement() {
     },
   });
 
-  const handleSaveUser = (formData) => {
-    if (selectedUser) {
-      updateUserMutation.mutate({ id: selectedUser.id, updatedData: formData });
-    } else {
-      createUserMutation.mutate(formData);
-    }
-  };
-
-  const handleEditClick = (user) => {
-    setSelectedUser(user);
-    setIsModalOpen(true);
-    setActiveDropdown(null);
-  };
-
-  const handleDeleteClick = (user) => {
-    setDeleteConfirm(user);
-    setActiveDropdown(null);
-  };
-
   const handleToggleActiveClick = (user) => {
-    toggleActiveMutation.mutate({ id: user.id, isActive: !user.isActive });
+    if (user.isActive) {
+      // If active, open lock reason modal
+      setLockConfirmUser(user);
+    } else {
+      // If already locked, unlock directly (passes isActive: true)
+      toggleActiveMutation.mutate({ id: user.id, isActive: true });
+    }
   };
 
   // Close dropdowns on window click
@@ -446,10 +418,7 @@ export function UserManagement() {
 
   const stats = statsData?.stats;
   const isMutating =
-    createUserMutation.isPending ||
-    updateUserMutation.isPending ||
-    deleteUserMutation.isPending ||
-    toggleActiveMutation.isPending;
+    toggleActiveMutation.isPending || createStaffMutation.isPending;
 
   // Initials Avatar generator
   const getInitials = (name) => {
@@ -468,12 +437,8 @@ export function UserManagement() {
       cls: "bg-[#cfe5ff] text-[#004a77] border border-[#cfe5ff]",
     },
     STAFF: {
-      label: "ĐIỀU HÀNH VIÊN",
+      label: "NHÂN VIÊN",
       cls: "bg-[#d0e7ea] text-[#364a4d] border border-[#d0e7ea]",
-    },
-    ANALYST: {
-      label: "PHÂN TÍCH VIÊN",
-      cls: "bg-slate-100 text-slate-700 border border-slate-200",
     },
     CUSTOMER: {
       label: "KHÁCH HÀNG",
@@ -508,16 +473,13 @@ export function UserManagement() {
             />
           </div>
           <button
-            onClick={() => {
-              setSelectedUser(null);
-              setIsModalOpen(true);
-            }}
+            onClick={() => setIsCreateModalOpen(true)}
             className="bg-[#00629d] hover:bg-[#00a3ff] text-white px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-label-md text-sm transition-all shadow-sm shrink-0 active:scale-95 cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">
               person_add
             </span>
-            Thêm Người Dùng
+            Thêm Nhân Viên
           </button>
         </div>
       </section>
@@ -553,13 +515,17 @@ export function UserManagement() {
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            Nhân viên (
-            {statsLoading
-              ? "—"
-              : (stats?.admin || 0) +
-                (stats?.staff || 0) +
-                (stats?.analyst || 0)}
-            )
+            Nhân viên ({statsLoading ? "—" : stats?.staff || 0})
+          </button>
+          <button
+            onClick={() => handleTabChange("ADMIN")}
+            className={`px-5 py-2 rounded-xl font-label-md text-xs transition-all ${
+              activeTab === "ADMIN"
+                ? "bg-white shadow-sm text-[#00629d] font-bold"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            Quản trị viên ({statsLoading ? "—" : stats?.admin || 0})
           </button>
         </div>
 
@@ -572,15 +538,6 @@ export function UserManagement() {
               filter_list
             </span>
             Bộ lọc
-          </button>
-          <button
-            onClick={() => toast.success("Đang chuẩn bị xuất file Excel...")}
-            className="px-4 py-2 border border-slate-200 rounded-xl flex items-center gap-1.5 text-slate-600 font-label-sm text-xs hover:bg-slate-50 transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">
-              download
-            </span>
-            Xuất Excel
           </button>
         </div>
       </div>
@@ -696,20 +653,30 @@ export function UserManagement() {
 
                       {/* Status */}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            user.isActive
-                              ? "bg-green-50 text-green-700 border border-green-100"
-                              : "bg-red-50 text-red-600 border border-red-100"
-                          }`}
-                        >
+                        <div className="flex flex-col gap-1">
                           <span
-                            className={`w-1 h-1 rounded-full ${
-                              user.isActive ? "bg-green-500" : "bg-red-500"
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold w-fit ${
+                              user.isActive
+                                ? "bg-green-50 text-green-700 border border-green-100"
+                                : "bg-red-50 text-red-600 border border-red-100"
                             }`}
-                          />
-                          {user.isActive ? "HOẠT ĐỘNG" : "BỊ KHÓA"}
-                        </span>
+                          >
+                            <span
+                              className={`w-1 h-1 rounded-full ${
+                                user.isActive ? "bg-green-500" : "bg-red-500"
+                              }`}
+                            />
+                            {user.isActive ? "HOẠT ĐỘNG" : "BỊ KHÓA"}
+                          </span>
+                          {!user.isActive && user.lockReason && (
+                            <span
+                              className="text-[11px] text-slate-400 italic max-w-[180px] truncate block"
+                              title={user.lockReason}
+                            >
+                              Lý do: {user.lockReason}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -735,15 +702,6 @@ export function UserManagement() {
                             className="absolute right-6 top-12 w-48 bg-white border border-slate-200/80 rounded-xl shadow-lg z-20 py-1 text-left animate-fade-in"
                           >
                             <button
-                              onClick={() => handleEditClick(user)}
-                              className="w-full px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                            >
-                              <span className="material-symbols-outlined text-[16px] text-slate-400">
-                                edit
-                              </span>
-                              Chỉnh sửa thông tin
-                            </button>
-                            <button
                               onClick={() => handleToggleActiveClick(user)}
                               className="w-full px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                             >
@@ -753,16 +711,6 @@ export function UserManagement() {
                               {user.isActive
                                 ? "Khóa tài khoản"
                                 : "Mở khóa tài khoản"}
-                            </button>
-                            <div className="border-t border-slate-100 my-1" />
-                            <button
-                              onClick={() => handleDeleteClick(user)}
-                              className="w-full px-4 py-2 text-xs font-semibold text-[#ba1a1a] hover:bg-red-50 flex items-center gap-2 cursor-pointer"
-                            >
-                              <span className="material-symbols-outlined text-[16px] text-[#ba1a1a]">
-                                delete
-                              </span>
-                              Xóa tài khoản
                             </button>
                           </div>
                         )}
@@ -844,7 +792,7 @@ export function UserManagement() {
           </span>
           Phân Quyền & Vai Trò
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Card 1: Admin */}
           <div className="p-6 bg-white rounded-2xl border border-slate-200/80 hover:shadow-md transition-all group flex flex-col justify-between">
             <div className="flex justify-between items-start mb-4">
@@ -892,7 +840,7 @@ export function UserManagement() {
             </div>
             <div>
               <h4 className="font-label-md text-slate-800 text-sm mb-1 font-semibold">
-                Điều Hành Viên (Staff)
+                Nhân Viên (Staff)
               </h4>
               <p className="text-slate-500 text-xs leading-relaxed mb-6">
                 Quản lý lịch trình tàu chạy, xử lý yêu cầu hủy/hoàn vé và hỗ trợ
@@ -910,62 +858,30 @@ export function UserManagement() {
               Chỉnh sửa quyền
             </button>
           </div>
-
-          {/* Card 3: Analyst */}
-          <div className="p-6 bg-white rounded-2xl border border-slate-200/80 hover:shadow-md transition-all group flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-4">
-              <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-                <span className="material-symbols-outlined text-[24px]">
-                  analytics
-                </span>
-              </div>
-              <span className="text-slate-400 font-label-sm text-xs">
-                {statsLoading ? "—" : stats?.analyst || 0} nhân sự
-              </span>
-            </div>
-            <div>
-              <h4 className="font-label-md text-slate-800 text-sm mb-1 font-semibold">
-                Phân Tích Viên (Analyst)
-              </h4>
-              <p className="text-slate-500 text-xs leading-relaxed mb-6">
-                Quyền truy cập xem báo cáo thống kê doanh thu, lưu lượng và phân
-                tích dữ liệu.
-              </p>
-            </div>
-            <button
-              onClick={() =>
-                toast.info(
-                  "Tính năng chỉnh sửa phân quyền sẽ có ở phiên bản tiếp theo",
-                )
-              }
-              className="w-full py-2 rounded-xl border border-[#00629d] text-[#00629d] font-semibold text-xs hover:bg-[#00629d] hover:text-white transition-all cursor-pointer"
-            >
-              Chỉnh sửa quyền
-            </button>
-          </div>
         </div>
       </section>
 
       {/* Modals & Dialogs */}
-      <UserModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedUser(null);
-        }}
-        user={selectedUser}
-        onSave={handleSaveUser}
+      <LockReasonModal
+        isOpen={!!lockConfirmUser}
+        onClose={() => setLockConfirmUser(null)}
+        user={lockConfirmUser}
+        onConfirm={(reason) =>
+          toggleActiveMutation.mutate({
+            id: lockConfirmUser.id,
+            isActive: false,
+            lockReason: reason,
+          })
+        }
         loading={isMutating}
       />
 
-      {deleteConfirm && (
-        <ConfirmDialog
-          message={`Hành động này sẽ xóa tài khoản người dùng ${deleteConfirm.fullName} (${deleteConfirm.email}) khỏi hệ thống quản trị. Bạn có chắc chắn?`}
-          loading={isMutating}
-          onConfirm={() => deleteUserMutation.mutate(deleteConfirm.id)}
-          onCancel={() => setDeleteConfirm(null)}
-        />
-      )}
+      <CreateStaffModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSave={(form) => createStaffMutation.mutate(form)}
+        loading={isMutating}
+      />
     </div>
   );
 }
