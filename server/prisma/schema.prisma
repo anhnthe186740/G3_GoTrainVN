@@ -109,6 +109,7 @@ model Train {
   totalCarriages   Int
   carriages        Carriage[]
   schedules        Schedule[]
+  routeTemplates   RouteTemplate[]      @relation("trainTemplates")
   totalCapacity    Int // Total seats across all carriages
   maintenance      VehicleMaintenance[]
   createdAt        DateTime             @default(now())
@@ -210,6 +211,7 @@ model Route {
   estimatedDuration Int // minutes
   stations          RouteStation[] // Embedded array of intermediate stops
   schedules         Schedule[]
+  routeTemplates    RouteTemplate[] @relation("routeTemplates")
   pricingPolicies   PricingPolicy[]
   popularity        Int             @default(0) // Track booking count
   isActive          Boolean         @default(true)
@@ -267,6 +269,25 @@ model ScheduleStop {
   @@unique([scheduleId, stationId])
   @@index([scheduleId])
 }
+
+model RouteTemplate {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  routeId        String   @db.ObjectId
+  route          Route    @relation("routeTemplates", fields: [routeId], references: [id], onDelete: Cascade)
+  trainId        String   @db.ObjectId
+  train          Train    @relation("trainTemplates", fields: [trainId], references: [id], onDelete: Cascade)
+  departureTimes String[] // ["06:00", "12:00", "20:00"]
+  bufferMinutes  Int      @default(60)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([routeId, trainId])
+  @@index([routeId])
+  @@index([trainId])
+  @@index([isActive])
+}
+
 
 // ============================================
 // 4. PRICING & DISCOUNT ENTITIES
