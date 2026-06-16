@@ -5,6 +5,7 @@ import {
   buildCarriageConfigs,
   createTrainInventory,
 } from "../utils/trainInventory.js";
+import { generateSchedulesForDay30 } from "../services/autoSchedule.service.js";
 
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
@@ -607,4 +608,16 @@ export const deleteTrain = asyncHandler(async (req, res) => {
     where: { id },
   });
   res.json({ message: "Đoàn tàu đã được xóa thành công." });
+});
+
+// ============================================================
+// POST /api/v1/schedules/trigger-auto-generate - Kích hoạt thủ công tạo lịch trình ngày thứ 30
+// ============================================================
+export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
+  const result = await generateSchedulesForDay30();
+  res.json({
+    message: result.message,
+    created: result.created,
+    skipped: result.skipped,
+  });
 });

@@ -8,11 +8,13 @@ import {
   initializeSeatRealtime,
 } from "./realtime/seatRealtime.js";
 import { cleanupExpiredHolds } from "./services/seatSelection.service.js";
+import { startAutoScheduleCron } from "./services/autoSchedule.service.js";
 
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   await connectDatabase();
+  startAutoScheduleCron();
   const httpServer = createServer(app);
   initializeSeatRealtime(httpServer);
 

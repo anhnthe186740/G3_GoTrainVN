@@ -77,6 +77,26 @@ export function AdminSchedulePanel() {
   // Detail Modal
   const [activeDetails, setActiveDetails] = useState(null);
 
+  const [triggeringAuto, setTriggeringAuto] = useState(false);
+
+  const handleTriggerAutoGenerate = async () => {
+    setTriggeringAuto(true);
+    try {
+      const res = await api.post("/schedules/trigger-auto-generate");
+      toast.success(
+        res.data.message || "Kích hoạt tạo lịch trình tự động thành công!",
+      );
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message ||
+          "Lỗi khi kích hoạt tự động tạo lịch trình.",
+      );
+    } finally {
+      setTriggeringAuto(false);
+    }
+  };
+
   // ── Load All Data ──────────────────────────────────────────────
   const loadAll = useCallback(async ({ force = false } = {}) => {
     try {
@@ -239,7 +259,7 @@ export function AdminSchedulePanel() {
           className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Tự Động Tạo Lịch Trình
+          Gen lịch trình theo khoảng thời gian
         </button>
       </div>
 
@@ -320,6 +340,45 @@ export function AdminSchedulePanel() {
             </h3>
           </div>
         </div>
+      </div>
+
+      {/* Trình tự động tạo lịch trình (Hàng ngày) */}
+      <div className="bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-1">
+          <h4 className="text-sm font-bold text-[#191c1e] flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[#00629d] text-[18px]">
+              sync
+            </span>
+            Trình tự động tạo lịch trình (Hàng ngày)
+          </h4>
+          <p className="text-xs text-[#3f4852]">
+            Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày, tự động sinh
+            lịch trình chạy tàu cho <strong>ngày thứ 30 tới</strong> dựa trên dữ
+            liệu mẫu của 7 ngày trước đó nhằm đảm bảo luôn mở bán vé trước cho
+            khách.
+          </p>
+        </div>
+        <button
+          onClick={handleTriggerAutoGenerate}
+          disabled={triggeringAuto}
+          className="px-4 py-2.5 bg-[#d6e5ef] hover:bg-[#c3d7e6] text-[#00629d] disabled:opacity-60 rounded-xl font-semibold text-xs transition-all active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-center shrink-0 border-none cursor-pointer"
+        >
+          {triggeringAuto ? (
+            <>
+              <span className="material-symbols-outlined text-[16px] animate-spin">
+                progress_activity
+              </span>
+              Đang đồng bộ...
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-[16px]">
+                bolt
+              </span>
+              Chạy Ngay (Đồng bộ Ngày 30)
+            </>
+          )}
+        </button>
       </div>
 
       {/* Filters & Search */}
@@ -654,7 +713,7 @@ export function AdminSchedulePanel() {
                 <span className="material-symbols-outlined text-[#00629d]">
                   calendar_today
                 </span>
-                Tự Động Tạo Lịch Trình
+                Gen lịch trình theo khoảng thời gian
               </h3>
               <button
                 onClick={() => {
@@ -820,7 +879,7 @@ export function AdminSchedulePanel() {
                       <span className="material-symbols-outlined text-[16px]">
                         auto_schedule
                       </span>
-                      Xác Nhận Tạo
+                      Bắt đầu Gen lịch trình
                     </>
                   )}
                 </button>

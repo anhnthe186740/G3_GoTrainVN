@@ -11,7 +11,10 @@ import {
   deleteRoute,
   createTrain,
   deleteTrain,
+  triggerAutoGenerateSchedules,
 } from "../controllers/routeSchedule.controller.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { adminOnly } from "../middlewares/adminOnly.js";
 
 export const routeScheduleRoutes = Router();
 
@@ -31,3 +34,9 @@ routeScheduleRoutes.delete("/routes/:id", deleteRoute);
 routeScheduleRoutes.get("/schedules/search", searchSchedules);
 routeScheduleRoutes.get("/schedules", getSchedules);
 routeScheduleRoutes.post("/schedules/auto-generate", generateSchedules);
+routeScheduleRoutes.post(
+  "/schedules/trigger-auto-generate",
+  authMiddleware,
+  adminOnly,
+  triggerAutoGenerateSchedules,
+);
