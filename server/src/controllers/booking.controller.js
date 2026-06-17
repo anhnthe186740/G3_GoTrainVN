@@ -3,6 +3,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   checkoutBooking,
   confirmQrPayment,
+  getBookingPaymentStatus,
+  handlePayosWebhook,
   quoteBooking,
 } from "../services/bookingCheckout.service.js";
 
@@ -27,6 +29,23 @@ export const confirmBookingQrPayment = asyncHandler(async (req, res) => {
   res.json({
     message: "Thanh toán thành công. Vé điện tử đang được gửi qua email.",
     booking,
+  });
+});
+
+export const getBookingPaymentState = asyncHandler(async (req, res) => {
+  const booking = await getBookingPaymentStatus(
+    req.bookingIdentity,
+    req.params.id,
+  );
+  res.json({ booking });
+});
+
+export const receivePayosWebhook = asyncHandler(async (req, res) => {
+  const result = await handlePayosWebhook(req.body);
+  res.json({
+    success: true,
+    ignored: Boolean(result.ignored),
+    duplicate: Boolean(result.duplicate),
   });
 });
 

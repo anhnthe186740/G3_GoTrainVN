@@ -1,7 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
 import { calculateFare, getConfiguration } from "./pricing.service.js";
 import { getJourney, getSession } from "./seatSelection.service.js";
+import {
+  createPayosPaymentRequest,
+  verifyPayosSignature,
+} from "./payos.service.js";
 
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
@@ -376,6 +380,33 @@ function ticketCode() {
   return `VE${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
 }
 
+async function payosOrderCode() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = Number(`${Date.now()}${randomInt(10, 99)}`);
+    const existing = await prisma.booking.findFirst({
+      where: { payosOrderCode: String(candidate) },
+      select: { id: true },
+    });
+    if (!existing) return candidate;
+  }
+  throw httpError(500, "Khong the tao ma thanh toan PayOS duy nhat.");
+}
+
+function payosDescription(orderCode) {
+  return `GT${String(orderCode).slice(-7)}`;
+}
+
+function buyerFromPassengers(passengers) {
+  const contact =
+    passengers.find((passenger) => passenger.email || passenger.phoneNumber) ||
+    passengers[0];
+  return {
+    name: contact?.fullName,
+    email: contact?.email,
+    phone: contact?.phoneNumber,
+  };
+}
+
 export async function checkoutBooking(identity, payload) {
   if (
     !Array.isArray(payload.passengers) ||
@@ -409,6 +440,20 @@ export async function checkoutBooking(identity, payload) {
   const immediatePayment = paymentMethod === "WALLET";
   const now = new Date();
   const code = bookingCode();
+  let payosPayment = null;
+  let payosOrderCodeValue = null;
+  let payosDescriptionValue = null;
+  if (paymentMethod === "BANK_QR") {
+    payosOrderCodeValue = await payosOrderCode();
+    payosDescriptionValue = payosDescription(payosOrderCodeValue);
+    payosPayment = await createPayosPaymentRequest({
+      orderCode: payosOrderCodeValue,
+      amount: quote.totalAmount,
+      description: payosDescriptionValue,
+      expiresAt: quote.session.expiresAt,
+      buyer: buyerFromPassengers(passengers),
+    });
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const claimedSession = await tx.seatHoldSession.updateMany({
@@ -457,6 +502,13 @@ export async function checkoutBooking(identity, payload) {
         totalAmount: quote.totalAmount,
         paymentMethod,
         paymentStatus: immediatePayment ? "COMPLETED" : "PENDING",
+        paymentId: immediatePayment ? null : payosPayment?.paymentLinkId,
+        payosOrderCode: payosOrderCodeValue
+          ? String(payosOrderCodeValue)
+          : null,
+        payosPaymentLinkId: payosPayment?.paymentLinkId || null,
+        payosCheckoutUrl: payosPayment?.checkoutUrl || null,
+        payosQrCode: payosPayment?.qrCode || null,
         status: immediatePayment ? "COMPLETED" : "PENDING",
         confirmationEmail:
           passengers.find((passenger) => passenger.email)?.email || null,
@@ -568,10 +620,19 @@ export async function checkoutBooking(identity, payload) {
 
   return {
     ...result,
-    qrPayload:
-      paymentMethod === "BANK_QR"
-        ? `GOTRAINVN|${result.booking.bookingCode}|${result.booking.totalAmount}|${result.booking.id}`
-        : null,
+    qrPayload: paymentMethod === "BANK_QR" ? payosPayment?.qrCode : null,
+    payos: payosPayment
+      ? {
+          orderCode: payosOrderCodeValue,
+          description: payosDescriptionValue,
+          paymentLinkId: payosPayment.paymentLinkId,
+          checkoutUrl: payosPayment.checkoutUrl,
+          qrCode: payosPayment.qrCode,
+          accountNumber: payosPayment.accountNumber,
+          accountName: payosPayment.accountName,
+          bin: payosPayment.bin,
+        }
+      : null,
     paymentExpiresAt: result.booking.expiresAt,
     emailQueued: immediatePayment,
   };
@@ -587,6 +648,12 @@ export async function confirmQrPayment(identity, bookingId) {
     throw httpError(400, "Đơn hàng không sử dụng thanh toán QR.");
   }
   if (booking.paymentStatus === "COMPLETED") return booking;
+  if (booking.paymentStatus !== "COMPLETED") {
+    throw httpError(
+      409,
+      "Thanh toan QR dang cho PayOS xac nhan. Ve chi duoc phat hanh sau webhook hop le.",
+    );
+  }
   if (
     booking.status !== "PENDING" ||
     (booking.expiresAt && booking.expiresAt <= new Date())
@@ -630,4 +697,131 @@ export async function confirmQrPayment(identity, bookingId) {
     }
     return completed;
   });
+}
+
+export async function getBookingPaymentStatus(identity, bookingId) {
+  const booking = await prisma.booking.findFirst({
+    where: { id: bookingId, ...ownerWhere(identity) },
+    include: { passengers: true },
+  });
+  if (!booking) throw httpError(404, "Khong tim thay don dat ve.");
+  return booking;
+}
+
+async function completePayosBooking(tx, booking, webhookData) {
+  const updated = await tx.booking.updateMany({
+    where: {
+      id: booking.id,
+      paymentStatus: "PENDING",
+      status: "PENDING",
+    },
+    data: {
+      status: "COMPLETED",
+      paymentStatus: "COMPLETED",
+      paymentId: webhookData.paymentLinkId,
+      payosPaymentLinkId: webhookData.paymentLinkId,
+      payosReference: webhookData.reference,
+      paidAt: new Date(),
+      expiresAt: null,
+    },
+  });
+  if (updated.count !== 1) {
+    return tx.booking.findUnique({
+      where: { id: booking.id },
+      include: { passengers: true },
+    });
+  }
+
+  await tx.bookingDetail.updateMany({
+    where: { bookingId: booking.id },
+    data: { status: "CONFIRMED" },
+  });
+  await tx.bookingPaymentHistory.updateMany({
+    where: { bookingId: booking.id, status: "PENDING" },
+    data: {
+      status: "SUCCESS",
+      transactionId: webhookData.reference || webhookData.paymentLinkId,
+    },
+  });
+  if (booking.userId) {
+    await tx.notification.create({
+      data: {
+        userId: booking.userId,
+        type: "BOOKING_CONFIRMED",
+        title: "Thanh toan thanh cong",
+        message: `Ve dien tu cua don ${booking.bookingCode} dang duoc gui den ${booking.confirmationEmail}.`,
+        relatedBookingId: booking.id,
+        deliveryMethod: ["IN_APP", "EMAIL"],
+        deliveryStatus: "PENDING",
+      },
+    });
+  }
+
+  return tx.booking.findUnique({
+    where: { id: booking.id },
+    include: { passengers: true },
+  });
+}
+
+async function markPayosPaymentMismatch(booking, reason) {
+  await prisma.bookingPaymentHistory.updateMany({
+    where: { bookingId: booking.id, status: "PENDING" },
+    data: {
+      status: "FAILED",
+      failureReason: reason,
+    },
+  });
+}
+
+export async function handlePayosWebhook(payload) {
+  if (
+    !payload?.data ||
+    !verifyPayosSignature(payload.data, payload.signature)
+  ) {
+    throw httpError(400, "Chu ky webhook PayOS khong hop le.");
+  }
+
+  const data = payload.data;
+  if (!payload.success || payload.code !== "00" || data.code !== "00") {
+    return { ignored: true, reason: "payment_not_success", data };
+  }
+
+  const orderCode = data.orderCode != null ? String(data.orderCode) : null;
+  const paymentMatchers = [
+    orderCode ? { payosOrderCode: orderCode } : null,
+    data.paymentLinkId ? { payosPaymentLinkId: data.paymentLinkId } : null,
+  ].filter(Boolean);
+  if (paymentMatchers.length === 0) {
+    return { ignored: true, reason: "missing_payment_identity", data };
+  }
+  const booking = await prisma.booking.findFirst({
+    where: {
+      paymentMethod: "BANK_QR",
+      OR: paymentMatchers,
+    },
+    include: { passengers: true },
+  });
+
+  if (!booking) {
+    return { ignored: true, reason: "booking_not_found", data };
+  }
+  if (booking.paymentStatus === "COMPLETED") {
+    return { ignored: false, duplicate: true, booking };
+  }
+  if (Math.round(booking.totalAmount) !== Math.round(Number(data.amount))) {
+    await markPayosPaymentMismatch(booking, "PAYOS_AMOUNT_MISMATCH");
+    return { ignored: true, reason: "amount_mismatch", booking };
+  }
+  if (
+    booking.status !== "PENDING" ||
+    (booking.expiresAt && booking.expiresAt <= new Date())
+  ) {
+    await markPayosPaymentMismatch(booking, "PAYOS_PAYMENT_EXPIRED");
+    return { ignored: true, reason: "booking_not_payable", booking };
+  }
+
+  const completed = await prisma.$transaction((tx) =>
+    completePayosBooking(tx, booking, data),
+  );
+  return { ignored: false, booking: completed };
 }
