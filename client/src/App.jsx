@@ -10,6 +10,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
 import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
+import { Promotions } from "./pages/Promotions";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
 import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="booking/passengers" element={<PassengerDetailsPage />} />
 
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
+        <Route path="promotions" element={<Promotions />} />
 
         <Route
           path="dashboard"

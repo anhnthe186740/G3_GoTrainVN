@@ -25,10 +25,19 @@ export function Navbar() {
 
   const navLinks = [
     { to: "/", label: "Trang Chủ" },
-    { to: "/schedule", label: "Lịch Trình" },
-    { to: "/promotions", label: "Khuyến Mãi" },
     { to: "/tra-cuu-ve", label: "Tra Cứu Vé" },
+    { to: "/promotions", label: "Khuyến Mãi" },
   ];
+
+  const userNavLinks = user
+    ? [
+        {
+          to: "/dashboard",
+          label: user.role === "ADMIN" ? "Quản Trị" : "Của Tôi",
+        },
+        { to: "/wallet", label: "Ví" },
+      ]
+    : [];
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md shadow-[0px_10px_30px_rgba(0,163,255,0.08)] border-b border-surface-container/50">
@@ -59,22 +68,27 @@ export function Navbar() {
               {link.label}
             </NavLink>
           ))}
+          {userNavLinks.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) =>
+                `font-label-md text-sm transition-colors duration-300 pb-1 ${
+                  isActive
+                    ? "text-primary font-bold border-b-2 border-primary"
+                    : "text-on-surface-variant font-medium hover:text-primary"
+                }`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
         </div>
 
         {/* Auth profile / actions */}
         <div className="flex items-center gap-md">
           {user ? (
             <>
-              {user.role !== "ADMIN" && (
-                <Link
-                  to="/wallet"
-                  className="flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors px-3 py-2 rounded-xl hover:bg-primary/8"
-                  style={{ "--tw-bg-opacity": 1 }}
-                >
-                  <Wallet className="h-4 w-4" />
-                  <span className="hidden sm:inline">Ví</span>
-                </Link>
-              )}
               <Link
                 to="/profile"
                 className="flex items-center gap-sm cursor-pointer group"

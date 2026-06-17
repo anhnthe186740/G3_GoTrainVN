@@ -187,6 +187,170 @@ export function TicketLookup() {
     });
   };
 
+  const getBookedTripStations = (booking) => {
+    if (!booking) return { from: null, to: null };
+    const hasBookedSegment =
+      booking.fromStation ||
+      booking.toStation ||
+      booking.fromStationId ||
+      booking.toStationId;
+
+    return {
+      from:
+        booking.fromStation ||
+        (!hasBookedSegment ? booking.schedule?.startStation : null),
+      to:
+        booking.toStation ||
+        (!hasBookedSegment ? booking.schedule?.endStation : null),
+    };
+  };
+
+  const stationName = (station) =>
+    station?.stationName || station?.city || "Chưa xác định";
+
+  const stationCity = (station) => station?.city || "";
+
+  const getStationId = (station) => station?.id || station?.stationId;
+
+  const getJourneyPoints = (booking) => {
+    const schedule = booking?.schedule;
+    if (!schedule) return [];
+    return [
+      {
+        stationId: getStationId(schedule.startStation),
+        departureTime: schedule.departureTime,
+        arrivalTime: schedule.departureTime,
+        stopOrder: 0,
+      },
+      ...(schedule.scheduleStops || []).map((stop) => ({
+        ...stop,
+        stationId: stop.stationId || stop.station?.id,
+      })),
+      {
+        stationId: getStationId(schedule.endStation),
+        departureTime: schedule.arrivalTime,
+        arrivalTime: schedule.arrivalTime,
+        stopOrder: Number.MAX_SAFE_INTEGER,
+      },
+    ];
+  };
+
+  const getBookedTripTimes = (booking, tripStations) => {
+    const points = getJourneyPoints(booking);
+    const fromId = getStationId(tripStations.from);
+    const toId = getStationId(tripStations.to);
+    const fromPoint = points.find((point) => point.stationId === fromId);
+    const toPoint = points.find((point) => point.stationId === toId);
+
+    return {
+      departureTime:
+        fromPoint?.departureTime ||
+        fromPoint?.arrivalTime ||
+        booking?.schedule?.departureTime,
+      arrivalTime:
+        toPoint?.arrivalTime ||
+        toPoint?.departureTime ||
+        booking?.schedule?.arrivalTime,
+      fromOrder: fromPoint?.stopOrder ?? 0,
+      toOrder: toPoint?.stopOrder ?? Number.MAX_SAFE_INTEGER,
+    };
+  };
+
+  const getJourneyState = (booking, tripStations) => {
+    if (["CANCELLED", "REFUNDED"].includes(booking?.status)) {
+      return "CANCELLED";
+    }
+
+    const { departureTime, arrivalTime } = getBookedTripTimes(
+      booking,
+      tripStations,
+    );
+    const now = Date.now();
+    const departure = departureTime ? new Date(departureTime).getTime() : null;
+    const arrival = arrivalTime ? new Date(arrivalTime).getTime() : null;
+
+    if (arrival && now >= arrival) return "COMPLETED";
+    if (departure && now >= departure) return "IN_PROGRESS";
+    return "UPCOMING";
+  };
+
+  const getJourneyStateBadge = (booking, tripStations) => {
+    const state = getJourneyState(booking, tripStations);
+    if (state === "COMPLETED") {
+      return (
+        <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
+          Chuyến tàu đã hoàn thành
+        </span>
+      );
+    }
+    if (state === "CANCELLED") {
+      return (
+        <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
+          Chuyến đi đã bị hủy
+        </span>
+      );
+    }
+    if (state === "IN_PROGRESS") {
+      return (
+        <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
+          Tàu đang trong hành trình
+        </span>
+      );
+    }
+    return (
+      <span className="text-xs font-semibold text-primary bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+        Chưa khởi hành
+      </span>
+    );
+  };
+
+  const getVisibleIntermediateStops = (booking, tripStations) => {
+    const { fromOrder, toOrder } = getBookedTripTimes(booking, tripStations);
+    return (booking?.schedule?.scheduleStops || []).filter((stop) => {
+      const order = stop.stopOrder ?? 0;
+      return order > fromOrder && order < toOrder;
+    });
+  };
+
+  const getSeatLayout = (ticket) => {
+    const carriageType = ticket?.seat?.carriage?.carriageType || "NORMAL_SEAT";
+    const totalSeats =
+      ticket?.seat?.carriage?.totalSeats ||
+      { NORMAL_SEAT: 40, AC_SEAT: 28, SLEEPER_6: 24, SLEEPER_4: 16 }[
+        carriageType
+      ] ||
+      40;
+    const currentSeat = ticket?.seat?.seatNumber;
+
+    if (carriageType === "NORMAL_SEAT" || carriageType === "AC_SEAT") {
+      return Array.from({ length: totalSeats }, (_, index) => ({
+        seatNumber: String(index + 1),
+        seatType: index % 4 === 0 || index % 4 === 3 ? "WINDOW" : "AISLE",
+        isMine: String(index + 1) === String(currentSeat),
+      }));
+    }
+
+    if (currentSeat && !/^\d+$/.test(String(currentSeat))) {
+      const floors =
+        carriageType === "SLEEPER_6" ? ["1", "2", "3"] : ["1", "2"];
+      return Array.from({ length: 4 }, (_, compartmentIndex) =>
+        floors.flatMap((floor) =>
+          ["A", "B"].map((side) => {
+            const seatNumber = `K${compartmentIndex + 1}-T${floor}-${side}`;
+            return {
+              seatNumber,
+              seatType: floor === "1" ? "WINDOW" : "AISLE",
+              isMine: seatNumber === currentSeat,
+            };
+          }),
+        ),
+      ).flat();
+    }
+
+    return [];
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case "CONFIRMED":
@@ -206,9 +370,9 @@ export function TicketLookup() {
         );
       case "COMPLETED":
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-            Đã hoàn thành
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+            Đã xác nhận
           </span>
         );
       default:
@@ -265,6 +429,23 @@ export function TicketLookup() {
   };
 
   const refundInfo = calculateRefundPolicy(activeTicket);
+  const activeTripStations = getBookedTripStations(activeTicket?.booking);
+  const activeTripTimes = getBookedTripTimes(
+    activeTicket?.booking,
+    activeTripStations,
+  );
+  const activeIntermediateStops = getVisibleIntermediateStops(
+    activeTicket?.booking,
+    activeTripStations,
+  );
+  const activeSeatLayout = getSeatLayout(activeTicket);
+  const activeJourneyState = getJourneyState(
+    activeTicket?.booking,
+    activeTripStations,
+  );
+  const canRequestRefund =
+    ["CONFIRMED", "COMPLETED"].includes(activeTicket?.booking?.status) &&
+    activeJourneyState === "UPCOMING";
 
   // Print ticket boarding pass handler
   const handlePrint = () => {
@@ -527,6 +708,7 @@ export function TicketLookup() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {result.tickets.map((t) => {
                   const schedule = t.booking?.schedule;
+                  const tripStations = getBookedTripStations(t.booking);
                   const isCurrent = activeTicket?.id === t.id;
 
                   return (
@@ -562,7 +744,8 @@ export function TicketLookup() {
                             Ga đi
                           </span>
                           <span className="text-xs font-bold text-slate-700">
-                            {schedule?.startStation?.city}
+                            {stationCity(tripStations.from) ||
+                              stationName(tripStations.from)}
                           </span>
                         </div>
                         <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
@@ -571,7 +754,8 @@ export function TicketLookup() {
                             Ga đến
                           </span>
                           <span className="text-xs font-bold text-slate-700">
-                            {schedule?.endStation?.city}
+                            {stationCity(tripStations.to) ||
+                              stationName(tripStations.to)}
                           </span>
                         </div>
                       </div>
@@ -632,13 +816,10 @@ export function TicketLookup() {
                         Ga đi / From
                       </span>
                       <span className="text-lg font-black text-slate-800">
-                        {
-                          activeTicket.booking?.schedule?.startStation
-                            ?.stationName
-                        }
+                        {stationName(activeTripStations.from)}
                       </span>
                       <span className="text-xs font-bold text-slate-500 mt-0.5">
-                        {activeTicket.booking?.schedule?.startStation?.city}
+                        {stationCity(activeTripStations.from)}
                       </span>
                     </div>
 
@@ -661,13 +842,10 @@ export function TicketLookup() {
                         Ga đến / To
                       </span>
                       <span className="text-lg font-black text-slate-800">
-                        {
-                          activeTicket.booking?.schedule?.endStation
-                            ?.stationName
-                        }
+                        {stationName(activeTripStations.to)}
                       </span>
                       <span className="text-xs font-bold text-slate-500 mt-0.5">
-                        {activeTicket.booking?.schedule?.endStation?.city}
+                        {stationCity(activeTripStations.to)}
                       </span>
                     </div>
                   </div>
@@ -687,14 +865,10 @@ export function TicketLookup() {
                         Giờ khởi hành
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
-                        {formatTime(
-                          activeTicket.booking?.schedule?.departureTime,
-                        )}
+                        {formatTime(activeTripTimes.departureTime)}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block">
-                        {formatDate(
-                          activeTicket.booking?.schedule?.departureTime,
-                        )}
+                        {formatDate(activeTripTimes.departureTime)}
                       </span>
                     </div>
                     <div>
@@ -779,7 +953,7 @@ export function TicketLookup() {
                   <span>In vé / Tải Thẻ Lên Tàu</span>
                 </button>
 
-                {activeTicket.booking?.status === "CONFIRMED" && (
+                {canRequestRefund && (
                   <button
                     onClick={() => {
                       if (refundInfo.allowed) {
@@ -810,19 +984,9 @@ export function TicketLookup() {
                     Thông Tin Hành Trình & Lịch Trình
                   </h3>
 
-                  {activeTicket.booking?.status === "COMPLETED" ? (
-                    <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
-                      Chuyến tàu đã hoàn thành
-                    </span>
-                  ) : activeTicket.booking?.status === "CANCELLED" ? (
-                    <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
-                      Chuyến đi đã bị hủy
-                    </span>
-                  ) : (
-                    <span className="text-xs font-semibold text-primary bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-                      Tàu chạy đúng lịch trình (Đang chờ khởi hành)
-                    </span>
+                  {getJourneyStateBadge(
+                    activeTicket.booking,
+                    activeTripStations,
                   )}
                 </div>
 
@@ -835,32 +999,23 @@ export function TicketLookup() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs font-extrabold text-slate-800 uppercase">
-                        {
-                          activeTicket.booking?.schedule?.startStation
-                            ?.stationName
-                        }
+                        {stationName(activeTripStations.from)}
                       </span>
                       <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
                         <span>Ga đi khởi hành</span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5 text-slate-400" />
-                          Giờ đi:{" "}
-                          {formatTime(
-                            activeTicket.booking?.schedule?.departureTime,
-                          )}{" "}
-                          -{" "}
-                          {formatDate(
-                            activeTicket.booking?.schedule?.departureTime,
-                          )}
+                          Giờ đi: {formatTime(
+                            activeTripTimes.departureTime,
+                          )} - {formatDate(activeTripTimes.departureTime)}
                         </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Dummy Intermediate stations (if no scheduleStops fetched) */}
-                  {!activeTicket.booking?.schedule?.scheduleStops ||
-                  activeTicket.booking.schedule.scheduleStops.length === 0 ? (
+                  {activeIntermediateStops.length === 0 ? (
                     <div className="relative pl-6 py-2">
                       <div className="absolute -left-[24px] top-2.5 w-2 h-2 rounded-full bg-slate-300" />
                       <div className="flex flex-col text-slate-400">
@@ -873,7 +1028,7 @@ export function TicketLookup() {
                       </div>
                     </div>
                   ) : (
-                    activeTicket.booking.schedule.scheduleStops.map((stop) => (
+                    activeIntermediateStops.map((stop) => (
                       <div key={stop.id} className="relative pl-6 py-1">
                         <div className="absolute -left-[25px] top-1.5 w-2.5 h-2.5 rounded-full border border-slate-300 bg-white" />
                         <div className="flex flex-col">
@@ -899,24 +1054,16 @@ export function TicketLookup() {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-xs font-extrabold text-slate-800 uppercase">
-                        {
-                          activeTicket.booking?.schedule?.endStation
-                            ?.stationName
-                        }
+                        {stationName(activeTripStations.to)}
                       </span>
                       <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
                         <span>Ga đích kết thúc</span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5 text-slate-400" />
-                          Giờ đến:{" "}
-                          {formatTime(
-                            activeTicket.booking?.schedule?.arrivalTime,
-                          )}{" "}
-                          -{" "}
-                          {formatDate(
-                            activeTicket.booking?.schedule?.arrivalTime,
-                          )}
+                          Giờ đến: {formatTime(
+                            activeTripTimes.arrivalTime,
+                          )} - {formatDate(activeTripTimes.arrivalTime)}
                         </span>
                       </div>
                     </div>
@@ -960,55 +1107,37 @@ export function TicketLookup() {
                     </div>
 
                     {/* Seats Layout */}
-                    <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col gap-2 relative">
-                      {/* Window seats row A */}
-                      <div className="flex justify-between items-center gap-1.5">
-                        {Array.from({ length: 10 }).map((_, idx) => {
-                          const seatNum = `A${(idx + 1).toString().padStart(2, "0")}`;
-                          const isMine =
-                            activeTicket.seat?.seatNumber === seatNum;
-                          return (
-                            <div
-                              key={seatNum}
-                              className={`w-7 h-7 rounded-lg text-[10px] font-bold flex items-center justify-center border transition-all ${
-                                isMine
-                                  ? "bg-amber-500 border-amber-600 text-white shadow shadow-amber-500/20 scale-110"
-                                  : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
-                              }`}
-                              title={`Ghế ${seatNum} (${idx % 2 === 0 ? "Cửa sổ" : "Lối đi"})`}
-                            >
-                              {seatNum}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Walkway / Aisle */}
-                      <div className="h-4 border-t border-b border-dashed border-slate-100 flex items-center justify-center text-[8px] font-black text-slate-300 tracking-widest uppercase select-none">
-                        Lối Đi / Aisle
-                      </div>
-
-                      {/* Window seats row B */}
-                      <div className="flex justify-between items-center gap-1.5">
-                        {Array.from({ length: 10 }).map((_, idx) => {
-                          const seatNum = `B${(idx + 1).toString().padStart(2, "0")}`;
-                          const isMine =
-                            activeTicket.seat?.seatNumber === seatNum;
-                          return (
-                            <div
-                              key={seatNum}
-                              className={`w-7 h-7 rounded-lg text-[10px] font-bold flex items-center justify-center border transition-all ${
-                                isMine
-                                  ? "bg-amber-500 border-amber-600 text-white shadow shadow-amber-500/20 scale-110"
-                                  : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
-                              }`}
-                              title={`Ghế ${seatNum} (${idx % 2 === 0 ? "Cửa sổ" : "Lối đi"})`}
-                            >
-                              {seatNum}
-                            </div>
-                          );
-                        })}
-                      </div>
+                    <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 relative">
+                      {activeSeatLayout.length > 0 ? (
+                        <div className="grid grid-cols-[repeat(2,32px)_minmax(28px,1fr)_repeat(2,32px)] gap-1.5 justify-center">
+                          {activeSeatLayout.map((seat, idx) => {
+                            const column = idx % 4;
+                            const gridColumn =
+                              column < 2 ? column + 1 : column + 2;
+                            return (
+                              <div
+                                key={seat.seatNumber}
+                                style={{ gridColumn }}
+                                className={`w-8 h-8 rounded-lg text-[10px] font-bold flex items-center justify-center border transition-all ${
+                                  seat.isMine
+                                    ? "bg-amber-500 border-amber-600 text-white shadow shadow-amber-500/20 scale-110"
+                                    : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                                }`}
+                                title={`Ghế ${seat.seatNumber} (${seat.seatType === "WINDOW" ? "Cửa sổ" : "Lối đi"})`}
+                              >
+                                {seat.seatNumber}
+                              </div>
+                            );
+                          })}
+                          <div className="col-start-3 row-start-1 row-end-[99] flex items-center justify-center border-x border-dashed border-slate-100 text-[8px] font-black text-slate-300 tracking-widest uppercase [writing-mode:vertical-rl] select-none">
+                            Lối đi
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center text-xs font-semibold text-slate-400">
+                          Chưa có sơ đồ cho loại ghế này.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

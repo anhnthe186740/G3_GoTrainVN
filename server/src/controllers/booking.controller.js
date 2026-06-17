@@ -61,7 +61,37 @@ export const lookupBooking = asyncHandler(async (req, res) => {
     });
   }
 
-  // Scenario 1: Both Ticket Code and Contact Info are provided (Secure lookup for single ticket)
+  // Shared include: include passenger's ACTUAL boarding/alighting stations from Booking
+  // (fromStation / toStation), not the full-route endpoints of the Schedule.
+  const stationSelect = {
+    select: { id: true, stationCode: true, stationName: true, city: true },
+  };
+
+  const bookingInclude = {
+    include: {
+      schedule: {
+        include: {
+          train: true,
+          route: true,
+          startStation: stationSelect,
+          endStation: stationSelect,
+          scheduleStops: {
+            include: { station: true },
+            orderBy: { stopOrder: "asc" },
+          },
+        },
+      },
+      // Actual boarding / alighting stations saved at checkout time
+      fromStation: stationSelect,
+      toStation: stationSelect,
+    },
+  };
+
+  const seatInclude = { include: { carriage: true } };
+
+  // ------------------------------------------------------------------
+  // Scenario 1: Both Ticket Code AND Contact Info → secure single lookup
+  // ------------------------------------------------------------------
   if (ticketCode && contactInfo) {
     const cleanTicketCode = ticketCode.trim().toUpperCase();
     const cleanContact = contactInfo.trim().toLowerCase();
@@ -84,31 +114,8 @@ export const lookupBooking = asyncHandler(async (req, res) => {
         ],
       },
       include: {
-        booking: {
-          include: {
-            schedule: {
-              include: {
-                train: true,
-                route: true,
-                startStation: true,
-                endStation: true,
-                scheduleStops: {
-                  include: {
-                    station: true,
-                  },
-                  orderBy: {
-                    stopOrder: "asc",
-                  },
-                },
-              },
-            },
-          },
-        },
-        seat: {
-          include: {
-            carriage: true,
-          },
-        },
+        booking: bookingInclude,
+        seat: seatInclude,
       },
     });
 
@@ -122,7 +129,9 @@ export const lookupBooking = asyncHandler(async (req, res) => {
     return res.json({ type: "single", ticket: passenger });
   }
 
-  // Scenario 2: Only Ticket Code is provided
+  // ------------------------------------------------------------------
+  // Scenario 2: Only Ticket Code → public lookup (masked PII)
+  // ------------------------------------------------------------------
   if (ticketCode) {
     const cleanTicketCode = ticketCode.trim().toUpperCase();
 
@@ -134,31 +143,8 @@ export const lookupBooking = asyncHandler(async (req, res) => {
         ],
       },
       include: {
-        booking: {
-          include: {
-            schedule: {
-              include: {
-                train: true,
-                route: true,
-                startStation: true,
-                endStation: true,
-                scheduleStops: {
-                  include: {
-                    station: true,
-                  },
-                  orderBy: {
-                    stopOrder: "asc",
-                  },
-                },
-              },
-            },
-          },
-        },
-        seat: {
-          include: {
-            carriage: true,
-          },
-        },
+        booking: bookingInclude,
+        seat: seatInclude,
       },
     });
 
@@ -168,7 +154,6 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       });
     }
 
-    // Return the ticket (We can mask sensitive email/phone for security if accessed publicly)
     const maskedTicket = {
       ...passenger,
       email: passenger.email
@@ -182,7 +167,9 @@ export const lookupBooking = asyncHandler(async (req, res) => {
     return res.json({ type: "single", ticket: maskedTicket, isMasked: true });
   }
 
-  // Scenario 3: Only Contact Info is provided (Return list of bookings)
+  // ------------------------------------------------------------------
+  // Scenario 3: Only Contact Info → return list of all bookings
+  // ------------------------------------------------------------------
   if (contactInfo) {
     const cleanContact = contactInfo.trim().toLowerCase();
 
@@ -194,27 +181,10 @@ export const lookupBooking = asyncHandler(async (req, res) => {
         ],
       },
       include: {
-        booking: {
-          include: {
-            schedule: {
-              include: {
-                train: true,
-                route: true,
-                startStation: true,
-                endStation: true,
-              },
-            },
-          },
-        },
-        seat: {
-          include: {
-            carriage: true,
-          },
-        },
+        booking: bookingInclude,
+        seat: seatInclude,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     if (passengers.length === 0) {
@@ -225,6 +195,169 @@ export const lookupBooking = asyncHandler(async (req, res) => {
 
     return res.json({ type: "list", tickets: passengers });
   }
+});
+
+// ============================================================
+// GET /api/v1/bookings/my - Get current user's bookings
+// ============================================================
+export const getMyBookings = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Yêu cầu đăng nhập." });
+  }
+
+  const bookings = await prisma.booking.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      schedule: {
+        include: {
+          train: true,
+          startStation: true,
+          endStation: true,
+        },
+      },
+      fromStation: true,
+      toStation: true,
+      passengers: {
+        select: {
+          id: true,
+          fullName: true,
+          passengerType: true,
+          ticketCode: true,
+          carriageNumber: true,
+        },
+      },
+    },
+  });
+
+  res.json({ bookings });
+});
+
+// ============================================================
+// GET /api/v1/bookings/admin - Admin: get all bookings with filters
+// ============================================================
+export const getAdminBookings = asyncHandler(async (req, res) => {
+  const { search, status, paymentStatus, page = 1, limit = 10 } = req.query;
+
+  const skip = (Number(page) - 1) * Number(limit);
+  const take = Number(limit);
+
+  const where = {};
+
+  if (status) where.status = status;
+  if (paymentStatus) where.paymentStatus = paymentStatus;
+  if (search) {
+    where.OR = [
+      { bookingCode: { contains: search, mode: "insensitive" } },
+      {
+        user: {
+          OR: [
+            { fullName: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        },
+      },
+    ];
+  }
+
+  const [total, bookings] = await Promise.all([
+    prisma.booking.count({ where }),
+    prisma.booking.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+        schedule: {
+          include: {
+            train: { select: { trainName: true } },
+            startStation: { select: { stationName: true } },
+            endStation: { select: { stationName: true } },
+          },
+        },
+        passengers: {
+          select: {
+            id: true,
+            fullName: true,
+            passengerType: true,
+            ticketCode: true,
+            carriageNumber: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  res.json({
+    bookings,
+    pagination: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)),
+    },
+  });
+});
+
+// ============================================================
+// GET /api/v1/bookings/admin/stats - Admin booking statistics
+// ============================================================
+export const getAdminBookingStats = asyncHandler(async (req, res) => {
+  const [
+    totalBookings,
+    confirmedBookings,
+    cancelledBookings,
+    pendingBookings,
+    totalAmountResult,
+    refundedAmountResult,
+    totalPassengers,
+  ] = await Promise.all([
+    prisma.booking.count(),
+    prisma.booking.count({ where: { status: "CONFIRMED" } }),
+    prisma.booking.count({ where: { status: "CANCELLED" } }),
+    prisma.booking.count({ where: { status: "PENDING" } }),
+    prisma.booking.aggregate({
+      _sum: { totalAmount: true },
+      where: { paymentStatus: "COMPLETED" },
+    }),
+    prisma.booking.aggregate({
+      _sum: { refundAmount: true },
+      where: { status: "REFUNDED" },
+    }),
+    prisma.passenger.count(),
+  ]);
+
+  const totalRevenue = totalAmountResult._sum.totalAmount || 0;
+  const totalRefunds = refundedAmountResult._sum.refundAmount || 0;
+  const completedBookings = confirmedBookings;
+
+  res.json({
+    stats: {
+      overview: {
+        totalBookings,
+        confirmedBookings,
+        cancelledBookings,
+        pendingBookings,
+        totalRevenue,
+        netRevenue: totalRevenue - totalRefunds,
+        totalRefunds,
+        totalPassengers,
+        avgBookingValue:
+          completedBookings > 0
+            ? Math.round(totalRevenue / completedBookings)
+            : 0,
+      },
+    },
+  });
 });
 
 // ============================================================
