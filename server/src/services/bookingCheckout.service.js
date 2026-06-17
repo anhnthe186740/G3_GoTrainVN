@@ -6,6 +6,7 @@ import {
   createPayosPaymentRequest,
   verifyPayosSignature,
 } from "./payos.service.js";
+import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
 
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
@@ -646,6 +647,14 @@ export async function checkoutBooking(identity, payload) {
       });
     }
     if (identity.userId) {
+      if (immediatePayment) {
+        await awardLoyaltyPointsAndCheckTier(
+          tx,
+          identity.userId,
+          quote.totalAmount,
+          booking.id,
+        );
+      }
       await tx.notification.create({
         data: {
           userId: identity.userId,
@@ -793,6 +802,12 @@ async function completePayosBooking(tx, booking, webhookData) {
     },
   });
   if (booking.userId) {
+    await awardLoyaltyPointsAndCheckTier(
+      tx,
+      booking.userId,
+      booking.totalAmount,
+      booking.id,
+    );
     await tx.notification.create({
       data: {
         userId: booking.userId,
