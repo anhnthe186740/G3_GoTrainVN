@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   Clock3,
   Copy,
   CreditCard,
+  ExternalLink,
   IdCard,
   LoaderCircle,
   LockKeyhole,
@@ -238,6 +240,7 @@ function RailInput({ error, className = "", ...props }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function FakeQr({ payload }) {
   const size = 21;
   const seed = [...payload].reduce(
@@ -714,9 +717,11 @@ export function PassengerDetailsPage() {
     if (!paymentResult) return;
     setSubmitting(true);
     try {
-      const { data } = await bookingApi.confirmQrPayment(
-        paymentResult.booking.id,
-      );
+      const { data } = await bookingApi.paymentStatus(paymentResult.booking.id);
+      if (data.booking.paymentStatus !== "COMPLETED") {
+        toast.info("Dang cho PayOS xac nhan giao dich.");
+        return;
+      }
       setCompletedResult({
         ...paymentResult,
         booking: data.booking,
@@ -732,6 +737,36 @@ export function PassengerDetailsPage() {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!paymentResult || completedResult) return undefined;
+    let active = true;
+    const checkPayment = async () => {
+      try {
+        const { data } = await bookingApi.paymentStatus(
+          paymentResult.booking.id,
+        );
+        if (!active) return;
+        if (data.booking.paymentStatus === "COMPLETED") {
+          setCompletedResult({
+            ...paymentResult,
+            booking: data.booking,
+          });
+          setPaymentResult(null);
+          toast.success("Thanh toan da duoc PayOS xac nhan.");
+          return;
+        }
+      } catch {
+        // Keep the QR visible; the next polling cycle can recover.
+      }
+    };
+    checkPayment();
+    const timer = setInterval(checkPayment, 4000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [completedResult, paymentResult]);
 
   if (completedResult) {
     return <CompletionView result={completedResult} />;
@@ -769,37 +804,95 @@ export function PassengerDetailsPage() {
   }
 
   if (paymentResult) {
+    const payosInfo = paymentResult.payos || {};
+    const checkoutUrl =
+      payosInfo.checkoutUrl || paymentResult.booking.payosCheckoutUrl;
+    const qrValue =
+      payosInfo.qrCode ||
+      paymentResult.qrPayload ||
+      paymentResult.booking.payosQrCode;
     return (
-      <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[30px] bg-[#071a2b] text-white shadow-[0_30px_90px_rgba(7,26,43,0.3)] lg:grid-cols-[1fr_0.9fr]">
-        <div className="flex flex-col items-center justify-center border-b border-white/10 p-7 lg:border-b-0 lg:border-r">
-          <p className="font-utility-mono text-xs uppercase tracking-[0.2em] text-cyan-300">
+      <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[30px] border border-cyan-100 bg-white shadow-[0_30px_90px_rgba(7,26,43,0.16)] lg:grid-cols-[1fr_0.9fr]">
+        <div className="flex flex-col items-center justify-center border-b border-dashed border-slate-200 bg-[#f4fbfd] p-7 lg:border-b-0 lg:border-r">
+          <p className="font-utility-mono text-[0px] uppercase tracking-[0.2em] text-[#087a91]">
+            <span className="text-xs">QR PayOS</span>
             QR thanh toán thử nghiệm
           </p>
-          <div className="mt-5">
-            <FakeQr payload={paymentResult.qrPayload} />
+          <div className="mt-5 rounded-[28px] bg-white p-4 shadow-[0_18px_50px_rgba(7,26,43,0.12)]">
+            {qrValue ? (
+              <QRCodeSVG
+                value={qrValue}
+                size={224}
+                level="M"
+                marginSize={4}
+                bgColor="#ffffff"
+                fgColor="#071a2b"
+                title="Ma QR thanh toan PayOS"
+                className="rounded-2xl bg-white"
+              />
+            ) : (
+              <div className="flex h-56 w-56 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center text-xs font-semibold leading-5 text-slate-500">
+                Khong the hien thi QR. Vui long mo trang thanh toan PayOS.
+              </div>
+            )}
           </div>
-          <p className="mt-5 max-w-sm text-center text-xs leading-5 text-cyan-50/60">
+          <p className="mt-5 max-w-sm text-center text-[0px] leading-5 text-slate-500">
+            <span className="text-xs">
+              Quet ma bang ung dung ngan hang. He thong se tu phat hanh ve sau
+              khi PayOS gui xac nhan thanh toan.
+            </span>
             Mã này minh họa luồng QR trong môi trường chưa kết nối ngân hàng.
             Sau khi mô phỏng quét, nhấn xác nhận để hoàn tất ngay.
           </p>
         </div>
 
-        <div className="p-7 sm:p-10">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-300 text-[#071a2b]">
+        <div className="p-7 text-slate-900 sm:p-10">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#087a91] text-white">
             <QrCode className="h-6 w-6" />
           </span>
-          <h1 className="mt-6 font-headline-md text-2xl font-bold">
+          <h1 className="mt-6 font-headline-md text-[0px] font-bold">
+            <span className="text-2xl">Cho xac nhan thanh toan</span>
             Xác nhận giao dịch
           </h1>
-          <p className="mt-2 text-sm leading-6 text-slate-300">
+          <p className="mt-2 text-[0px] leading-6 text-slate-500">
+            <span className="text-sm">
+              Noi dung chuyen khoan da gan voi don{" "}
+              <strong className="text-slate-950">
+                {paymentResult.booking.bookingCode}
+              </strong>
+              .
+            </span>
             Nội dung chuyển khoản đã gắn với đơn{" "}
-            <strong className="text-white">
+            <strong className="text-slate-950">
               {paymentResult.booking.bookingCode}
             </strong>
             .
           </p>
 
-          <dl className="mt-7 space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm">
+          <dl className="mt-7 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">So tien</dt>
+              <dd className="text-lg font-extrabold text-[#087a91]">
+                {money(paymentResult.booking.totalAmount)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-500">Han thanh toan</dt>
+              <dd className="font-utility-mono font-bold">
+                {countdown(paymentResult.paymentExpiresAt, now)}
+              </dd>
+            </div>
+            {payosInfo.description && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Noi dung</dt>
+                <dd className="font-utility-mono font-bold">
+                  {payosInfo.description}
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          <dl className="hidden">
             <div className="flex justify-between gap-4">
               <dt className="text-slate-400">Số tiền</dt>
               <dd className="text-lg font-extrabold text-cyan-300">
@@ -814,20 +907,44 @@ export function PassengerDetailsPage() {
             </div>
           </dl>
 
+          {checkoutUrl && (
+            <a
+              href={checkoutUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#087a91] px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#066478] focus:outline-none focus:ring-4 focus:ring-cyan-100"
+            >
+              Mo trang thanh toan PayOS
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <p className="text-xs font-semibold leading-5 text-amber-800">
+              Dang doi PayOS doi soat. Ve chi duoc kich hoat khi server nhan
+              webhook hop le.
+            </p>
+          </div>
+
           <button
             type="button"
             disabled={submitting}
             onClick={confirmQr}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 py-3.5 text-sm font-extrabold text-[#071a2b] transition hover:bg-cyan-200 disabled:opacity-60"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-[0px] font-extrabold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
           >
             {submitting ? (
               <LoaderCircle className="h-4 w-4 animate-spin" />
             ) : (
               <CheckCircle2 className="h-4 w-4" />
             )}
+            <span className="text-sm">Kiem tra trang thai thanh toan</span>
             Tôi đã quét QR, xác nhận thanh toán
           </button>
-          <p className="mt-3 text-center text-[11px] text-slate-500">
+          <p className="mt-3 text-center text-[0px] text-slate-400">
+            <span className="text-[11px]">
+              He thong tu dong cap nhat khi PayOS xac nhan giao dich.
+            </span>
             Nút xác nhận dùng cho giai đoạn thử nghiệm, chưa kết nối cổng ngân
             hàng thực.
           </p>

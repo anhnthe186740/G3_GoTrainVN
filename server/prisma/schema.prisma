@@ -400,6 +400,12 @@ model Booking {
   paymentMethod  String // WALLET, CARD, BANK_TRANSFER
   paymentStatus  String                  @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
   paymentId      String? // External payment gateway ID (encrypted)
+  payosOrderCode String?                  @unique
+  payosPaymentLinkId String?
+  payosCheckoutUrl String?
+  payosQrCode String?
+  payosReference String?
+  paidAt         DateTime?
   paymentHistory BookingPaymentHistory[]
 
   // Booking status
