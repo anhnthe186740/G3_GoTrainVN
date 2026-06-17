@@ -488,7 +488,11 @@ export async function checkoutBooking(identity, payload) {
         bookingCode: code,
         ...ownerData(identity),
         scheduleId: quote.session.outboundScheduleId,
+        fromStationId: quote.session.outboundFromStationId,
+        toStationId: quote.session.outboundToStationId,
         returnScheduleId: quote.session.returnScheduleId,
+        returnFromStationId: quote.session.returnFromStationId ?? null,
+        returnToStationId: quote.session.returnToStationId ?? null,
         bookingType: quote.session.bookingType,
         voucherId: quote.voucher?.id,
         totalPassengers: passengers.length,
@@ -509,7 +513,7 @@ export async function checkoutBooking(identity, payload) {
         payosPaymentLinkId: payosPayment?.paymentLinkId || null,
         payosCheckoutUrl: payosPayment?.checkoutUrl || null,
         payosQrCode: payosPayment?.qrCode || null,
-        status: immediatePayment ? "COMPLETED" : "PENDING",
+        status: immediatePayment ? "CONFIRMED" : "PENDING",
         confirmationEmail:
           passengers.find((passenger) => passenger.email)?.email || null,
         expiresAt: immediatePayment ? null : quote.session.expiresAt,
@@ -665,7 +669,7 @@ export async function confirmQrPayment(identity, bookingId) {
     const completed = await tx.booking.update({
       where: { id: booking.id },
       data: {
-        status: "COMPLETED",
+        status: "CONFIRMED",
         paymentStatus: "COMPLETED",
         paymentId: `QR-DEMO-${randomUUID()}`,
         expiresAt: null,
@@ -716,7 +720,7 @@ async function completePayosBooking(tx, booking, webhookData) {
       status: "PENDING",
     },
     data: {
-      status: "COMPLETED",
+      status: "CONFIRMED",
       paymentStatus: "COMPLETED",
       paymentId: webhookData.paymentLinkId,
       payosPaymentLinkId: webhookData.paymentLinkId,

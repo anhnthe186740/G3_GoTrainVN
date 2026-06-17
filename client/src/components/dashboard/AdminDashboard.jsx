@@ -8,6 +8,8 @@ import { UserManagement } from "./UserManagement";
 import { AdminSchedulePanel } from "./AdminSchedulePanel.jsx";
 import { AdminTrainPanel } from "./AdminTrainPanel.jsx";
 import { AdminPricingPanel } from "./AdminPricingPanel.jsx";
+import { AdminBookingPanel } from "./AdminBookingPanel.jsx";
+import { AdminReportsPanel } from "./AdminReportsPanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -26,6 +28,7 @@ export function AdminDashboard() {
     { label: "Lịch Trình", icon: "calendar_month" },
     { label: "Quản Lý Tàu", icon: "train" },
     { label: "Giá Vé", icon: "payments" },
+    { label: "Đặt Vé", icon: "confirmation_number" },
     { label: "Người Dùng", icon: "group" },
     { label: "Quản Lý Ví", icon: "account_balance_wallet" },
     { label: "Báo Cáo", icon: "analytics" },
@@ -297,12 +300,16 @@ export function AdminDashboard() {
             {activeSidebar === "Người Dùng" && <UserManagement />}
             {activeSidebar === "Quản Lý Tàu" && <AdminTrainPanel />}
             {activeSidebar === "Giá Vé" && <AdminPricingPanel />}
+            {activeSidebar === "Đặt Vé" && <AdminBookingPanel />}
+            {activeSidebar === "Báo Cáo" && <AdminReportsPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
               activeSidebar !== "Quản Lý Ví" &&
               activeSidebar !== "Quản Lý Tàu" &&
               activeSidebar !== "Giá Vé" &&
+              activeSidebar !== "Đặt Vé" &&
+              activeSidebar !== "Báo Cáo" &&
               activeSidebar !== "Người Dùng" && (
                 <>
                   {/* Welcome Section */}

@@ -6,11 +6,14 @@ export function AppLayout() {
   const location = useLocation();
   const { user } = useAuth();
   const isHomePage = location.pathname === "/";
-  const isFullPage = location.pathname === "/wallet";
+  const isFullPage =
+    location.pathname === "/wallet" || location.pathname === "/dashboard";
   const isAdminDashboard =
     location.pathname === "/dashboard" && user?.role === "ADMIN";
+  const isStaffDashboard =
+    location.pathname === "/dashboard" && user?.role === "STAFF";
 
-  if (isAdminDashboard) {
+  if (isAdminDashboard || isStaffDashboard) {
     return (
       <div className="min-h-screen bg-background text-on-surface font-body-md">
         <Outlet />

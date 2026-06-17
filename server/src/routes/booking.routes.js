@@ -7,13 +7,31 @@ import {
   confirmBookingQrPayment,
   getBookingPaymentState,
   receivePayosWebhook,
+  getMyBookings,
+  getAdminBookings,
+  getAdminBookingStats,
 } from "../controllers/booking.controller.js";
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { adminOnly } from "../middlewares/adminOnly.js";
 
 export const bookingRoutes = Router();
 
 bookingRoutes.get("/lookup", lookupBooking);
 bookingRoutes.post("/payos/webhook", receivePayosWebhook);
+
+// Customer: view own bookings
+bookingRoutes.get("/my", authMiddleware, getMyBookings);
+
+// Admin: view all bookings & stats
+bookingRoutes.get(
+  "/admin/stats",
+  authMiddleware,
+  adminOnly,
+  getAdminBookingStats,
+);
+bookingRoutes.get("/admin", authMiddleware, adminOnly, getAdminBookings);
+
 bookingRoutes.post("/quote", bookingIdentity, getBookingQuote);
 bookingRoutes.post("/checkout", bookingIdentity, createBookingCheckout);
 bookingRoutes.get(
