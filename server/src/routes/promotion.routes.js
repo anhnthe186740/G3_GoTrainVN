@@ -10,6 +10,8 @@ import {
   createPromotion,
   updatePromotion,
   deletePromotion,
+  sendVoucherEmail,
+  triggerBirthdayVouchers,
 } from "../controllers/promotion.controller.js";
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -71,4 +73,18 @@ promotionRoutes.delete(
   authMiddleware,
   adminOnly,
   deletePromotion,
+);
+
+promotionRoutes.post(
+  "/admin/vouchers/send-email",
+  authMiddleware,
+  adminOnly,
+  sendVoucherEmail,
+);
+
+promotionRoutes.post(
+  "/admin/vouchers/trigger-birthdays",
+  authMiddleware,
+  adminOnly,
+  triggerBirthdayVouchers,
 );

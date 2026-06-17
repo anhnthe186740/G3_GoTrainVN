@@ -125,3 +125,21 @@ export const deletePromotion = asyncHandler(async (req, res) => {
     ...result,
   });
 });
+
+export const sendVoucherEmail = asyncHandler(async (req, res) => {
+  const { voucherId, email } = req.body;
+  await promotionService.sendVoucherEmail(voucherId, email, adminContext(req));
+  res.json({
+    success: true,
+    message: `Đã gửi mã giảm giá thành công tới email ${email}.`,
+  });
+});
+
+export const triggerBirthdayVouchers = asyncHandler(async (req, res) => {
+  const result = await promotionService.triggerBirthdayVouchers();
+  res.json({
+    success: true,
+    message: `Đã hoàn thành quét sinh nhật và gửi quà tặng!`,
+    data: result,
+  });
+});
