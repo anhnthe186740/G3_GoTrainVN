@@ -12,6 +12,9 @@ export const profile = asyncHandler(async (req, res) => {
       nationalId: true,
       nationalIdType: true,
       dateOfBirth: true,
+      gender: true,
+      address: true,
+      loyaltyPoints: true,
       userType: true,
       isActive: true,
       createdAt: true,
@@ -22,14 +25,23 @@ export const profile = asyncHandler(async (req, res) => {
 });
 
 export const updateProfile = asyncHandler(async (req, res) => {
-  const { fullName, phoneNumber, nationalId, nationalIdType, dateOfBirth, gender, address } = req.body;
+  const {
+    fullName,
+    phoneNumber,
+    nationalId,
+    nationalIdType,
+    dateOfBirth,
+    gender,
+    address,
+  } = req.body;
 
   const dataToUpdate = {};
 
   if (fullName !== undefined) dataToUpdate.fullName = fullName;
   if (phoneNumber !== undefined) dataToUpdate.phoneNumber = phoneNumber;
   if (nationalId !== undefined) dataToUpdate.nationalId = nationalId;
-  if (nationalIdType !== undefined) dataToUpdate.nationalIdType = nationalIdType;
+  if (nationalIdType !== undefined)
+    dataToUpdate.nationalIdType = nationalIdType;
   if (address !== undefined) dataToUpdate.address = address;
   if (gender !== undefined) dataToUpdate.gender = gender;
 
