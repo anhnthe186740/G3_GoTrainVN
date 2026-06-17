@@ -22,6 +22,13 @@ export function AdminPromotionPanel() {
   const [modalMode, setModalMode] = useState("create"); // create or edit
   const [editingItem, setEditingItem] = useState(null);
 
+  // Send Email & Birthday states
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTarget, setEmailTarget] = useState("");
+  const [emailVoucher, setEmailVoucher] = useState(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [scanningBirthdays, setScanningBirthdays] = useState(false);
+
   // Form states
   const [voucherForm, setVoucherForm] = useState({
     voucherCode: "",
@@ -34,6 +41,7 @@ export function AdminPromotionPanel() {
     validFrom: "",
     validTo: "",
     active: true,
+    isPublic: true,
   });
 
   const [promotionForm, setPromotionForm] = useState({
@@ -138,6 +146,7 @@ export function AdminPromotionPanel() {
         .toISOString()
         .split("T")[0],
       active: true,
+      isPublic: true,
     });
 
     setPromotionForm({
@@ -174,6 +183,7 @@ export function AdminPromotionPanel() {
         validFrom: item.validFrom ? item.validFrom.split("T")[0] : "",
         validTo: item.validTo ? item.validTo.split("T")[0] : "",
         active: item.active,
+        isPublic: item.isPublic !== false,
       });
     } else {
       setPromotionForm({
@@ -318,6 +328,58 @@ export function AdminPromotionPanel() {
     }
   };
 
+  const handleOpenSendEmail = (voucher) => {
+    setEmailVoucher(voucher);
+    setEmailTarget("");
+    setShowEmailModal(true);
+  };
+
+  const handleSendEmail = async (e) => {
+    e.preventDefault();
+    if (!emailTarget.trim()) {
+      toast.error("Vui lòng điền email người nhận.");
+      return;
+    }
+    try {
+      setSendingEmail(true);
+      await api.post("/promotions/admin/vouchers/send-email", {
+        voucherId: emailVoucher.id,
+        email: emailTarget.trim(),
+      });
+      toast.success(
+        `Đã gửi voucher ${emailVoucher.voucherCode} tới ${emailTarget} thành công!`,
+      );
+      setShowEmailModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi email.");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleTriggerBirthdays = async () => {
+    try {
+      setScanningBirthdays(true);
+      const { data } = await api.post(
+        "/promotions/admin/vouchers/trigger-birthdays",
+      );
+      const count = data.data?.processedCount || 0;
+      if (count > 0) {
+        toast.success(
+          `Đã quét xong! Đã gửi ${count} email quà sinh nhật chúc mừng thành viên.`,
+        );
+      } else {
+        toast.info("Không có thành viên nào sinh nhật hôm nay để gửi quà.");
+      }
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Lỗi khi chạy quét quà sinh nhật.",
+      );
+    } finally {
+      setScanningBirthdays(false);
+    }
+  };
+
   // Helpers for multi-select routes/trains
   const handleCheckboxChange = (type, id) => {
     if (type === "route") {
@@ -366,6 +428,37 @@ export function AdminPromotionPanel() {
             add_circle
           </span>
           Tạo Khuyến Mãi Mới
+        </button>
+      </div>
+
+      {/* Marketing Automation Banner */}
+      <div className="bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-100 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="bg-pink-100 text-pink-600 p-2.5 rounded-xl">
+            <span className="material-symbols-outlined text-2.5">
+              celebration
+            </span>
+          </div>
+          <div>
+            <h4 className="font-bold text-[#191c1e] text-sm sm:text-base">
+              Hệ Thống Quà Tặng Sinh Nhật Tự Động
+            </h4>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Tự động quét và gửi email chúc mừng sinh nhật kèm mã giảm giá 50k
+              (ẩn/riêng tư) cho các khách hàng có ngày sinh nhật hôm nay.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleTriggerBirthdays}
+          disabled={scanningBirthdays}
+          type="button"
+          className="flex items-center justify-center gap-1.5 self-start sm:self-auto bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none shadow-sm cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-[16px] animate-pulse">
+            history_toggle_off
+          </span>
+          {scanningBirthdays ? "Đang quét..." : "Quét & Gửi Quà Hôm Nay"}
         </button>
       </div>
 
@@ -472,8 +565,27 @@ export function AdminPromotionPanel() {
                       key={v.id}
                       className="hover:bg-surface/40 transition-colors"
                     >
-                      <td className="px-6 py-4 font-bold text-primary text-sm">
-                        {v.voucherCode}
+                      <td className="px-6 py-4 text-sm font-bold">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-primary font-bold">
+                            {v.voucherCode}
+                          </span>
+                          {v.isPublic === false ? (
+                            <span className="inline-flex items-center text-[10px] text-slate-500 font-semibold gap-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-slate-400">
+                                lock
+                              </span>
+                              Ẩn / Riêng tư
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-[10px] text-[#00629d] font-semibold gap-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-[#00a3ff]">
+                                public
+                              </span>
+                              Công khai
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-xs font-semibold text-slate-600">
                         {v.discountType === "PERCENTAGE"
@@ -515,6 +627,15 @@ export function AdminPromotionPanel() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenSendEmail(v)}
+                            className="p-1.5 text-slate-500 hover:text-green-600 transition rounded-lg hover:bg-slate-100 cursor-pointer"
+                            title="Gửi mã qua Email"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              mail
+                            </span>
+                          </button>
                           <button
                             onClick={() => handleOpenEdit(v)}
                             className="p-1.5 text-slate-500 hover:text-primary transition rounded-lg hover:bg-slate-100 cursor-pointer"
@@ -897,25 +1018,48 @@ export function AdminPromotionPanel() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2">
-                    <input
-                      type="checkbox"
-                      id="voucherActive"
-                      className="w-4 h-4 text-primary accent-primary rounded cursor-pointer"
-                      checked={voucherForm.active}
-                      onChange={(e) =>
-                        setVoucherForm({
-                          ...voucherForm,
-                          active: e.target.checked,
-                        })
-                      }
-                    />
-                    <label
-                      htmlFor="voucherActive"
-                      className="text-sm font-bold text-slate-700 cursor-pointer"
-                    >
-                      Kích hoạt hoạt động ngay
-                    </label>
+                  <div className="flex flex-col gap-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="voucherActive"
+                        className="w-4 h-4 text-primary accent-primary rounded cursor-pointer"
+                        checked={voucherForm.active}
+                        onChange={(e) =>
+                          setVoucherForm({
+                            ...voucherForm,
+                            active: e.target.checked,
+                          })
+                        }
+                      />
+                      <label
+                        htmlFor="voucherActive"
+                        className="text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        Kích hoạt hoạt động ngay
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="voucherPublic"
+                        className="w-4 h-4 text-primary accent-primary rounded cursor-pointer"
+                        checked={voucherForm.isPublic}
+                        onChange={(e) =>
+                          setVoucherForm({
+                            ...voucherForm,
+                            isPublic: e.target.checked,
+                          })
+                        }
+                      />
+                      <label
+                        htmlFor="voucherPublic"
+                        className="text-sm font-bold text-slate-700 cursor-pointer"
+                      >
+                        Hiển thị công khai trên website (Ưu đãi chung)
+                      </label>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -1157,6 +1301,82 @@ export function AdminPromotionPanel() {
                   className="bg-primary hover:bg-primary/95 text-white font-bold px-6 py-3 rounded-2xl shadow-lg transition active:scale-95 cursor-pointer text-sm"
                 >
                   Xác nhận lưu
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: SEND EMAIL VOUCHER */}
+      {showEmailModal && emailVoucher && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center p-md bg-black/60 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-outline-variant/30 flex flex-col text-left">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-green-600">
+                  mail
+                </span>
+                Gửi mã giảm giá qua Email
+              </h3>
+              <button
+                className="p-2 hover:bg-slate-100 rounded-full transition text-slate-400 font-bold cursor-pointer"
+                onClick={() => setShowEmailModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSendEmail} className="p-6 space-y-4">
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl">
+                <p className="text-xs text-slate-500 mb-1">
+                  Mã Voucher đang chọn:
+                </p>
+                <p className="font-mono font-bold text-primary text-base">
+                  {emailVoucher.voucherCode}
+                </p>
+                <p className="text-xs text-slate-600 mt-1.5">
+                  Trị giá giảm:{" "}
+                  <b>
+                    {emailVoucher.discountType === "PERCENTAGE"
+                      ? `${emailVoucher.discountValue}%`
+                      : `${emailVoucher.discountValue.toLocaleString()} VND`}
+                  </b>
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Email khách hàng nhận *
+                </label>
+                <input
+                  required
+                  type="email"
+                  placeholder="VD: customer@gmail.com"
+                  className="w-full border border-outline-variant rounded-xl px-4 py-3 text-sm outline-none focus:border-primary font-bold"
+                  value={emailTarget}
+                  onChange={(e) => setEmailTarget(e.target.value)}
+                />
+                <p className="text-[10px] text-slate-400">
+                  Mã voucher này sẽ được gửi trực tiếp tới email khách hàng kèm
+                  lời chúc và hướng dẫn sử dụng.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEmailModal(false)}
+                  disabled={sendingEmail}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition text-xs cursor-pointer disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingEmail}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50 cursor-pointer text-xs"
+                >
+                  {sendingEmail ? "Đang gửi..." : "Gửi Email Ngay"}
                 </button>
               </div>
             </form>
