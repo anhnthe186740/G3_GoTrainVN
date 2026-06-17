@@ -498,6 +498,34 @@ export const cancelBooking = asyncHandler(async (req, res) => {
       }
     }
 
+    // Deduct loyalty points if the booking had a user
+    if (booking.userId) {
+      const originalEarned = Math.floor(booking.totalAmount / 10000);
+      if (originalEarned > 0) {
+        const dbUser = await tx.user.findUnique({
+          where: { id: booking.userId },
+          select: { loyaltyPoints: true },
+        });
+        const currentPoints = dbUser?.loyaltyPoints || 0;
+        const deductPoints = Math.min(originalEarned, currentPoints);
+        if (deductPoints > 0) {
+          await tx.user.update({
+            where: { id: booking.userId },
+            data: { loyaltyPoints: { decrement: deductPoints } },
+          });
+          await tx.loyaltyPoint.create({
+            data: {
+              userId: booking.userId,
+              points: deductPoints,
+              type: "REDEEMED",
+              source: "BOOKING",
+              relatedBookingId: booking.id,
+            },
+          });
+        }
+      }
+    }
+
     return { updatedBooking, cancelReq, refundAmount };
   });
 

@@ -614,6 +614,26 @@ export async function checkoutBooking(identity, payload) {
           deliveryStatus: "PENDING",
         },
       });
+
+      // Award loyalty points for immediate wallet payment
+      if (immediatePayment) {
+        const earnedPoints = Math.floor(quote.totalAmount / 10000);
+        if (earnedPoints > 0) {
+          await tx.user.update({
+            where: { id: identity.userId },
+            data: { loyaltyPoints: { increment: earnedPoints } },
+          });
+          await tx.loyaltyPoint.create({
+            data: {
+              userId: identity.userId,
+              points: earnedPoints,
+              type: "EARNED",
+              source: "BOOKING",
+              relatedBookingId: booking.id,
+            },
+          });
+        }
+      }
     }
 
     await tx.seatHold.deleteMany({
@@ -698,6 +718,24 @@ export async function confirmQrPayment(identity, bookingId) {
           deliveryStatus: "PENDING",
         },
       });
+
+      // Award loyalty points for QR payment confirmation
+      const earnedPoints = Math.floor(booking.totalAmount / 10000);
+      if (earnedPoints > 0) {
+        await tx.user.update({
+          where: { id: identity.userId },
+          data: { loyaltyPoints: { increment: earnedPoints } },
+        });
+        await tx.loyaltyPoint.create({
+          data: {
+            userId: identity.userId,
+            points: earnedPoints,
+            type: "EARNED",
+            source: "BOOKING",
+            relatedBookingId: booking.id,
+          },
+        });
+      }
     }
     return completed;
   });
@@ -759,6 +797,24 @@ async function completePayosBooking(tx, booking, webhookData) {
         deliveryStatus: "PENDING",
       },
     });
+
+    // Award loyalty points for PayOS webhook confirmed booking
+    const earnedPoints = Math.floor(booking.totalAmount / 10000);
+    if (earnedPoints > 0) {
+      await tx.user.update({
+        where: { id: booking.userId },
+        data: { loyaltyPoints: { increment: earnedPoints } },
+      });
+      await tx.loyaltyPoint.create({
+        data: {
+          userId: booking.userId,
+          points: earnedPoints,
+          type: "EARNED",
+          source: "BOOKING",
+          relatedBookingId: booking.id,
+        },
+      });
+    }
   }
 
   return tx.booking.findUnique({
