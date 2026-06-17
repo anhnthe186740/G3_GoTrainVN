@@ -352,20 +352,40 @@ export async function quoteBooking(
     0,
   );
   const beforeVoucher = items.reduce((sum, item) => sum + item.total, 0);
-  const { voucher, discountAmount: voucherDiscount } = await resolveVoucher(
-    voucherCode,
-    beforeVoucher,
-    identity,
-  );
+
+  const scheduleIds = [
+    ...new Set(session.holds.map((hold) => hold.scheduleId)),
+  ];
+  const { findBestPromotion, validateVoucher } =
+    await import("./promotion.service.js");
+
+  const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
+    await findBestPromotion(scheduleIds, beforeVoucher);
+
+  const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
+
+  let voucher = null;
+  let voucherDiscount = 0;
+  if (voucherCode) {
+    const result = await validateVoucher(
+      voucherCode,
+      beforeVoucherWithPromo,
+      identity.userId,
+    );
+    voucher = result.voucher;
+    voucherDiscount = result.discountAmount;
+  }
 
   return {
     session,
     items,
     voucher: voucher ? { id: voucher.id, code: voucher.voucherCode } : null,
+    promotion: autoPromo ? { id: autoPromo.id, title: autoPromo.title } : null,
     subtotal,
     passengerDiscount,
+    promotionDiscount: autoPromoDiscount,
     voucherDiscount,
-    totalAmount: Math.max(0, beforeVoucher - voucherDiscount),
+    totalAmount: Math.max(0, beforeVoucherWithPromo - voucherDiscount),
   };
 }
 
@@ -497,7 +517,10 @@ export async function checkoutBooking(identity, payload) {
         voucherId: quote.voucher?.id,
         totalPassengers: passengers.length,
         subtotal: quote.subtotal,
-        discountAmount: quote.passengerDiscount + quote.voucherDiscount,
+        discountAmount:
+          quote.passengerDiscount +
+          quote.promotionDiscount +
+          quote.voucherDiscount,
         taxAmount: quote.items.reduce(
           (sum, item) =>
             sum + item.legs.reduce((legSum, leg) => legSum + leg.taxAmount, 0),
@@ -598,6 +621,28 @@ export async function checkoutBooking(identity, payload) {
       await tx.voucher.update({
         where: { id: quote.voucher.id },
         data: { currentUsageCount: { increment: 1 } },
+      });
+    }
+    if (quote.promotion && quote.promotionDiscount > 0) {
+      const promotion = await tx.promotion.findUnique({
+        where: { id: quote.promotion.id },
+      });
+      if (
+        !promotion ||
+        promotion.status !== "ACTIVE" ||
+        promotion.validFrom > now ||
+        promotion.validTo < now ||
+        (promotion.maxBudget != null &&
+          promotion.usedBudget >= promotion.maxBudget)
+      ) {
+        throw httpError(
+          409,
+          "Chương trình khuyến mãi vừa kết thúc hoặc hết ngân sách.",
+        );
+      }
+      await tx.promotion.update({
+        where: { id: quote.promotion.id },
+        data: { usedBudget: { increment: quote.promotionDiscount } },
       });
     }
     if (identity.userId) {
