@@ -345,6 +345,7 @@ model Voucher {
   validFrom         DateTime
   validTo           DateTime
   active            Boolean   @default(true)
+  isPublic          Boolean   @default(true)
   bookings          Booking[]
   createdAt         DateTime  @default(now())
 
@@ -412,7 +413,7 @@ model Booking {
   paymentMethod  String // WALLET, CARD, BANK_TRANSFER
   paymentStatus  String                  @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
   paymentId      String? // External payment gateway ID (encrypted)
-  payosOrderCode String?                  @unique
+  payosOrderCode String?
   payosPaymentLinkId String?
   payosCheckoutUrl String?
   payosQrCode String?
@@ -446,6 +447,7 @@ model Booking {
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
+  @@index([payosOrderCode])
 }
 
 model BookingPaymentHistory {
