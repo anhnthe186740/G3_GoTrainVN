@@ -8,14 +8,41 @@ const __dirname = path.dirname(__filename);
 // Store sent emails in the root of the server folder: server/sent_emails.json
 const emailsFilePath = path.join(__dirname, "../../../sent_emails.json");
 
-/**
- * Send email (Mock service that logs to console and stores in sent_emails.json)
- * @param {Object} options
- * @param {string} options.to - Recipient email
- * @param {string} options.subject - Email subject
- * @param {string} options.html - Email content (HTML)
- */
 export async function sendEmail({ to, subject, html }) {
+  // If RESEND_API_KEY is configured in env, send real email via Resend API
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "GoTrain VN <onboarding@resend.dev>",
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      console.log(
+        `✉️  [RESEND EMAIL SENT] ID: ${data.id} | To: ${to} | Subject: ${subject}`,
+      );
+      return { success: true, emailId: data.id };
+    } catch (err) {
+      console.error("❌ Gửi email qua Resend thất bại:", err.message);
+      console.log(
+        "⚠️  Đang tự động chuyển sang lưu email giả lập (sent_emails.json)...",
+      );
+    }
+  }
+
   const timestamp = new Date().toISOString();
   const emailRecord = {
     id: `email-${Math.random().toString(36).substr(2, 9)}`,

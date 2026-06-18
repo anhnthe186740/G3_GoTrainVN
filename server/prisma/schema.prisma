@@ -48,6 +48,8 @@ model User {
   lockReason            String?
   deletedAt             DateTime?  // Soft delete
   lastLogin             DateTime?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
 
   @@index([phoneNumber])
   @@index([userType])
