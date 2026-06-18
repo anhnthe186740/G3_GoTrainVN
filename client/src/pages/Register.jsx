@@ -1,7 +1,18 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, Train, ArrowRight, Loader2, User, Phone, Check } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Train,
+  ArrowRight,
+  Loader2,
+  User,
+  Phone,
+  Check,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
 
@@ -39,7 +50,8 @@ export function Register() {
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
 
     if (score <= 2) return { score, label: "Yếu", color: "bg-red-500 w-1/3" };
-    if (score <= 4) return { score, label: "Trung bình", color: "bg-amber-500 w-2/3" };
+    if (score <= 4)
+      return { score, label: "Trung bình", color: "bg-amber-500 w-2/3" };
     return { score, label: "Mạnh", color: "bg-emerald-500 w-full" };
   };
 
@@ -53,12 +65,16 @@ export function Register() {
       const { confirmPassword, ...registerData } = data;
       await api.post("/auth/register", registerData);
 
-      toast.success("Tạo tài khoản thành công! Đang chuyển hướng...", { id: toastId });
+      toast.success("Tạo tài khoản thành công! Đang chuyển hướng...", {
+        id: toastId,
+      });
       setTimeout(() => {
         navigate("/login");
       }, 1500);
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin!";
+      const errorMsg =
+        error.response?.data?.message ||
+        "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin!";
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -86,30 +102,40 @@ export function Register() {
         <div className="relative z-10 my-auto max-w-lg space-y-6">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
             Tham gia cùng chúng tôi <br />
-            <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">GoTrain VN</span>
+            <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+              GoTrain VN
+            </span>
           </h1>
           <p className="text-lg text-slate-300">
-            Tạo tài khoản hôm nay để bắt đầu chuyến hành trình nhanh chóng, tiện lợi và tiết kiệm nhất.
+            Tạo tài khoản hôm nay để bắt đầu chuyến hành trình nhanh chóng, tiện
+            lợi và tiết kiệm nhất.
           </p>
 
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span className="text-sm font-medium text-slate-200">Đặt chỗ nhanh trong 3 bước</span>
+              <span className="text-sm font-medium text-slate-200">
+                Đặt chỗ nhanh trong 3 bước
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span className="text-sm font-medium text-slate-200">Ví điện tử nạp/rút không mất phí</span>
+              <span className="text-sm font-medium text-slate-200">
+                Ví điện tử nạp/rút không mất phí
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span className="text-sm font-medium text-slate-200">Nhiều ưu đãi đặc biệt cho Sinh viên & Người già</span>
+              <span className="text-sm font-medium text-slate-200">
+                Nhiều ưu đãi đặc biệt cho Sinh viên & Người già
+              </span>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 text-sm text-slate-400">
-          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI Redesign.
+          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI
+          Redesign.
         </div>
       </div>
 
@@ -138,7 +164,9 @@ export function Register() {
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
             {/* Full Name Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Họ và tên</label>
+              <label className="text-xs font-semibold text-slate-700">
+                Họ và tên
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <User className="h-4.5 w-4.5 text-slate-400" />
@@ -148,22 +176,31 @@ export function Register() {
                   disabled={loading}
                   {...register("fullName", {
                     required: "Họ và tên là bắt buộc",
-                    minLength: { value: 3, message: "Họ và tên phải dài tối thiểu 3 kí tự" },
+                    minLength: {
+                      value: 3,
+                      message: "Họ và tên phải dài tối thiểu 3 kí tự",
+                    },
                   })}
                   placeholder="Nguyễn Văn A"
                   className={`block w-full rounded-xl border ${
-                    errors.fullName ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.fullName
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-2.5 pl-9 pr-4 text-slate-900 text-sm outline-none transition focus:ring-4`}
                 />
               </div>
               {errors.fullName && (
-                <p className="text-[11px] font-medium text-red-600">{errors.fullName.message}</p>
+                <p className="text-[11px] font-medium text-red-600">
+                  {errors.fullName.message}
+                </p>
               )}
             </div>
 
             {/* Phone Number Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Số điện thoại</label>
+              <label className="text-xs font-semibold text-slate-700">
+                Số điện thoại
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Phone className="h-4.5 w-4.5 text-slate-400" />
@@ -180,18 +217,24 @@ export function Register() {
                   })}
                   placeholder="0912345678"
                   className={`block w-full rounded-xl border ${
-                    errors.phoneNumber ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.phoneNumber
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-2.5 pl-9 pr-4 text-slate-900 text-sm outline-none transition focus:ring-4`}
                 />
               </div>
               {errors.phoneNumber && (
-                <p className="text-[11px] font-medium text-red-600">{errors.phoneNumber.message}</p>
+                <p className="text-[11px] font-medium text-red-600">
+                  {errors.phoneNumber.message}
+                </p>
               )}
             </div>
 
             {/* Email Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Địa chỉ Email</label>
+              <label className="text-xs font-semibold text-slate-700">
+                Địa chỉ Email
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Mail className="h-4.5 w-4.5 text-slate-400" />
@@ -208,18 +251,24 @@ export function Register() {
                   })}
                   placeholder="name@example.com"
                   className={`block w-full rounded-xl border ${
-                    errors.email ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.email
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-2.5 pl-9 pr-4 text-slate-900 text-sm outline-none transition focus:ring-4`}
                 />
               </div>
               {errors.email && (
-                <p className="text-[11px] font-medium text-red-600">{errors.email.message}</p>
+                <p className="text-[11px] font-medium text-red-600">
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
             {/* Password Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Mật khẩu</label>
+              <label className="text-xs font-semibold text-slate-700">
+                Mật khẩu
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Lock className="h-4.5 w-4.5 text-slate-400" />
@@ -229,11 +278,16 @@ export function Register() {
                   disabled={loading}
                   {...register("password", {
                     required: "Mật khẩu là bắt buộc",
-                    minLength: { value: 8, message: "Mật khẩu phải dài tối thiểu 8 kí tự" },
+                    minLength: {
+                      value: 8,
+                      message: "Mật khẩu phải dài tối thiểu 8 kí tự",
+                    },
                   })}
                   placeholder="Tối thiểu 8 kí tự"
                   className={`block w-full rounded-xl border ${
-                    errors.password ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.password
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-2.5 pl-9 pr-10 text-slate-900 text-sm outline-none transition focus:ring-4`}
                 />
                 <button
@@ -241,28 +295,43 @@ export function Register() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
                 >
-                  {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4.5 w-4.5" />
+                  ) : (
+                    <Eye className="h-4.5 w-4.5" />
+                  )}
                 </button>
               </div>
               {watchPassword && (
                 <div className="space-y-1.5 pt-1">
                   <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-                    <div className={`h-full transition-all duration-300 ${strength.color}`} />
+                    <div
+                      className={`h-full transition-all duration-300 ${strength.color}`}
+                    />
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-500">
-                    <span>Độ mạnh: <span className="font-semibold">{strength.label}</span></span>
-                    <span>Yêu cầu: chữ hoa, chữ thường, số, kí tự đặc biệt</span>
+                    <span>
+                      Độ mạnh:{" "}
+                      <span className="font-semibold">{strength.label}</span>
+                    </span>
+                    <span>
+                      Yêu cầu: chữ hoa, chữ thường, số, kí tự đặc biệt
+                    </span>
                   </div>
                 </div>
               )}
               {errors.password && (
-                <p className="text-[11px] font-medium text-red-600">{errors.password.message}</p>
+                <p className="text-[11px] font-medium text-red-600">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
             {/* Confirm Password Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Xác nhận mật khẩu</label>
+              <label className="text-xs font-semibold text-slate-700">
+                Xác nhận mật khẩu
+              </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Lock className="h-4.5 w-4.5 text-slate-400" />
@@ -272,11 +341,14 @@ export function Register() {
                   disabled={loading}
                   {...register("confirmPassword", {
                     required: "Vui lòng xác nhận mật khẩu",
-                    validate: (value) => value === watchPassword || "Mật khẩu xác nhận không khớp",
+                    validate: (value) =>
+                      value === watchPassword || "Mật khẩu xác nhận không khớp",
                   })}
                   placeholder="Nhập lại mật khẩu"
                   className={`block w-full rounded-xl border ${
-                    errors.confirmPassword ? "border-red-300 focus:border-red-500 focus:ring-red-200" : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
+                    errors.confirmPassword
+                      ? "border-red-300 focus:border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:border-slate-900 focus:ring-slate-200"
                   } bg-white py-2.5 pl-9 pr-10 text-slate-900 text-sm outline-none transition focus:ring-4`}
                 />
                 <button
@@ -284,11 +356,17 @@ export function Register() {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
                 >
-                  {showConfirmPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4.5 w-4.5" />
+                  ) : (
+                    <Eye className="h-4.5 w-4.5" />
+                  )}
                 </button>
               </div>
               {errors.confirmPassword && (
-                <p className="text-[11px] font-medium text-red-600">{errors.confirmPassword.message}</p>
+                <p className="text-[11px] font-medium text-red-600">
+                  {errors.confirmPassword.message}
+                </p>
               )}
             </div>
 
@@ -303,13 +381,22 @@ export function Register() {
                 />
               </div>
               <div className="ml-3 text-xs">
-                <label htmlFor="agree-terms" className="font-medium text-slate-700 select-none">
+                <label
+                  htmlFor="agree-terms"
+                  className="font-medium text-slate-700 select-none"
+                >
                   Tôi đồng ý với{" "}
-                  <Link to="/terms" className="font-semibold text-blue-600 hover:text-blue-500 transition">
+                  <Link
+                    to="/terms"
+                    className="font-semibold text-blue-600 hover:text-blue-500 transition"
+                  >
                     Điều khoản dịch vụ
                   </Link>{" "}
                   và{" "}
-                  <Link to="/privacy" className="font-semibold text-blue-600 hover:text-blue-500 transition">
+                  <Link
+                    to="/privacy"
+                    className="font-semibold text-blue-600 hover:text-blue-500 transition"
+                  >
                     Chính sách bảo mật
                   </Link>{" "}
                   của GoTrain VN.

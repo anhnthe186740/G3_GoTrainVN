@@ -617,9 +617,17 @@ export const deleteTrain = asyncHandler(async (req, res) => {
 // POST /api/v1/schedules/trigger-auto-generate - Kích hoạt thủ công tạo lịch trình ngày thứ 30
 // ============================================================
 export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
-  const result = await generateSchedulesForDay30();
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 30);
+
+  const result = await generateSchedulesForRange(
+    startDate.toISOString().split("T")[0],
+    endDate.toISOString().split("T")[0],
+  );
+
   res.json({
-    message: result.message,
+    message: `Kích hoạt tự động tạo lịch trình thành công! ${result.message}`,
     created: result.created,
     skipped: result.skipped,
   });

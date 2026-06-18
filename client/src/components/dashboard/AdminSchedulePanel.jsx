@@ -46,6 +46,94 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
+// ─── Mock RouteTemplate Data ───────────────────────────────────
+const MOCK_ROUTE_TEMPLATES = [
+  {
+    id: "tpl-mock-1",
+    routeId: "r1",
+    trainId: "t1",
+    route: {
+      routeName: "Hà Nội – Huế",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "HUE", stationName: "Ga Huế" },
+    },
+    train: { trainCode: "SE1", trainName: "SE1" },
+    departureTimes: ["08:00"],
+    bufferMinutes: 60,
+    isActive: true,
+  },
+  {
+    id: "tpl-mock-2",
+    routeId: "r2",
+    trainId: "t2",
+    route: {
+      routeName: "Hà Nội – Sài Gòn",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "SGN", stationName: "Ga Sài Gòn" },
+    },
+    train: { trainCode: "SE2", trainName: "SE2" },
+    departureTimes: ["06:00", "22:00"],
+    bufferMinutes: 60,
+    isActive: true,
+  },
+  {
+    id: "tpl-mock-3",
+    routeId: "r3",
+    trainId: "t3",
+    route: {
+      routeName: "Hà Nội – Đà Nẵng",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "DAN", stationName: "Ga Đà Nẵng" },
+    },
+    train: { trainCode: "SE3", trainName: "SE3" },
+    departureTimes: ["08:00", "14:00"],
+    bufferMinutes: 60,
+    isActive: true,
+  },
+  {
+    id: "tpl-mock-4",
+    routeId: "r4",
+    trainId: "t4",
+    route: {
+      routeName: "Hà Nội – Nha Trang",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "NTR", stationName: "Ga Nha Trang" },
+    },
+    train: { trainCode: "TN1", trainName: "TN1" },
+    departureTimes: ["20:00"],
+    bufferMinutes: 90,
+    isActive: false,
+  },
+  {
+    id: "tpl-mock-5",
+    routeId: "r5",
+    trainId: "t5",
+    route: {
+      routeName: "Hà Nội – Quy Nhơn",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "QNH", stationName: "Ga Quy Nhơn" },
+    },
+    train: { trainCode: "SE4", trainName: "SE4" },
+    departureTimes: ["10:00"],
+    bufferMinutes: 60,
+    isActive: true,
+  },
+  {
+    id: "tpl-mock-6",
+    routeId: "r6",
+    trainId: "t6",
+    route: {
+      routeName: "Hà Nội – Lào Cai",
+      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
+      endStation: { stationCode: "LCA", stationName: "Ga Lào Cai" },
+    },
+    train: { trainCode: "SP1", trainName: "SP1" },
+    departureTimes: ["21:30"],
+    bufferMinutes: 45,
+    isActive: true,
+  },
+];
+
 export function AdminSchedulePanel() {
   const [schedules, setSchedules] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -96,6 +184,20 @@ export function AdminSchedulePanel() {
 
   const [triggeringAuto, setTriggeringAuto] = useState(false);
 
+  // ── RouteTemplate Management State ─────────────────────────────
+  const [templates, setTemplates] = useState([]);
+  const [showTemplateSection, setShowTemplateSection] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({
+    routeId: "",
+    trainId: "",
+    departureTimes: "08:00",
+    bufferMinutes: "60",
+    isActive: true,
+  });
+  const [templateSubmitting, setTemplateSubmitting] = useState(false);
+
   const handleTriggerAutoGenerate = async () => {
     setTriggeringAuto(true);
     try {
@@ -118,20 +220,23 @@ export function AdminSchedulePanel() {
   const loadAll = useCallback(async ({ force = false } = {}) => {
     try {
       setLoading(true);
-      const [rtRes, trRes, scRes] = await Promise.all([
+      const [rtRes, trRes, scRes, tplRes] = await Promise.all([
         getRoutes({ force }),
         getTrains({ force }),
         getSchedules({ force }),
+        api.get("/route-templates").catch(() => ({ data: { templates: [] } })),
       ]);
 
       setRoutes(rtRes.routes || []);
       setTrains(trRes.trains || []);
       setSchedules(scRes.schedules || []);
+      setTemplates(tplRes.data?.templates || []);
     } catch (err) {
       toast.error("Không thể tải dữ liệu từ server.");
       setRoutes([]);
       setTrains([]);
       setSchedules([]);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -140,6 +245,104 @@ export function AdminSchedulePanel() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // ── RouteTemplate Handlers ──────────────────────────────────────
+  const openAddTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      routeId: "",
+      trainId: "",
+      departureTimes: "08:00",
+      bufferMinutes: "60",
+      isActive: true,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const openEditTemplate = (tpl) => {
+    setEditingTemplate(tpl);
+    setTemplateForm({
+      routeId: tpl.routeId || "",
+      trainId: tpl.trainId || "",
+      departureTimes: tpl.departureTimes.join(", "),
+      bufferMinutes: String(tpl.bufferMinutes),
+      isActive: tpl.isActive,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa mẫu lịch chạy này?")) return;
+    try {
+      await api.delete(`/route-templates/${id}`);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      toast.success("Đã xóa mẫu lịch chạy thành công.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi xóa mẫu lịch chạy.");
+    }
+  };
+
+  const handleToggleTemplateActive = async (id) => {
+    const tpl = templates.find((t) => t.id === id);
+    if (!tpl) return;
+    const newActive = !tpl.isActive;
+    try {
+      const res = await api.put(`/route-templates/${id}`, {
+        isActive: newActive,
+      });
+      setTemplates((prev) =>
+        prev.map((t) => (t.id === id ? res.data.template : t)),
+      );
+      toast.success(
+        newActive ? "Đã kích hoạt mẫu lịch chạy." : "Đã tắt mẫu lịch chạy.",
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể thay đổi trạng thái mẫu.",
+      );
+    }
+  };
+
+  const handleSaveTemplate = async (e) => {
+    e.preventDefault();
+    setTemplateSubmitting(true);
+    const times = templateForm.departureTimes
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    try {
+      if (editingTemplate) {
+        const res = await api.put(`/route-templates/${editingTemplate.id}`, {
+          departureTimes: times,
+          bufferMinutes: parseInt(templateForm.bufferMinutes) || 60,
+          isActive: templateForm.isActive,
+        });
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === editingTemplate.id ? res.data.template : t,
+          ),
+        );
+        toast.success(res.data.message || "Đã cập nhật mẫu lịch chạy.");
+      } else {
+        const res = await api.post("/route-templates", {
+          routeId: templateForm.routeId,
+          trainId: templateForm.trainId,
+          departureTimes: times,
+          bufferMinutes: parseInt(templateForm.bufferMinutes) || 60,
+          isActive: templateForm.isActive,
+        });
+        setTemplates((prev) => [res.data.template, ...prev]);
+        toast.success(res.data.message || "Đã thêm mẫu lịch chạy mới.");
+      }
+      setShowTemplateModal(false);
+      setEditingTemplate(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu mẫu lịch chạy.");
+    } finally {
+      setTemplateSubmitting(false);
+    }
+  };
 
   // ── Auto-generate Schedule Submit ──────────────────────────────
   const handleCreateSchedules = async (e) => {
@@ -368,10 +571,10 @@ export function AdminSchedulePanel() {
             Trình tự động tạo lịch trình (Hàng ngày)
           </h4>
           <p className="text-xs text-[#3f4852]">
-            Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày, tự động sinh
-            lịch trình chạy tàu cho <strong>ngày thứ 30 tới</strong> dựa trên dữ
-            liệu các mẫu lịch chạy cố định hoặc nhân bản lịch trình 7 ngày trước
-            để đảm bảo luôn mở bán vé trước cho khách.
+            Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày (sinh lịch cho
+            ngày thứ 30 tới). Nhấp <strong>&quot;Chạy Ngay&quot;</strong> để
+            quét và tạo/bù lịch chạy cho toàn bộ{" "}
+            <strong>30 ngày tiếp theo</strong> dựa trên các mẫu đang hoạt động.
           </p>
         </div>
         <button
@@ -391,10 +594,221 @@ export function AdminSchedulePanel() {
               <span className="material-symbols-outlined text-[16px]">
                 bolt
               </span>
-              Chạy Ngay (Đồng bộ Ngày 30)
+              Chạy Ngay (Đồng bộ 30 Ngày)
             </>
           )}
         </button>
+      </div>
+
+      {/* ── RouteTemplate Management Section ── */}
+      <div className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-[#bec7d4]/10">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-violet-600 text-[20px]">
+                calendar_clock
+              </span>
+            </div>
+            <div>
+              <h3 className="font-bold text-[#191c1e] text-sm">
+                Mẫu Lịch Chạy (RouteTemplate)
+              </h3>
+              <p className="text-xs text-[#3f4852]/60">
+                Định nghĩa nền tảng cho tự động gen lịch trình hàng ngày
+              </p>
+            </div>
+            <div className="flex gap-2 ml-1">
+              <span className="text-xs font-bold bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full">
+                {templates.filter((t) => t.isActive).length} đang hoạt động
+              </span>
+              <span className="text-xs font-bold bg-[#f2f4f6] text-[#3f4852] px-2.5 py-0.5 rounded-full">
+                {templates.filter((t) => !t.isActive).length} đã tắt
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={openAddTemplate}
+              className="px-3.5 py-2 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 border-none cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              Thêm mẫu
+            </button>
+            <button
+              onClick={() => setShowTemplateSection((s) => !s)}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-[#3f4852] hover:bg-[#f2f4f6] transition-all border-none bg-transparent cursor-pointer"
+              title={showTemplateSection ? "Thu gọn" : "Mở rộng"}
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                {showTemplateSection ? "expand_less" : "expand_more"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {showTemplateSection && (
+          <>
+            {/* Info Banner */}
+            <div className="px-6 py-3 bg-violet-50/60 border-b border-violet-100/60 flex items-start gap-2">
+              <span className="material-symbols-outlined text-violet-500 text-[16px] mt-0.5 shrink-0">
+                info
+              </span>
+              <p className="text-xs text-violet-700 leading-relaxed">
+                Mỗi mẫu lịch chạy xác định{" "}
+                <strong>tuyến đường + tàu + giờ khởi hành</strong>. Khi kích
+                hoạt &quot;Chạy Ngay&quot; hoặc lịch tự động 00:00 hàng ngày, hệ
+                thống chỉ sinh lịch từ <strong>các mẫu đang hoạt động</strong>.
+                Mẫu không hoạt động sẽ bị bỏ qua hoàn toàn.
+              </p>
+            </div>
+
+            {/* Table */}
+            {templates.length === 0 ? (
+              <div className="py-14 text-center">
+                <span className="material-symbols-outlined text-5xl text-[#bec7d4] block mb-3">
+                  calendar_clock
+                </span>
+                <p className="font-bold text-[#191c1e] text-sm">
+                  Chưa có mẫu lịch chạy nào
+                </p>
+                <p className="text-xs text-[#3f4852]/60 mt-1">
+                  Thêm mẫu để hệ thống có thể tự động gen lịch trình
+                </p>
+                <button
+                  onClick={openAddTemplate}
+                  className="mt-4 px-4 py-2 bg-[#00629d] text-white rounded-xl font-semibold text-xs cursor-pointer border-none hover:bg-[#00629d]/90 transition-all"
+                >
+                  Thêm mẫu đầu tiên
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#f7f9fb]/80 border-b border-[#bec7d4]/20">
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Tuyến đường
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Tàu
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Giờ khởi hành
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-center">
+                        Buffer
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-center">
+                        Hoạt động
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-right">
+                        Thao tác
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#bec7d4]/10">
+                    {templates.map((tpl) => (
+                      <tr
+                        key={tpl.id}
+                        className="hover:bg-[#f7f9fb] transition-colors group"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-[#191c1e]">
+                              {tpl.route?.startStation?.stationCode}
+                            </span>
+                            <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
+                              arrow_forward
+                            </span>
+                            <span className="font-bold text-sm text-[#00629d]">
+                              {tpl.route?.endStation?.stationCode}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#3f4852]/50 mt-0.5 truncate max-w-[220px]">
+                            {tpl.route?.startStation?.stationName} →{" "}
+                            {tpl.route?.endStation?.stationName}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#cfe5ff]/40 rounded-lg">
+                            <span className="material-symbols-outlined text-[14px] text-[#00629d]">
+                              train
+                            </span>
+                            <span className="font-bold text-sm text-[#00629d]">
+                              {tpl.train?.trainCode}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {tpl.departureTimes.map((t) => (
+                              <span
+                                key={t}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f4fd] text-[#005a90] text-xs font-bold rounded-lg border border-[#bde0f7]"
+                              >
+                                <span className="material-symbols-outlined text-[11px]">
+                                  schedule
+                                </span>
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-xs font-semibold text-[#3f4852] bg-[#f2f4f6] px-2.5 py-1 rounded-lg">
+                            {tpl.bufferMinutes} phút
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => handleToggleTemplateActive(tpl.id)}
+                              className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer border-none focus:outline-none ${
+                                tpl.isActive ? "bg-[#00629d]" : "bg-[#bec7d4]"
+                              }`}
+                              title={tpl.isActive ? "Tắt mẫu" : "Kích hoạt mẫu"}
+                            >
+                              <span
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                                  tpl.isActive
+                                    ? "translate-x-5"
+                                    : "translate-x-0.5"
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => openEditTemplate(tpl)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#00629d] hover:bg-white hover:shadow-sm transition-all cursor-pointer border-none bg-transparent"
+                              title="Chỉnh sửa"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                edit
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTemplate(tpl.id)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#ba1a1a] hover:bg-white hover:shadow-sm transition-all cursor-pointer border-none bg-transparent"
+                              title="Xóa mẫu"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                delete
+                              </span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Filters & Search */}
@@ -1053,6 +1467,203 @@ export function AdminSchedulePanel() {
             >
               Đóng chi tiết
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── RouteTemplate Add/Edit Modal ── */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.18)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
+              <h3 className="font-bold text-lg text-[#191c1e] flex items-center gap-2">
+                <span className="material-symbols-outlined text-violet-600">
+                  calendar_clock
+                </span>
+                {editingTemplate
+                  ? "Chỉnh sửa mẫu lịch chạy"
+                  : "Thêm mẫu lịch chạy"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  setEditingTemplate(null);
+                }}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tuyến đường *
+                </label>
+                <select
+                  required
+                  value={templateForm.routeId}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      routeId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tuyến đường --</option>
+                  {routes
+                    .filter((r) => r.isActive !== false)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.routeName} ({r.startStation?.stationName} →{" "}
+                        {r.endStation?.stationName})
+                      </option>
+                    ))}
+                </select>
+                {routes.length === 0 && (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    ⚠ Không có tuyến nào — dữ liệu sẽ được giữ nguyên khi lưu.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tàu hỏa *
+                </label>
+                <select
+                  required
+                  value={templateForm.trainId}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      trainId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tàu hỏa --</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainName} ({t.trainCode})
+                    </option>
+                  ))}
+                </select>
+                {trains.length === 0 && (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    ⚠ Không có tàu nào — dữ liệu sẽ được giữ nguyên khi lưu.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Giờ khởi hành hàng ngày *
+                  <span className="font-normal text-[#3f4852]/60 ml-1">
+                    (phân tách bằng dấu phẩy)
+                  </span>
+                </label>
+                <input
+                  required
+                  value={templateForm.departureTimes}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      departureTimes: e.target.value,
+                    })
+                  }
+                  placeholder="06:00, 14:00, 22:00"
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+                <p className="text-[11px] text-[#3f4852]/60 mt-1">
+                  VD: <code>06:00, 14:30, 22:00</code> — mỗi giờ sẽ tạo 1 lịch
+                  mỗi ngày.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Thời gian đệm tối thiểu (phút)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="480"
+                  value={templateForm.bufferMinutes}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      bufferMinutes: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+                <p className="text-[11px] text-[#3f4852]/60 mt-1">
+                  Giãn cách bắt buộc trước/sau chuyến để tránh xung đột tàu.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between py-3 px-4 bg-[#f7f9fb] rounded-xl border border-[#bec7d4]/20">
+                <div>
+                  <p className="text-xs font-semibold text-[#191c1e]">
+                    Kích hoạt mẫu
+                  </p>
+                  <p className="text-[11px] text-[#3f4852]/60 mt-0.5">
+                    Mẫu sẽ được dùng trong lần gen lịch tiếp theo
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTemplateForm((f) => ({ ...f, isActive: !f.isActive }))
+                  }
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer border-none focus:outline-none ${
+                    templateForm.isActive ? "bg-[#00629d]" : "bg-[#bec7d4]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                      templateForm.isActive ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTemplateModal(false);
+                    setEditingTemplate(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={templateSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {templateSubmitting ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">
+                        progress_activity
+                      </span>
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">
+                        {editingTemplate ? "save" : "add"}
+                      </span>
+                      {editingTemplate ? "Cập nhật" : "Thêm mẫu"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
