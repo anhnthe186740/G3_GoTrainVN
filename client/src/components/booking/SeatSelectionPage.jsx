@@ -897,16 +897,34 @@ function LegacySeatSelectionPage() {
 }
 */
 
-export function SeatSelectionPage() {
+export function SeatSelectionPage({
+  embedded = false,
+  journeyOverride = null,
+  restoredSessionIdOverride = "",
+  onBack,
+  onSessionReady,
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const outboundScheduleId = searchParams.get("outboundScheduleId");
-  const outboundFromStationId = searchParams.get("outboundFromStationId");
-  const outboundToStationId = searchParams.get("outboundToStationId");
-  const returnScheduleId = searchParams.get("returnScheduleId");
-  const returnFromStationId = searchParams.get("returnFromStationId");
-  const returnToStationId = searchParams.get("returnToStationId");
-  const restoredSessionId = searchParams.get("sessionId");
+  const outboundScheduleId =
+    journeyOverride?.outbound?.scheduleId ||
+    searchParams.get("outboundScheduleId");
+  const outboundFromStationId =
+    journeyOverride?.outbound?.fromStationId ||
+    searchParams.get("outboundFromStationId");
+  const outboundToStationId =
+    journeyOverride?.outbound?.toStationId ||
+    searchParams.get("outboundToStationId");
+  const returnScheduleId =
+    journeyOverride?.return?.scheduleId || searchParams.get("returnScheduleId");
+  const returnFromStationId =
+    journeyOverride?.return?.fromStationId ||
+    searchParams.get("returnFromStationId");
+  const returnToStationId =
+    journeyOverride?.return?.toStationId ||
+    searchParams.get("returnToStationId");
+  const restoredSessionId =
+    restoredSessionIdOverride || searchParams.get("sessionId");
 
   const journeyPayload = useMemo(
     () => ({
@@ -972,12 +990,13 @@ export function SeatSelectionPage() {
 
   const setSessionQuery = useCallback(
     (sessionId) => {
+      if (embedded) return;
       const next = new URLSearchParams(searchParams);
       if (sessionId) next.set("sessionId", sessionId);
       else next.delete("sessionId");
       setSearchParams(next, { replace: true });
     },
-    [searchParams, setSearchParams],
+    [embedded, searchParams, setSearchParams],
   );
 
   const loadMap = useCallback(
@@ -1277,6 +1296,10 @@ export function SeatSelectionPage() {
 
   const continueBooking = () => {
     if (!session || expired) return;
+    if (onSessionReady) {
+      onSessionReady(session);
+      return;
+    }
     navigate(`/booking/passengers?sessionId=${session.id}`);
   };
 
@@ -1313,7 +1336,7 @@ export function SeatSelectionPage() {
     <div className="space-y-5 pb-24 xl:pb-8">
       <button
         type="button"
-        onClick={() => navigate(-1)}
+        onClick={() => (onBack ? onBack() : navigate(-1))}
         className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-primary"
       >
         <ArrowLeft className="h-4 w-4" />

@@ -10,7 +10,7 @@ import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
 
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
-const PAYMENT_METHODS = ["BANK_QR", "WALLET"];
+const PAYMENT_METHODS = ["BANK_QR", "WALLET", "CASH"];
 
 function httpError(statusCode, message, details = null) {
   const error = new Error(message);
@@ -60,7 +60,12 @@ function passengerTypeForAge(age, requestedType) {
   return requestedType === "STUDENT" ? "STUDENT" : "ADULT";
 }
 
-export function normalizePassenger(passenger, index, today = new Date()) {
+export function normalizePassenger(
+  passenger,
+  index,
+  today = new Date(),
+  { requireEmail = true } = {},
+) {
   const label = `Hành khách ${index + 1}`;
   const fullName = String(passenger.fullName || "").trim();
   const requestedTypeValue = String(
@@ -114,7 +119,7 @@ export function normalizePassenger(passenger, index, today = new Date()) {
   if (!/^(0|\+84)\d{9,10}$/.test(phoneNumber)) {
     throw httpError(400, `${label}: số điện thoại chưa hợp lệ.`);
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (requireEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw httpError(400, `${label}: email chưa hợp lệ.`);
   }
 
@@ -123,7 +128,7 @@ export function normalizePassenger(passenger, index, today = new Date()) {
     nationalId,
     nationalIdType,
     phoneNumber,
-    email,
+    email: email || null,
     dateOfBirth,
     passengerType,
   };
@@ -428,7 +433,95 @@ function buyerFromPassengers(passengers) {
   };
 }
 
+function normalizePhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("84") && digits.length >= 11) {
+    return `0${digits.slice(2)}`;
+  }
+  return digits;
+}
+
+function phoneVariants(value) {
+  const normalized = normalizePhoneNumber(value);
+  if (!normalized) return [];
+  const variants = new Set([normalized]);
+  if (normalized.startsWith("0")) {
+    variants.add(`84${normalized.slice(1)}`);
+    variants.add(`+84${normalized.slice(1)}`);
+  }
+  return [...variants];
+}
+
+function normalizePersonName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ");
+}
+
+async function matchCustomerUsers(passengers) {
+  const nationalIds = [
+    ...new Set(passengers.map((p) => p.nationalId).filter(Boolean)),
+  ];
+  const phoneNumbers = [
+    ...new Set(passengers.flatMap((p) => phoneVariants(p.phoneNumber))),
+  ];
+  if (nationalIds.length === 0 && phoneNumbers.length === 0) {
+    return new Map();
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      userType: "CUSTOMER",
+      isActive: true,
+      deletedAt: null,
+      OR: [
+        nationalIds.length ? { nationalId: { in: nationalIds } } : null,
+        phoneNumbers.length ? { phoneNumber: { in: phoneNumbers } } : null,
+      ].filter(Boolean),
+    },
+    select: {
+      id: true,
+      fullName: true,
+      phoneNumber: true,
+      nationalId: true,
+    },
+  });
+
+  const byNationalId = new Map(
+    users
+      .filter((user) => user.nationalId)
+      .map((user) => [user.nationalId, user]),
+  );
+  const byPhoneAndName = new Map(
+    users
+      .filter((user) => user.phoneNumber)
+      .map((user) => [
+        `${normalizePhoneNumber(user.phoneNumber)}:${normalizePersonName(user.fullName)}`,
+        user,
+      ]),
+  );
+
+  return new Map(
+    passengers
+      .map((passenger, index) => {
+        const byId = passenger.nationalId
+          ? byNationalId.get(passenger.nationalId)
+          : null;
+        const byContact = byPhoneAndName.get(
+          `${normalizePhoneNumber(passenger.phoneNumber)}:${normalizePersonName(passenger.fullName)}`,
+        );
+        const matchedUser = byId || byContact;
+        return matchedUser ? [index, matchedUser.id] : null;
+      })
+      .filter(Boolean),
+  );
+}
+
 export async function checkoutBooking(identity, payload) {
+  const isStaffCounter = payload.salesChannel === "STAFF_COUNTER";
   if (
     !Array.isArray(payload.passengers) ||
     payload.passengers.length < 1 ||
@@ -438,15 +531,44 @@ export async function checkoutBooking(identity, payload) {
   }
   validateAccountHolderSelection(payload.passengers, identity);
   const passengers = payload.passengers.map((passenger, index) =>
-    normalizePassenger(passenger, index),
+    normalizePassenger(passenger, index, new Date(), {
+      requireEmail: !isStaffCounter,
+    }),
   );
   validatePassengerBusinessRules(passengers);
   const paymentMethod = String(payload.paymentMethod || "").toUpperCase();
   if (!PAYMENT_METHODS.includes(paymentMethod)) {
     throw httpError(400, "Phương thức thanh toán chưa hợp lệ.");
   }
+  if (isStaffCounter && !["CASH", "BANK_QR"].includes(paymentMethod)) {
+    throw httpError(
+      400,
+      "Đặt vé tại quầy chỉ hỗ trợ thanh toán tiền mặt hoặc chuyển khoản.",
+    );
+  }
   if (!identity.userId && paymentMethod === "WALLET") {
     throw httpError(403, "Khách vãng lai không thể thanh toán bằng ví.");
+  }
+  const matchedCustomerUsers = isStaffCounter
+    ? await matchCustomerUsers(passengers)
+    : new Map();
+  let customerUserId = null;
+  if (payload.customerUserId) {
+    const customer = await prisma.user.findFirst({
+      where: {
+        id: payload.customerUserId,
+        userType: "CUSTOMER",
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw httpError(400, "Không tìm thấy thành viên hợp lệ để gắn đơn vé.");
+    }
+    customerUserId = customer.id;
+  } else if (isStaffCounter) {
+    customerUserId = matchedCustomerUsers.values().next().value || null;
   }
 
   const quote = await quoteBooking(identity, {
@@ -458,7 +580,18 @@ export async function checkoutBooking(identity, payload) {
     throw httpError(400, "Số hành khách không khớp với số ghế đã giữ.");
   }
 
-  const immediatePayment = paymentMethod === "WALLET";
+  const immediatePayment =
+    paymentMethod === "WALLET" || paymentMethod === "CASH";
+  const bookingOwner = isStaffCounter
+    ? { userId: customerUserId, guestToken: null }
+    : customerUserId
+      ? { userId: customerUserId, guestToken: null }
+      : ownerData(identity);
+  const passengerUserIds = passengers.map((_, index) =>
+    isStaffCounter
+      ? matchedCustomerUsers.get(index) || customerUserId || null
+      : customerUserId || identity.userId,
+  );
   const now = new Date();
   const code = bookingCode();
   let payosPayment = null;
@@ -491,7 +624,7 @@ export async function checkoutBooking(identity, payload) {
     }
 
     let wallet = null;
-    if (immediatePayment) {
+    if (paymentMethod === "WALLET") {
       wallet = await tx.wallet.findUnique({
         where: { userId: identity.userId },
       });
@@ -507,7 +640,7 @@ export async function checkoutBooking(identity, payload) {
     const booking = await tx.booking.create({
       data: {
         bookingCode: code,
-        ...ownerData(identity),
+        ...bookingOwner,
         scheduleId: quote.session.outboundScheduleId,
         fromStationId: quote.session.outboundFromStationId,
         toStationId: quote.session.outboundToStationId,
@@ -541,6 +674,7 @@ export async function checkoutBooking(identity, payload) {
         confirmationEmail:
           passengers.find((passenger) => passenger.email)?.email || null,
         expiresAt: immediatePayment ? null : quote.session.expiresAt,
+        paidAt: immediatePayment ? now : null,
       },
     });
 
@@ -550,7 +684,7 @@ export async function checkoutBooking(identity, payload) {
       const created = await tx.passenger.create({
         data: {
           bookingId: booking.id,
-          userId: identity.userId,
+          userId: passengerUserIds[index],
           ...passenger,
           ticketCode: ticketCode(),
           seatId: primaryLeg.seatId,
@@ -588,12 +722,14 @@ export async function checkoutBooking(identity, payload) {
         paymentMethod,
         amount: quote.totalAmount,
         status: immediatePayment ? "SUCCESS" : "PENDING",
-        transactionId: immediatePayment ? `WALLET-${randomUUID()}` : null,
+        transactionId: immediatePayment
+          ? `${paymentMethod}-${randomUUID()}`
+          : null,
         attemptNumber: 1,
       },
     });
 
-    if (immediatePayment) {
+    if (paymentMethod === "WALLET") {
       await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
@@ -646,18 +782,18 @@ export async function checkoutBooking(identity, payload) {
         data: { usedBudget: { increment: quote.promotionDiscount } },
       });
     }
-    if (identity.userId) {
+    if (booking.userId) {
       if (immediatePayment) {
         await awardLoyaltyPointsAndCheckTier(
           tx,
-          identity.userId,
+          booking.userId,
           quote.totalAmount,
           booking.id,
         );
       }
       await tx.notification.create({
         data: {
-          userId: identity.userId,
+          userId: booking.userId,
           type: immediatePayment ? "BOOKING_CONFIRMED" : "PAYMENT_PENDING",
           title: immediatePayment
             ? "Đặt vé thành công"
@@ -674,12 +810,12 @@ export async function checkoutBooking(identity, payload) {
         const earnedPoints = Math.floor(quote.totalAmount / 10000);
         if (earnedPoints > 0) {
           await tx.user.update({
-            where: { id: identity.userId },
+            where: { id: booking.userId },
             data: { loyaltyPoints: { increment: earnedPoints } },
           });
           await tx.loyaltyPoint.create({
             data: {
-              userId: identity.userId,
+              userId: booking.userId,
               points: earnedPoints,
               type: "EARNED",
               source: "BOOKING",
@@ -717,8 +853,11 @@ export async function checkoutBooking(identity, payload) {
 }
 
 export async function confirmQrPayment(identity, bookingId) {
+  const privileged = ["STAFF", "ADMIN"].includes(identity.role);
   const booking = await prisma.booking.findFirst({
-    where: { id: bookingId, ...ownerWhere(identity) },
+    where: privileged
+      ? { id: bookingId }
+      : { id: bookingId, ...ownerWhere(identity) },
     include: { passengers: true },
   });
   if (!booking) throw httpError(404, "Không tìm thấy đơn đặt vé.");
@@ -760,10 +899,10 @@ export async function confirmQrPayment(identity, bookingId) {
         transactionId: `QR-DEMO-${randomUUID()}`,
       },
     });
-    if (identity.userId) {
+    if (booking.userId) {
       await tx.notification.create({
         data: {
-          userId: identity.userId,
+          userId: booking.userId,
           type: "BOOKING_CONFIRMED",
           title: "Thanh toán thành công",
           message: `Vé điện tử của đơn ${booking.bookingCode} đang được gửi đến ${booking.confirmationEmail}.`,
@@ -777,12 +916,12 @@ export async function confirmQrPayment(identity, bookingId) {
       const earnedPoints = Math.floor(booking.totalAmount / 10000);
       if (earnedPoints > 0) {
         await tx.user.update({
-          where: { id: identity.userId },
+          where: { id: booking.userId },
           data: { loyaltyPoints: { increment: earnedPoints } },
         });
         await tx.loyaltyPoint.create({
           data: {
-            userId: identity.userId,
+            userId: booking.userId,
             points: earnedPoints,
             type: "EARNED",
             source: "BOOKING",
@@ -796,8 +935,11 @@ export async function confirmQrPayment(identity, bookingId) {
 }
 
 export async function getBookingPaymentStatus(identity, bookingId) {
+  const privileged = ["STAFF", "ADMIN"].includes(identity.role);
   const booking = await prisma.booking.findFirst({
-    where: { id: bookingId, ...ownerWhere(identity) },
+    where: privileged
+      ? { id: bookingId }
+      : { id: bookingId, ...ownerWhere(identity) },
     include: { passengers: true },
   });
   if (!booking) throw httpError(404, "Khong tim thay don dat ve.");

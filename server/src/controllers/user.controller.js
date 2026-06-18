@@ -60,3 +60,33 @@ export const updateProfile = asyncHandler(async (req, res) => {
     user: updatedUser,
   });
 });
+
+export const searchCustomerForStaff = asyncHandler(async (req, res) => {
+  const phone = String(req.query.phone || "").replace(/\s/g, "");
+  if (!/^(0|\+84)\d{9,10}$/.test(phone)) {
+    return res.status(400).json({
+      message: "Nhập số điện thoại khách hàng hợp lệ để tra cứu.",
+    });
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      phoneNumber: phone,
+      userType: "CUSTOMER",
+      isActive: true,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phoneNumber: true,
+      nationalId: true,
+      nationalIdType: true,
+      dateOfBirth: true,
+      loyaltyPoints: true,
+    },
+  });
+
+  res.json({ user });
+});
