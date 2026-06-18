@@ -46,6 +46,95 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
+const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
+  if (!selectedRoute || !departureTimes) return null;
+
+  const durationMins = selectedRoute.estimatedDuration || 0;
+  if (durationMins <= 0) return null;
+
+  const bufferMins = parseInt(bufferMinutes) || 0;
+
+  const times = departureTimes
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(t));
+
+  if (times.length === 0) return null;
+
+  const durHours = Math.floor(durationMins / 60);
+  const durMins = durationMins % 60;
+
+  return (
+    <div className="mt-3 p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
+      <p className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+        <span className="material-symbols-outlined text-[16px]">info</span>
+        Thời gian hành trình dự kiến ({durHours > 0 ? `${durHours}h` : ""}{" "}
+        {durMins > 0 ? `${durMins}m` : ""}):
+      </p>
+      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+        {times.map((t) => {
+          const [h, m] = t.split(":").map(Number);
+          const totalMins = h * 60 + m + durationMins;
+          const availableMins = totalMins + bufferMins;
+
+          const arrDay = Math.floor(totalMins / (24 * 60)) + 1;
+          const arrHour = Math.floor((totalMins % (24 * 60)) / 60);
+          const arrMin = totalMins % 60;
+
+          const avDay = Math.floor(availableMins / (24 * 60)) + 1;
+          const avHour = Math.floor((availableMins % (24 * 60)) / 60);
+          const avMin = availableMins % 60;
+
+          const arrTimeStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
+          const avTimeStr = `${String(avHour).padStart(2, "0")}:${String(avMin).padStart(2, "0")}`;
+
+          const dayLabel = arrDay > 1 ? `Ngày thứ ${arrDay}` : "Cùng ngày";
+          const avDayLabel = avDay > 1 ? `Ngày thứ ${avDay}` : "Cùng ngày";
+
+          return (
+            <div
+              key={t}
+              className="text-xs flex flex-col gap-1 border-b border-violet-100/30 pb-2 last:border-none last:pb-0"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-[#191c1e] bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                    {t}
+                  </span>
+                  <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
+                    arrow_forward
+                  </span>
+                  <span className="font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                    {arrTimeStr}
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${arrDay > 1 ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}
+                >
+                  Đến: {dayLabel}
+                </span>
+              </div>
+              {bufferMins > 0 && (
+                <div className="flex items-center justify-between text-[10px] text-violet-700 bg-violet-100/40 px-2 py-0.5 rounded border border-violet-100/70">
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[11px]">
+                      schedule
+                    </span>
+                    Khả dụng từ (sau đệm): <strong>{avTimeStr}</strong>
+                  </span>
+                  <span>
+                    {avDayLabel} (+{bufferMins}p)
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ─── Mock RouteTemplate Data ───────────────────────────────────
 const MOCK_ROUTE_TEMPLATES = [
   {
@@ -1262,6 +1351,11 @@ export function AdminSchedulePanel() {
                   placeholder="08:00, 14:30, 20:00"
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
+                <TripPreview
+                  selectedRoute={routes.find((r) => r.id === schedForm.routeId)}
+                  departureTimes={schedForm.departureTimes}
+                  bufferMinutes={schedForm.bufferMinutes}
+                />
               </div>
 
               <div>
@@ -1580,6 +1674,13 @@ export function AdminSchedulePanel() {
                   VD: <code>06:00, 14:30, 22:00</code> — mỗi giờ sẽ tạo 1 lịch
                   mỗi ngày.
                 </p>
+                <TripPreview
+                  selectedRoute={routes.find(
+                    (r) => r.id === templateForm.routeId,
+                  )}
+                  departureTimes={templateForm.departureTimes}
+                  bufferMinutes={templateForm.bufferMinutes}
+                />
               </div>
 
               <div>
