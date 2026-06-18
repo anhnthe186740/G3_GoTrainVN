@@ -383,7 +383,9 @@ export function PassengerDetailsPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("BANK_QR");
+  const [paymentMethod, setPaymentMethod] = useState(
+    isExchangeMode ? "WALLET" : "BANK_QR",
+  );
   const [walletBalance, setWalletBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -392,6 +394,10 @@ export function PassengerDetailsPage() {
   const [paymentResult, setPaymentResult] = useState(null);
   const [completedResult, setCompletedResult] = useState(null);
   const [ruleError, setRuleError] = useState("");
+
+  useEffect(() => {
+    if (isExchangeMode) setPaymentMethod("WALLET");
+  }, [isExchangeMode]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -710,15 +716,17 @@ export function PassengerDetailsPage() {
     }
 
     setSubmitting(true);
-    if (isExchangeMode) {
-      toast.info(
-        "Đã tính đúng phí đổi vé. Backend xác nhận đổi vé/thanh toán chênh lệch chưa được triển khai.",
-      );
-      setSubmitting(false);
-      return;
-    }
-
     try {
+      if (isExchangeMode) {
+        const { data } = await bookingApi.exchange(exchangeBookingId, {
+          sessionId: session.id,
+          paymentMethod: "WALLET",
+        });
+        setCompletedResult(data);
+        toast.success("Đổi vé và thanh toán phí thành công.");
+        return;
+      }
+
       const { data } = await bookingApi.checkout({
         sessionId: session.id,
         passengers: passengers.map((passenger, index) => ({
@@ -737,7 +745,9 @@ export function PassengerDetailsPage() {
     } catch (requestError) {
       toast.error(
         requestError.response?.data?.message ||
-          "Không thể tạo đơn đặt vé. Vui lòng thử lại.",
+          (isExchangeMode
+            ? "Không thể đổi vé. Vui lòng thử lại."
+            : "Không thể tạo đơn đặt vé. Vui lòng thử lại."),
       );
     } finally {
       setSubmitting(false);
@@ -1452,30 +1462,32 @@ export function PassengerDetailsPage() {
                 Phương thức thanh toán
               </p>
               <div className="mt-2 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("BANK_QR")}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-                    paymentMethod === "BANK_QR"
-                      ? "border-cyan-300 bg-cyan-50"
-                      : "border-slate-200"
-                  }`}
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#087a91] shadow-sm">
-                    <QrCode className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block text-sm text-slate-800">
-                      QR ngân hàng
-                    </strong>
-                    <span className="text-[11px] text-slate-500">
-                      Xác nhận nhanh trong bản thử nghiệm
+                {!isExchangeMode && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("BANK_QR")}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                      paymentMethod === "BANK_QR"
+                        ? "border-cyan-300 bg-cyan-50"
+                        : "border-slate-200"
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#087a91] shadow-sm">
+                      <QrCode className="h-5 w-5" />
                     </span>
-                  </span>
-                  {paymentMethod === "BANK_QR" && (
-                    <CheckCircle2 className="h-5 w-5 text-[#087a91]" />
-                  )}
-                </button>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm text-slate-800">
+                        QR ngân hàng
+                      </strong>
+                      <span className="text-[11px] text-slate-500">
+                        Xác nhận nhanh trong bản thử nghiệm
+                      </span>
+                    </span>
+                    {paymentMethod === "BANK_QR" && (
+                      <CheckCircle2 className="h-5 w-5 text-[#087a91]" />
+                    )}
+                  </button>
+                )}
 
                 {user && (
                   <button
