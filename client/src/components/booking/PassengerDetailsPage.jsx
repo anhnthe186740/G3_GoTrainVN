@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  Banknote,
   Check,
   CheckCircle2,
   Clock3,
@@ -16,9 +17,11 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  Plus,
   QrCode,
   ShieldCheck,
   Sparkles,
+  Trash2,
   TicketCheck,
   TrainFront,
   UserRound,
@@ -62,6 +65,14 @@ const EMPTY_PASSENGER = {
   email: "",
   dateOfBirth: "",
   passengerType: "ADULT",
+  seatRequired: true,
+};
+
+const EMPTY_LAP_CHILD = {
+  ...EMPTY_PASSENGER,
+  nationalIdType: "",
+  passengerType: "CHILD",
+  seatRequired: false,
 };
 
 function money(value) {
@@ -109,10 +120,19 @@ function passengerTypeFromAge(age, currentType) {
   return currentType === "STUDENT" ? "STUDENT" : "ADULT";
 }
 
-function validatePassenger(passenger) {
+function isUnderSix(passenger) {
+  const age = ageFromDateOfBirth(passenger.dateOfBirth);
+  return age != null && age < 6;
+}
+
+function validatePassenger(passenger, { requireEmail = true } = {}) {
   const errors = {};
   if (passenger.fullName.trim().length < 2) {
     errors.fullName = "Nhập họ và tên như trên giấy tờ.";
+  }
+  if (passenger.seatRequired === false && passenger.passengerType !== "CHILD") {
+    errors.passengerType =
+      "Hành khách đi kèm không ghế phải là trẻ dưới 6 tuổi.";
   }
   const birthDate = new Date(`${passenger.dateOfBirth}T00:00:00`);
   if (
@@ -121,8 +141,17 @@ function validatePassenger(passenger) {
     birthDate >= new Date()
   ) {
     errors.dateOfBirth = "Chọn ngày sinh hợp lệ.";
+  } else {
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    if (passenger.seatRequired === false && (age == null || age >= 6)) {
+      errors.dateOfBirth = "Chi tre duoi 6 tuoi moi di kem khong chon ghe.";
+    }
+    if (passenger.seatRequired !== false && age != null && age < 6) {
+      errors.dateOfBirth =
+        "Tre duoi 6 tuoi di kem nguoi lon, khong dat ghe rieng.";
+    }
   }
-  if (passenger.passengerType !== "CHILD") {
+  if (passenger.passengerType !== "CHILD" && passenger.seatRequired !== false) {
     const document = passenger.nationalId.trim().toUpperCase();
     if (passenger.nationalIdType === "CCCD" && !/^\d{12}$/.test(document)) {
       errors.nationalId = "CCCD gồm đúng 12 chữ số.";
@@ -136,7 +165,10 @@ function validatePassenger(passenger) {
     if (!/^(0|\+84)\d{9,10}$/.test(passenger.phoneNumber.replace(/\s/g, ""))) {
       errors.phoneNumber = "Nhập số điện thoại Việt Nam hợp lệ.";
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(passenger.email.trim())) {
+    if (
+      requireEmail &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(passenger.email.trim())
+    ) {
       errors.email = "Nhập địa chỉ email hợp lệ.";
     }
   }
@@ -148,7 +180,8 @@ function duplicateDocumentMessages(passengers) {
   const documentOwners = new Map();
 
   passengers.forEach((passenger, index) => {
-    if (passenger.passengerType === "CHILD") return;
+    if (passenger.passengerType === "CHILD" || passenger.seatRequired === false)
+      return;
     const document = passenger.nationalId.trim().toUpperCase();
     const validDocument =
       (passenger.nationalIdType === "CCCD" && /^\d{12}$/.test(document)) ||
@@ -175,8 +208,10 @@ function duplicateDocumentMessages(passengers) {
   return messages;
 }
 
-function validatePassengerList(passengers) {
-  const errors = passengers.map(validatePassenger);
+function validatePassengerList(passengers, options) {
+  const errors = passengers.map((passenger) =>
+    validatePassenger(passenger, options),
+  );
   duplicateDocumentMessages(passengers).forEach((message, index) => {
     if (message) errors[index].nationalId = message;
   });
@@ -195,6 +230,22 @@ function passengerRuleError(passengers) {
   );
   if (hasChild && !hasCompanion) {
     return "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
+  }
+  if (
+    passengers.some(
+      (passenger) => passenger.seatRequired !== false && isUnderSix(passenger),
+    )
+  ) {
+    return "Tre duoi 6 tuoi di kem nguoi lon va khong chon ghe rieng.";
+  }
+  const lapChildCount = passengers.filter(
+    (passenger) => passenger.seatRequired === false,
+  ).length;
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  if (lapChildCount > seatedPassengerCount) {
+    return "Mỗi ghế chỉ được xếp tối đa 1 hành khách có ghế và 1 trẻ dưới 6 tuổi.";
   }
   return "";
 }
@@ -362,11 +413,20 @@ function CompletionView({ result }) {
   );
 }
 
-export function PassengerDetailsPage() {
+export function PassengerDetailsPage({
+  embedded = false,
+  mode = "customer",
+  sessionIdOverride = "",
+  customerUserId = "",
+  customerProfile = null,
+  onBack,
+  onComplete,
+}) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, isHydrating } = useAuthStore();
-  const sessionId = searchParams.get("sessionId");
+  const isStaffMode = mode === "staff";
+  const sessionId = sessionIdOverride || searchParams.get("sessionId");
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [errors, setErrors] = useState([]);
@@ -376,7 +436,9 @@ export function PassengerDetailsPage() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("BANK_QR");
+  const [paymentMethod, setPaymentMethod] = useState(
+    isStaffMode ? "CASH" : "BANK_QR",
+  );
   const [walletBalance, setWalletBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -410,9 +472,39 @@ export function PassengerDetailsPage() {
           return;
         }
         setSession(data.session);
-        setPassengers(
-          Array.from({ length: count }, () => ({ ...EMPTY_PASSENGER })),
-        );
+        const nextPassengers = Array.from({ length: count }, () => ({
+          ...EMPTY_PASSENGER,
+        }));
+        if (customerProfile) {
+          const profileDateOfBirth = toDateInput(customerProfile.dateOfBirth);
+          const profilePassengerType = passengerTypeFromAge(
+            ageFromDateOfBirth(profileDateOfBirth),
+            "ADULT",
+          );
+          nextPassengers[0] = {
+            ...nextPassengers[0],
+            fullName: customerProfile.fullName || "",
+            phoneNumber:
+              profilePassengerType === "CHILD"
+                ? ""
+                : customerProfile.phoneNumber || "",
+            email:
+              profilePassengerType === "CHILD"
+                ? ""
+                : customerProfile.email || "",
+            nationalId:
+              profilePassengerType === "CHILD"
+                ? ""
+                : customerProfile.nationalId || "",
+            nationalIdType:
+              profilePassengerType === "CHILD"
+                ? ""
+                : customerProfile.nationalIdType || "CCCD",
+            dateOfBirth: profileDateOfBirth,
+            passengerType: profilePassengerType,
+          };
+        }
+        setPassengers(nextPassengers);
         setErrors(Array.from({ length: count }, () => ({})));
       })
       .catch((requestError) =>
@@ -422,7 +514,7 @@ export function PassengerDetailsPage() {
         ),
       )
       .finally(() => setLoading(false));
-  }, [sessionId]);
+  }, [customerProfile, sessionId]);
 
   useEffect(() => {
     if (!session) return undefined;
@@ -431,7 +523,7 @@ export function PassengerDetailsPage() {
   }, [session]);
 
   useEffect(() => {
-    if (!user || isHydrating) return;
+    if (isStaffMode || !user || isHydrating) return;
     api
       .get("/users/profile")
       .then(({ data }) => setProfile(data.user))
@@ -440,7 +532,7 @@ export function PassengerDetailsPage() {
       .getWallet()
       .then(({ data }) => setWalletBalance(data.wallet.balance))
       .catch(() => setWalletBalance(null));
-  }, [isHydrating, user]);
+  }, [isHydrating, isStaffMode, user]);
 
   const pairedSeats = useMemo(() => {
     if (!session) return [];
@@ -458,7 +550,17 @@ export function PassengerDetailsPage() {
     }));
   }, [session]);
 
-  const passengerTypes = passengers.map((passenger) => passenger.passengerType);
+  const quotePassengers = passengers.map((passenger) => ({
+    dateOfBirth: passenger.dateOfBirth,
+    passengerType: passenger.passengerType,
+    seatRequired: passenger.seatRequired !== false,
+  }));
+  const quotePassengerKey = JSON.stringify(quotePassengers);
+  const hasInvalidLapChild = passengers.some((passenger) => {
+    if (passenger.seatRequired !== false) return false;
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    return age == null || age >= 6 || passenger.passengerType !== "CHILD";
+  });
   const passengerDocuments = passengers
     .map(
       (passenger) =>
@@ -486,13 +588,18 @@ export function PassengerDetailsPage() {
   }, [passengerDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!session || passengerTypes.length === 0) return;
+    if (!session || quotePassengers.length === 0) return;
+    if (hasInvalidLapChild) {
+      setQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
     let active = true;
     setQuoteLoading(true);
     bookingApi
       .quote({
         sessionId: session.id,
-        passengerTypes,
+        passengers: quotePassengers,
         voucherCode: appliedVoucher || undefined,
       })
       .then(({ data }) => {
@@ -519,12 +626,20 @@ export function PassengerDetailsPage() {
     return () => {
       active = false;
     };
-    // The joined key keeps the quote synchronized with every passenger type.
-  }, [appliedVoucher, passengerTypes.join("|"), session]);
+    // The serialized key keeps the quote synchronized with passenger eligibility.
+  }, [appliedVoucher, quotePassengerKey, session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const expired = session && new Date(session.expiresAt).getTime() <= now;
   const timerText = session ? countdown(session.expiresAt, now) : "10:00";
   const timerUrgent = timerText <= "02:00";
+  const checkoutButtonLabel =
+    paymentMethod === "BANK_QR"
+      ? isStaffMode
+        ? "Tạo QR chuyển khoản"
+        : "Tạo QR thanh toán"
+      : paymentMethod === "CASH"
+        ? "Đã nhận tiền"
+        : "Thanh toán bằng ví";
 
   const updatePassenger = (index, field, value) => {
     setPassengers((current) =>
@@ -532,6 +647,14 @@ export function PassengerDetailsPage() {
         passengerIndex === index
           ? (() => {
               const updated = { ...passenger, [field]: value };
+              if (passenger.seatRequired === false) {
+                updated.passengerType = "CHILD";
+                updated.nationalId = "";
+                updated.nationalIdType = "";
+                updated.phoneNumber = "";
+                updated.email = "";
+                return updated;
+              }
               if (field === "dateOfBirth") {
                 updated.passengerType = passengerTypeFromAge(
                   ageFromDateOfBirth(value),
@@ -661,6 +784,27 @@ export function PassengerDetailsPage() {
     toast.success("Đã dùng cùng thông tin nhận vé cho các hành khách.");
   };
 
+  const addLapChild = () => {
+    if (passengers.length >= 4) {
+      toast.error("Moi giao dich chi duoc dat toi da 4 hanh khach.");
+      return;
+    }
+    setPassengers((current) => [...current, { ...EMPTY_LAP_CHILD }]);
+    setErrors((current) => [...current, {}]);
+    setRuleError("");
+  };
+
+  const removePassenger = (index) => {
+    if (passengers[index]?.seatRequired !== false) return;
+    setPassengers((current) =>
+      current.filter((_, passengerIndex) => passengerIndex !== index),
+    );
+    setErrors((current) =>
+      current.filter((_, passengerIndex) => passengerIndex !== index),
+    );
+    setRuleError("");
+  };
+
   const applyVoucher = () => {
     if (!voucherInput.trim()) {
       setAppliedVoucher("");
@@ -676,7 +820,9 @@ export function PassengerDetailsPage() {
       toast.error(nextRuleError);
       return;
     }
-    const nextErrors = validatePassengerList(passengers);
+    const nextErrors = validatePassengerList(passengers, {
+      requireEmail: !isStaffMode,
+    });
     setErrors(nextErrors);
     if (nextErrors.some((item) => Object.keys(item).length > 0)) {
       toast.error("Kiểm tra lại các trường được đánh dấu.");
@@ -692,17 +838,22 @@ export function PassengerDetailsPage() {
 
     setSubmitting(true);
     try {
-      const { data } = await bookingApi.checkout({
+      const checkout = isStaffMode
+        ? bookingApi.staffCheckout
+        : bookingApi.checkout;
+      const { data } = await checkout({
         sessionId: session.id,
         passengers: passengers.map((passenger, index) => ({
           ...passenger,
-          isAccountHolder: selfPassengerIndex === index,
+          isAccountHolder: !isStaffMode && selfPassengerIndex === index,
         })),
+        customerUserId: customerUserId || undefined,
         voucherCode: appliedVoucher || undefined,
         paymentMethod,
       });
       if (data.booking.paymentStatus === "COMPLETED") {
         setCompletedResult(data);
+        onComplete?.(data);
         toast.success("Đặt vé và thanh toán thành công.");
       } else {
         setPaymentResult(data);
@@ -962,7 +1113,7 @@ export function PassengerDetailsPage() {
       <div className="mb-5 flex items-center justify-between gap-4">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => (onBack ? onBack() : navigate(-1))}
           className="flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-[#087a91]"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -1039,7 +1190,7 @@ export function PassengerDetailsPage() {
         </div>
       </header>
 
-      {!user && (
+      {!embedded && !user && (
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
@@ -1060,7 +1211,7 @@ export function PassengerDetailsPage() {
 
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_350px]">
         <div className="space-y-5">
-          {passengers.length > 1 && (
+          {!isStaffMode && passengers.length > 1 && (
             <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <div className="flex items-center gap-3 text-sm text-slate-600">
                 <Mail className="h-4 w-4 text-[#087a91]" />
@@ -1084,16 +1235,36 @@ export function PassengerDetailsPage() {
             </div>
           )}
 
-          {pairedSeats.map((seatPair, index) => {
-            const passenger = passengers[index];
+          <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="text-sm font-semibold text-amber-900">
+              Trẻ dưới 6 tuổi đi kèm người lớn được miễn phí và không chọn ghế
+              riêng.
+            </div>
+            <button
+              type="button"
+              onClick={addLapChild}
+              disabled={passengers.length >= 4}
+              className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-amber-800 shadow-sm disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Thêm trẻ dưới 6
+            </button>
+          </div>
+
+          {passengers.map((passenger, index) => {
+            const seatPair = pairedSeats[index];
             const passengerError = errors[index] || {};
             const quotedItem = quote?.items?.[index];
             return (
               <section
-                key={seatPair.outbound.id}
+                key={seatPair?.outbound.id || `lap-child-${index}`}
                 className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"
               >
-                <div className="absolute bottom-0 left-0 top-0 w-1.5 bg-[#087a91]" />
+                <div
+                  className={`absolute bottom-0 left-0 top-0 w-1.5 ${
+                    seatPair ? "bg-[#087a91]" : "bg-amber-500"
+                  }`}
+                />
                 <div className="border-b border-dashed border-slate-200 px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -1105,22 +1276,44 @@ export function PassengerDetailsPage() {
                           Hành khách {index + 1}
                         </h2>
                         <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          Lượt đi · Toa{" "}
-                          {seatPair.outbound.seat.carriage.carriageNumber} · Ghế{" "}
-                          {seatPair.outbound.seat.seatNumber}
-                          {seatPair.return &&
-                            `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
+                          {seatPair ? (
+                            <>
+                              Lượt đi · Toa{" "}
+                              {seatPair.outbound.seat.carriage.carriageNumber} ·
+                              Ghế {seatPair.outbound.seat.seatNumber}
+                              {seatPair.return &&
+                                `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
+                            </>
+                          ) : (
+                            "Trẻ dưới 6 tuổi đi kèm · Không chiếm ghế"
+                          )}
                         </p>
                       </div>
                     </div>
-                    <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
-                      {quoteLoading ? "Đang tính..." : money(quotedItem?.total)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
+                        {quoteLoading
+                          ? "Đang tính..."
+                          : quote
+                            ? money(quotedItem?.total)
+                            : "Chưa tính"}
+                      </span>
+                      {!seatPair && (
+                        <button
+                          type="button"
+                          onClick={() => removePassenger(index)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 text-rose-600 hover:bg-rose-50"
+                          aria-label="Xóa trẻ đi kèm"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="p-5 sm:p-6">
-                  {user && (
+                  {user && !isStaffMode && seatPair && (
                     <button
                       type="button"
                       disabled={
@@ -1212,7 +1405,10 @@ export function PassengerDetailsPage() {
                         </p>
                         <p className="mt-1 text-xs leading-5 text-slate-600">
                           Không cần CCCD, hộ chiếu, số điện thoại hoặc email
-                          riêng. Vé sẽ được gửi theo thông tin người đi kèm.
+                          riêng.{" "}
+                          {isStaffMode
+                            ? "Vé sẽ được in tại quầy sau khi thanh toán."
+                            : "Vé sẽ được gửi theo thông tin người đi kèm."}
                         </p>
                       </div>
                     ) : (
@@ -1330,27 +1526,29 @@ export function PassengerDetailsPage() {
                           />
                         </Field>
 
-                        <Field
-                          label="Email nhận vé"
-                          error={passengerError.email}
-                          className="sm:col-span-2"
-                        >
-                          <RailInput
-                            type="email"
-                            value={passenger.email}
-                            onChange={(event) =>
-                              updatePassenger(
-                                index,
-                                "email",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="hanhkhach@example.com"
-                            autoComplete="email"
+                        {!isStaffMode && (
+                          <Field
+                            label="Email nhận vé"
                             error={passengerError.email}
-                            aria-invalid={Boolean(passengerError.email)}
-                          />
-                        </Field>
+                            className="sm:col-span-2"
+                          >
+                            <RailInput
+                              type="email"
+                              value={passenger.email}
+                              onChange={(event) =>
+                                updatePassenger(
+                                  index,
+                                  "email",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="hanhkhach@example.com"
+                              autoComplete="email"
+                              error={passengerError.email}
+                              aria-invalid={Boolean(passengerError.email)}
+                            />
+                          </Field>
+                        )}
                       </>
                     )}
                   </div>
@@ -1382,7 +1580,7 @@ export function PassengerDetailsPage() {
           </div>
 
           <div className="space-y-5 p-5">
-            {user && (
+            {user && !isStaffMode && (
               <div>
                 <label className="text-xs font-bold text-slate-700">
                   Mã giảm giá
@@ -1418,6 +1616,33 @@ export function PassengerDetailsPage() {
                 Phương thức thanh toán
               </p>
               <div className="mt-2 space-y-2">
+                {isStaffMode && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("CASH")}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                      paymentMethod === "CASH"
+                        ? "border-emerald-300 bg-emerald-50"
+                        : "border-slate-200"
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-emerald-700 shadow-sm">
+                      <Banknote className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm text-slate-800">
+                        Tiền mặt tại quầy
+                      </strong>
+                      <span className="text-[11px] text-slate-500">
+                        Xác nhận sau khi đã nhận đủ tiền
+                      </span>
+                    </span>
+                    {paymentMethod === "CASH" && (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-700" />
+                    )}
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("BANK_QR")}
@@ -1432,10 +1657,14 @@ export function PassengerDetailsPage() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <strong className="block text-sm text-slate-800">
-                      QR ngân hàng
+                      {isStaffMode
+                        ? "Chuyển khoản / QR ngân hàng"
+                        : "QR ngân hàng"}
                     </strong>
                     <span className="text-[11px] text-slate-500">
-                      Xác nhận nhanh trong bản thử nghiệm
+                      {isStaffMode
+                        ? "Tạo mã QR để khách chuyển khoản"
+                        : "Xác nhận nhanh trong bản thử nghiệm"}
                     </span>
                   </span>
                   {paymentMethod === "BANK_QR" && (
@@ -1443,7 +1672,7 @@ export function PassengerDetailsPage() {
                   )}
                 </button>
 
-                {user && (
+                {user && !isStaffMode && (
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("WALLET")}
@@ -1475,12 +1704,18 @@ export function PassengerDetailsPage() {
             <div className="space-y-2 border-t border-dashed border-slate-200 pt-4 text-sm">
               <div className="flex justify-between text-slate-500">
                 <span>Giá trước ưu đãi</span>
-                <span>{money(quote?.subtotal)}</span>
+                <span>{quote ? money(quote.subtotal) : "Chưa tính"}</span>
               </div>
               {quote?.passengerDiscount > 0 && (
                 <div className="flex justify-between text-emerald-600">
                   <span>Ưu đãi hành khách</span>
                   <span>-{money(quote.passengerDiscount)}</span>
+                </div>
+              )}
+              {quote?.promotionDiscount > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>Khuyến mãi</span>
+                  <span>-{money(quote.promotionDiscount)}</span>
                 </div>
               )}
               {quote?.voucherDiscount > 0 && (
@@ -1492,7 +1727,11 @@ export function PassengerDetailsPage() {
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
                 <span className="font-bold text-slate-800">Tổng cộng</span>
                 <span className="text-xl font-extrabold text-[#073b4c]">
-                  {quoteLoading ? "..." : money(quote?.totalAmount)}
+                  {quoteLoading
+                    ? "..."
+                    : quote
+                      ? money(quote.totalAmount)
+                      : "Chưa tính"}
                 </span>
               </div>
             </div>
@@ -1512,7 +1751,8 @@ export function PassengerDetailsPage() {
                 quoteLoading ||
                 !quote ||
                 expired ||
-                (paymentMethod === "WALLET" &&
+                (!isStaffMode &&
+                  paymentMethod === "WALLET" &&
                   walletBalance < quote.totalAmount)
               }
               onClick={handleCheckout}
@@ -1522,12 +1762,12 @@ export function PassengerDetailsPage() {
                 <LoaderCircle className="h-4 w-4 animate-spin" />
               ) : paymentMethod === "BANK_QR" ? (
                 <QrCode className="h-4 w-4" />
+              ) : paymentMethod === "CASH" ? (
+                <Banknote className="h-4 w-4" />
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              {paymentMethod === "BANK_QR"
-                ? "Tạo QR thanh toán"
-                : "Thanh toán bằng ví"}
+              {checkoutButtonLabel}
             </button>
 
             <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
@@ -1543,7 +1783,11 @@ export function PassengerDetailsPage() {
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-slate-500">Tổng thanh toán</p>
             <p className="text-lg font-extrabold text-[#073b4c]">
-              {quoteLoading ? "Đang tính..." : money(quote?.totalAmount)}
+              {quoteLoading
+                ? "Đang tính..."
+                : quote
+                  ? money(quote.totalAmount)
+                  : "Chưa tính"}
             </p>
           </div>
           <button
@@ -1553,7 +1797,9 @@ export function PassengerDetailsPage() {
               quoteLoading ||
               !quote ||
               expired ||
-              (paymentMethod === "WALLET" && walletBalance < quote.totalAmount)
+              (!isStaffMode &&
+                paymentMethod === "WALLET" &&
+                walletBalance < quote.totalAmount)
             }
             onClick={handleCheckout}
             className="flex items-center gap-2 rounded-xl bg-[#087a91] px-4 py-3 text-xs font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-500"

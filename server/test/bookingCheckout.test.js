@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculatePassengerAge,
+  normalizeQuotePassenger,
   normalizePassenger,
+  passengerDiscountPolicy,
   validateAccountHolderSelection,
   validatePassengerBusinessRules,
 } from "../src/services/bookingCheckout.service.js";
@@ -59,6 +61,65 @@ test("children only require full name and date of birth", () => {
   assert.equal(passenger.phoneNumber, null);
 });
 
+test("BR-08 discount policy matches age and eligibility", () => {
+  assert.deepEqual(passengerDiscountPolicy(5, "CHILD"), {
+    discountPercentage: 100,
+    discountReason: "CHILD_UNDER_6_FREE",
+    seatRequired: false,
+  });
+  assert.deepEqual(passengerDiscountPolicy(6, "CHILD"), {
+    discountPercentage: 25,
+    discountReason: "CHILD_6_UNDER_10",
+    seatRequired: true,
+  });
+  assert.equal(passengerDiscountPolicy(60, "SENIOR").discountPercentage, 15);
+  assert.equal(passengerDiscountPolicy(20, "STUDENT").discountPercentage, 10);
+});
+
+test("children under 6 must be marked as sharing a seat", () => {
+  assert.throws(
+    () =>
+      normalizePassenger(
+        {
+          fullName: "Be Nho",
+          dateOfBirth: "2022-01-01",
+          passengerType: "CHILD",
+        },
+        0,
+        TODAY,
+      ),
+    /không đặt ghế riêng/,
+  );
+  const passenger = normalizePassenger(
+    {
+      fullName: "Be Nho",
+      dateOfBirth: "2022-01-01",
+      passengerType: "CHILD",
+      seatRequired: false,
+    },
+    0,
+    TODAY,
+  );
+  assert.equal(passenger.seatRequired, false);
+  assert.equal(passenger.discountReason, "CHILD_UNDER_6_FREE");
+});
+
+test("quote rejects shared-seat passengers who are not under 6", () => {
+  assert.throws(
+    () =>
+      normalizeQuotePassenger(
+        {
+          dateOfBirth: "2005-09-17",
+          passengerType: "ADULT",
+          seatRequired: false,
+        },
+        0,
+        TODAY,
+      ),
+    /chỉ trẻ dưới 6 tuổi/,
+  );
+});
+
 test("age based categories normalize senior while preserving valid student choice", () => {
   assert.equal(
     normalizePassenger(
@@ -93,6 +154,48 @@ test("BR-07 requires a companion when the booking contains children", () => {
     validatePassengerBusinessRules([
       child,
       normalizePassenger(adult(), 1, TODAY),
+    ]),
+  );
+});
+
+test("each seat can be shared with only one child under 6", () => {
+  const lapChild = (fullName) =>
+    normalizePassenger(
+      {
+        fullName,
+        dateOfBirth: "2022-01-01",
+        passengerType: "CHILD",
+        seatRequired: false,
+      },
+      0,
+      TODAY,
+    );
+  const seatedChild = normalizePassenger(
+    {
+      fullName: "Be Co Ghe",
+      dateOfBirth: "2018-01-01",
+      passengerType: "CHILD",
+    },
+    0,
+    TODAY,
+  );
+
+  assert.throws(
+    () =>
+      validatePassengerBusinessRules([
+        normalizePassenger(adult(), 0, TODAY),
+        lapChild("Be Mot"),
+        lapChild("Be Hai"),
+      ]),
+    /Mỗi ghế chỉ được xếp tối đa/,
+  );
+
+  assert.doesNotThrow(() =>
+    validatePassengerBusinessRules([
+      normalizePassenger(adult(), 0, TODAY),
+      seatedChild,
+      lapChild("Be Mot"),
+      lapChild("Be Hai"),
     ]),
   );
 });
