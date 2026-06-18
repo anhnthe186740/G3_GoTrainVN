@@ -11,6 +11,7 @@ import {
   getMyBookings,
   getAdminBookings,
   getAdminBookingStats,
+  exchangeBooking,
 } from "../controllers/booking.controller.js";
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -53,4 +54,5 @@ bookingRoutes.post(
   bookingIdentity,
   confirmBookingQrPayment,
 );
+bookingRoutes.post("/:id/exchange", authMiddleware, exchangeBooking);
 bookingRoutes.post("/:id/cancel", cancelBooking);

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
@@ -628,6 +629,289 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
         label,
         value,
       })),
+    },
+  });
+});
+
+// ============================================================
+// POST /api/v1/bookings/:id/exchange - Confirm ticket exchange
+// ============================================================
+export const exchangeBooking = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { sessionId, paymentMethod = "WALLET" } = req.body;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Vui lòng đăng nhập để đổi vé." });
+  }
+  if (!sessionId) {
+    return res.status(400).json({ message: "Thiếu phiên giữ ghế mới." });
+  }
+  if (String(paymentMethod).toUpperCase() !== "WALLET") {
+    return res.status(400).json({
+      message: "Đổi vé hiện chỉ hỗ trợ thanh toán phí bằng ví GoTrain.",
+    });
+  }
+
+  const now = new Date();
+  const booking = await prisma.booking.findFirst({
+    where: { id, userId },
+    include: {
+      schedule: true,
+      passengers: { orderBy: { createdAt: "asc" } },
+      bookingDetails: { orderBy: { id: "asc" } },
+    },
+  });
+
+  if (!booking) {
+    return res.status(404).json({ message: "Không tìm thấy vé cần đổi." });
+  }
+  if (booking.status !== "CONFIRMED" || booking.paymentStatus !== "COMPLETED") {
+    return res
+      .status(400)
+      .json({ message: "Chỉ có thể đổi vé đã thanh toán và còn hiệu lực." });
+  }
+  if (new Date(booking.schedule.departureTime).getTime() <= now.getTime()) {
+    return res
+      .status(400)
+      .json({ message: "Không thể đổi vé cho chuyến tàu đã khởi hành." });
+  }
+
+  const session = await prisma.seatHoldSession.findFirst({
+    where: {
+      id: sessionId,
+      userId,
+      status: "ACTIVE",
+      expiresAt: { gt: now },
+    },
+    include: {
+      holds: {
+        include: {
+          seat: { include: { carriage: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!session) {
+    return res
+      .status(409)
+      .json({ message: "Phiên giữ ghế mới đã hết hạn hoặc không hợp lệ." });
+  }
+
+  const newHolds = session.holds.filter(
+    (hold) => hold.scheduleId === session.outboundScheduleId,
+  );
+  const newSchedule = await prisma.schedule.findUnique({
+    where: { id: session.outboundScheduleId },
+  });
+  if (!newSchedule || newSchedule.status !== "ACTIVE") {
+    return res
+      .status(400)
+      .json({ message: "Chuyến tàu mới không còn hoạt động." });
+  }
+  if (new Date(newSchedule.departureTime).getTime() <= now.getTime()) {
+    return res
+      .status(400)
+      .json({ message: "Không thể đổi sang chuyến tàu đã khởi hành." });
+  }
+  if (newHolds.length !== booking.totalPassengers) {
+    return res.status(400).json({
+      message: `Vui lòng chọn đúng ${booking.totalPassengers} ghế mới để đổi vé.`,
+    });
+  }
+
+  const oldFare = Number(booking.totalAmount || 0);
+  const newFare = newHolds.reduce(
+    (sum, hold) => sum + Number(hold.priceSnapshot || 0),
+    0,
+  );
+  const fixedFee = 20000;
+  const percentFee = Math.round(oldFare * 0.1);
+  const fareDifference = Math.max(newFare - oldFare, 0);
+  const totalDue = fixedFee + percentFee + fareDifference;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const claimedSession = await tx.seatHoldSession.updateMany({
+      where: {
+        id: session.id,
+        userId,
+        status: "ACTIVE",
+        expiresAt: { gt: now },
+      },
+      data: { status: "CONVERTED" },
+    });
+    if (claimedSession.count !== 1) {
+      throw Object.assign(new Error("Phiên giữ ghế mới đã được sử dụng."), {
+        statusCode: 409,
+      });
+    }
+
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet || wallet.balance < totalDue) {
+      throw Object.assign(
+        new Error("Số dư ví không đủ để thanh toán phí đổi vé."),
+        {
+          statusCode: 422,
+        },
+      );
+    }
+
+    if (totalDue > 0) {
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { decrement: totalDue } },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "PAYMENT",
+          amount: totalDue,
+          description: `Phí đổi vé ${booking.bookingCode}`,
+          relatedBookingId: booking.id,
+          status: "COMPLETED",
+        },
+      });
+    }
+
+    const oldSeatIds = [
+      ...new Set(
+        [
+          ...booking.passengers.map((passenger) => passenger.seatId),
+          ...booking.bookingDetails.map((detail) => detail.seatId),
+        ].filter(Boolean),
+      ),
+    ];
+    if (oldSeatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: { id: { in: oldSeatIds } },
+        data: {
+          status: "AVAILABLE",
+          selectedBy: null,
+          selectedAt: null,
+          selectionExpiry: null,
+        },
+      });
+    }
+
+    for (const hold of newHolds) {
+      await tx.seat.update({
+        where: { id: hold.seatId },
+        data: {
+          status: "BOOKED",
+          selectedBy: null,
+          selectedAt: null,
+          selectionExpiry: null,
+        },
+      });
+    }
+
+    for (const [index, passenger] of booking.passengers.entries()) {
+      const hold = newHolds[index];
+      await tx.passenger.update({
+        where: { id: passenger.id },
+        data: {
+          seatId: hold.seatId,
+          carriageNumber: hold.seat.carriage.carriageNumber,
+          boardingAt: newSchedule.departureTime,
+        },
+      });
+
+      const detail = booking.bookingDetails[index];
+      if (detail) {
+        await tx.bookingDetail.update({
+          where: { id: detail.id },
+          data: {
+            seatId: hold.seatId,
+            scheduleId: hold.scheduleId,
+            carriageType: hold.carriageType,
+            basePrice: hold.priceSnapshot,
+            discountAmount: 0,
+            finalPrice: hold.priceSnapshot,
+            status: "CONFIRMED",
+          },
+        });
+      } else {
+        await tx.bookingDetail.create({
+          data: {
+            bookingId: booking.id,
+            passengerId: passenger.id,
+            seatId: hold.seatId,
+            scheduleId: hold.scheduleId,
+            carriageType: hold.carriageType,
+            basePrice: hold.priceSnapshot,
+            discountAmount: 0,
+            finalPrice: hold.priceSnapshot,
+            status: "CONFIRMED",
+          },
+        });
+      }
+    }
+
+    await tx.bookingPaymentHistory.create({
+      data: {
+        bookingId: booking.id,
+        paymentMethod: "WALLET",
+        amount: totalDue,
+        status: "SUCCESS",
+        transactionId: `EXCHANGE-${randomUUID()}`,
+        attemptNumber: 1,
+      },
+    });
+
+    const updatedBooking = await tx.booking.update({
+      where: { id: booking.id },
+      data: {
+        scheduleId: session.outboundScheduleId,
+        fromStationId: session.outboundFromStationId,
+        toStationId: session.outboundToStationId,
+        returnScheduleId: null,
+        returnFromStationId: null,
+        returnToStationId: null,
+        bookingType: "ONE_WAY",
+        subtotal: newFare,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: newFare,
+        paymentMethod: "WALLET",
+        paymentStatus: "COMPLETED",
+        paidAt: now,
+        status: "CONFIRMED",
+        expiresAt: null,
+      },
+      include: { passengers: true },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId,
+        type: "BOOKING_EXCHANGED",
+        title: "Đổi vé thành công",
+        message: `Vé ${booking.bookingCode} đã được đổi. Phí đổi vé ${totalDue.toLocaleString("vi-VN")}đ.`,
+        relatedBookingId: booking.id,
+        relatedScheduleId: session.outboundScheduleId,
+        deliveryMethod: ["IN_APP", "EMAIL"],
+        deliveryStatus: "PENDING",
+      },
+    });
+
+    await tx.seatHold.deleteMany({ where: { sessionId: session.id } });
+
+    return updatedBooking;
+  });
+
+  res.json({
+    message: "Đổi vé thành công.",
+    booking: result,
+    passengers: result.passengers,
+    exchange: {
+      oldFare,
+      newFare,
+      fareDifference,
+      fixedFee,
+      percentFee,
+      totalDue,
     },
   });
 });

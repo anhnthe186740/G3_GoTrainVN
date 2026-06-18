@@ -156,11 +156,9 @@ export const googleLogin = asyncHandler(async (req, res) => {
 
     const expectedClientId = process.env.GOOGLE_CLIENT_ID;
     if (expectedClientId && payload.aud !== expectedClientId) {
-      return res
-        .status(401)
-        .json({
-          message: "Xác thực token Google thất bại (Client ID không khớp)",
-        });
+      return res.status(401).json({
+        message: "Xác thực token Google thất bại (Client ID không khớp)",
+      });
     }
 
     const { email, name, email_verified } = payload;

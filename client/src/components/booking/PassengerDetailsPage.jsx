@@ -425,7 +425,16 @@ export function PassengerDetailsPage({
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, isHydrating } = useAuthStore();
-  const isStaffMode = mode === "staff";
+  const urlMode = searchParams.get("mode");
+  const currentMode = urlMode || mode;
+  const isStaffMode = currentMode === "staff";
+  const exchangeBookingId = searchParams.get("exchangeBookingId");
+  const exchangeBookingCode = searchParams.get("exchangeBookingCode");
+  const exchangePaidAmount = Number(
+    searchParams.get("exchangePaidAmount") || 0,
+  );
+  const isExchangeMode =
+    currentMode === "exchange" && Boolean(exchangeBookingId);
   const sessionId = sessionIdOverride || searchParams.get("sessionId");
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);
@@ -437,7 +446,7 @@ export function PassengerDetailsPage({
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(
-    isStaffMode ? "CASH" : "BANK_QR",
+    isExchangeMode ? "WALLET" : isStaffMode ? "CASH" : "BANK_QR",
   );
   const [walletBalance, setWalletBalance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -447,6 +456,10 @@ export function PassengerDetailsPage({
   const [paymentResult, setPaymentResult] = useState(null);
   const [completedResult, setCompletedResult] = useState(null);
   const [ruleError, setRuleError] = useState("");
+
+  useEffect(() => {
+    if (isExchangeMode) setPaymentMethod("WALLET");
+  }, [isExchangeMode]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -632,6 +645,19 @@ export function PassengerDetailsPage({
   const expired = session && new Date(session.expiresAt).getTime() <= now;
   const timerText = session ? countdown(session.expiresAt, now) : "10:00";
   const timerUrgent = timerText <= "02:00";
+  const exchangeFixedFee = isExchangeMode && quote ? 20000 : 0;
+  const exchangePercentFee =
+    isExchangeMode && quote ? Math.round(exchangePaidAmount * 0.1) : 0;
+  const exchangeFareDifference =
+    isExchangeMode && quote
+      ? Math.max((quote.totalAmount || 0) - exchangePaidAmount, 0)
+      : 0;
+  const exchangeTotalDue =
+    exchangeFareDifference + exchangeFixedFee + exchangePercentFee;
+  const payableAmount = isExchangeMode
+    ? exchangeTotalDue
+    : quote?.totalAmount || 0;
+
   const checkoutButtonLabel =
     paymentMethod === "BANK_QR"
       ? isStaffMode
@@ -838,6 +864,16 @@ export function PassengerDetailsPage({
 
     setSubmitting(true);
     try {
+      if (isExchangeMode) {
+        const { data } = await bookingApi.exchange(exchangeBookingId, {
+          sessionId: session.id,
+          paymentMethod: "WALLET",
+        });
+        setCompletedResult(data);
+        toast.success("Đổi vé và thanh toán phí thành công.");
+        return;
+      }
+
       const checkout = isStaffMode
         ? bookingApi.staffCheckout
         : bookingApi.checkout;
@@ -861,7 +897,9 @@ export function PassengerDetailsPage({
     } catch (requestError) {
       toast.error(
         requestError.response?.data?.message ||
-          "Không thể tạo đơn đặt vé. Vui lòng thử lại.",
+          (isExchangeMode
+            ? "Không thể đổi vé. Vui lòng thử lại."
+            : "Không thể tạo đơn đặt vé. Vui lòng thử lại."),
       );
     } finally {
       setSubmitting(false);
@@ -1140,11 +1178,14 @@ export function PassengerDetailsPage({
                 UC-12 · Thông tin xuất vé
               </p>
               <h1 className="mt-1 font-headline-md text-2xl font-bold sm:text-3xl">
-                Ai sẽ đi trên chuyến tàu này?
+                {isExchangeMode
+                  ? "Kiểm tra hành khách cho vé đổi"
+                  : "Ai sẽ đi trên chuyến tàu này?"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-50/70">
-                Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với
-                một hành khách và một vé điện tử.
+                {isExchangeMode
+                  ? `Vé ${exchangeBookingCode || exchangeBookingId} đang được đổi sang chuyến mới. Số tiền bên phải chỉ là phần cần thanh toán thêm.`
+                  : "Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với một hành khách và một vé điện tử."}
               </p>
             </div>
           </div>
@@ -1588,16 +1629,20 @@ export function PassengerDetailsPage({
                 <div className="mt-2 flex gap-2">
                   <input
                     value={voucherInput}
+                    disabled={isExchangeMode}
                     onChange={(event) =>
                       setVoucherInput(event.target.value.toUpperCase())
                     }
-                    placeholder="GOTRAIN10"
-                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 font-utility-mono text-xs font-bold uppercase outline-none focus:border-[#087a91]"
+                    placeholder={
+                      isExchangeMode ? "Không áp dụng khi đổi vé" : "GOTRAIN10"
+                    }
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 font-utility-mono text-xs font-bold uppercase outline-none focus:border-[#087a91] disabled:bg-slate-50 disabled:text-slate-400"
                   />
                   <button
                     type="button"
+                    disabled={isExchangeMode}
                     onClick={applyVoucher}
-                    className="rounded-xl bg-cyan-50 px-3 text-xs font-extrabold text-[#087a91]"
+                    className="rounded-xl bg-cyan-50 px-3 text-xs font-extrabold text-[#087a91] disabled:cursor-not-allowed disabled:text-slate-400"
                   >
                     Áp dụng
                   </button>
@@ -1643,34 +1688,36 @@ export function PassengerDetailsPage({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("BANK_QR")}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-                    paymentMethod === "BANK_QR"
-                      ? "border-cyan-300 bg-cyan-50"
-                      : "border-slate-200"
-                  }`}
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#087a91] shadow-sm">
-                    <QrCode className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <strong className="block text-sm text-slate-800">
-                      {isStaffMode
-                        ? "Chuyển khoản / QR ngân hàng"
-                        : "QR ngân hàng"}
-                    </strong>
-                    <span className="text-[11px] text-slate-500">
-                      {isStaffMode
-                        ? "Tạo mã QR để khách chuyển khoản"
-                        : "Xác nhận nhanh trong bản thử nghiệm"}
+                {!isExchangeMode && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("BANK_QR")}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                      paymentMethod === "BANK_QR"
+                        ? "border-cyan-300 bg-cyan-50"
+                        : "border-slate-200"
+                    }`}
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#087a91] shadow-sm">
+                      <QrCode className="h-5 w-5" />
                     </span>
-                  </span>
-                  {paymentMethod === "BANK_QR" && (
-                    <CheckCircle2 className="h-5 w-5 text-[#087a91]" />
-                  )}
-                </button>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm text-slate-800">
+                        {isStaffMode
+                          ? "Chuyển khoản / QR ngân hàng"
+                          : "QR ngân hàng"}
+                      </strong>
+                      <span className="text-[11px] text-slate-500">
+                        {isStaffMode
+                          ? "Tạo mã QR để khách chuyển khoản"
+                          : "Xác nhận nhanh trong bản thử nghiệm"}
+                      </span>
+                    </span>
+                    {paymentMethod === "BANK_QR" && (
+                      <CheckCircle2 className="h-5 w-5 text-[#087a91]" />
+                    )}
+                  </button>
+                )}
 
                 {user && !isStaffMode && (
                   <button
@@ -1702,35 +1749,75 @@ export function PassengerDetailsPage({
             </div>
 
             <div className="space-y-2 border-t border-dashed border-slate-200 pt-4 text-sm">
-              <div className="flex justify-between text-slate-500">
-                <span>Giá trước ưu đãi</span>
-                <span>{quote ? money(quote.subtotal) : "Chưa tính"}</span>
-              </div>
-              {quote?.passengerDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Ưu đãi hành khách</span>
-                  <span>-{money(quote.passengerDiscount)}</span>
-                </div>
+              {isExchangeMode ? (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Giá vé mới</span>
+                    <span>
+                      {quote ? money(quote.totalAmount) : "Chưa tính"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Giá trị vé cũ áp dụng</span>
+                    <span>{money(exchangePaidAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Chênh lệch giá vé</span>
+                    <span>{money(exchangeFareDifference)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Phí đổi vé cố định</span>
+                    <span>{money(exchangeFixedFee)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Phí đổi vé 10%</span>
+                    <span>{money(exchangePercentFee)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Giá trước ưu đãi</span>
+                    <span>{quote ? money(quote.subtotal) : "Chưa tính"}</span>
+                  </div>
+                  {quote?.passengerDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Ưu đãi hành khách</span>
+                      <span>-{money(quote.passengerDiscount)}</span>
+                    </div>
+                  )}
+                  {quote?.promotionDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Khuyến mãi</span>
+                      <span>-{money(quote.promotionDiscount)}</span>
+                    </div>
+                  )}
+                  {quote?.voucherDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Mã giảm giá</span>
+                      <span>-{money(quote.voucherDiscount)}</span>
+                    </div>
+                  )}
+                </>
               )}
-              {quote?.promotionDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Khuyến mãi</span>
-                  <span>-{money(quote.promotionDiscount)}</span>
-                </div>
-              )}
-              {quote?.voucherDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Mã giảm giá</span>
-                  <span>-{money(quote.voucherDiscount)}</span>
-                </div>
-              )}
+              {isExchangeMode &&
+                quote &&
+                exchangePaidAmount > (quote.totalAmount || 0) && (
+                  <div className="rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-700">
+                    Vé mới thấp hơn vé cũ{" "}
+                    {money(exchangePaidAmount - quote.totalAmount)}. Khoản này
+                    chưa được cộng vào tổng cần thanh toán.
+                  </div>
+                )}
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
-                <span className="font-bold text-slate-800">Tổng cộng</span>
+                <span className="font-bold text-slate-800">
+                  {isExchangeMode ? "Tổng cần thanh toán" : "Tổng cộng"}
+                </span>
                 <span className="text-xl font-extrabold text-[#073b4c]">
                   {quoteLoading
                     ? "..."
                     : quote
-                      ? money(quote.totalAmount)
+                      ? money(payableAmount)
                       : "Chưa tính"}
                 </span>
               </div>
@@ -1738,7 +1825,7 @@ export function PassengerDetailsPage({
 
             {paymentMethod === "WALLET" &&
               walletBalance != null &&
-              walletBalance < (quote?.totalAmount || 0) && (
+              walletBalance < payableAmount && (
                 <p className="rounded-xl bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-700">
                   Số dư ví chưa đủ. Hãy chọn QR ngân hàng hoặc nạp thêm tiền.
                 </p>
@@ -1753,7 +1840,7 @@ export function PassengerDetailsPage({
                 expired ||
                 (!isStaffMode &&
                   paymentMethod === "WALLET" &&
-                  walletBalance < quote.totalAmount)
+                  walletBalance < payableAmount)
               }
               onClick={handleCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#087a91] px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#066478] focus:outline-none focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
@@ -1767,7 +1854,17 @@ export function PassengerDetailsPage({
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              {checkoutButtonLabel}
+              {paymentMethod === "BANK_QR"
+                ? isStaffMode
+                  ? "Tạo QR chuyển khoản"
+                  : isExchangeMode
+                    ? "Xác nhận thanh toán phí đổi"
+                    : "Tạo QR thanh toán"
+                : paymentMethod === "CASH"
+                  ? "Đã nhận tiền"
+                  : isExchangeMode
+                    ? "Thanh toán phí đổi bằng ví"
+                    : "Thanh toán bằng ví"}
             </button>
 
             <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
@@ -1786,7 +1883,7 @@ export function PassengerDetailsPage({
               {quoteLoading
                 ? "Đang tính..."
                 : quote
-                  ? money(quote.totalAmount)
+                  ? money(payableAmount)
                   : "Chưa tính"}
             </p>
           </div>
@@ -1799,7 +1896,7 @@ export function PassengerDetailsPage({
               expired ||
               (!isStaffMode &&
                 paymentMethod === "WALLET" &&
-                walletBalance < quote.totalAmount)
+                walletBalance < payableAmount)
             }
             onClick={handleCheckout}
             className="flex items-center gap-2 rounded-xl bg-[#087a91] px-4 py-3 text-xs font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-500"
