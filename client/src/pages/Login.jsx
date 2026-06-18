@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -21,6 +21,60 @@ export function Login() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const scriptId = "google-gsi-client";
+    let script = document.getElementById(scriptId);
+    if (!script) {
+      script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.id = scriptId;
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+
+    const initializeGoogle = () => {
+      if (window.google) {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          callback: handleGoogleLogin,
+        });
+        window.google.accounts.id.renderButton(
+          document.getElementById("google-signin-btn"),
+          { theme: "outline", size: "large", width: 384 },
+        );
+      }
+    };
+
+    script.onload = initializeGoogle;
+    if (window.google) {
+      initializeGoogle();
+    }
+  }, []);
+
+  const handleGoogleLogin = async (response) => {
+    setLoading(true);
+    const toastId = toast.loading("Đang đăng nhập bằng tài khoản Google...");
+    try {
+      const res = await api.post("/auth/google-login", {
+        credential: response.credential,
+      });
+      const { user, token } = res.data;
+
+      setAuth({ user, token });
+
+      toast.success(`Chào mừng trở lại, ${user.name}!`, { id: toastId });
+      navigate(location.state?.from || "/dashboard", { replace: true });
+    } catch (error) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Đăng nhập bằng Google thất bại. Vui lòng thử lại!";
+      toast.error(errorMsg, { id: toastId });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const {
     register,
@@ -268,14 +322,14 @@ export function Login() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                type="button"
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 py-3 text-sm font-semibold text-slate-700 transition focus:outline-none focus:ring-4 focus:ring-slate-100 cursor-pointer"
-              >
-                <Chrome className="h-5 w-5 text-red-500" />
-                <span>Google</span>
-              </button>
+            <div
+              className="flex justify-center w-full min-h-[46px]"
+              id="google-signin-container"
+            >
+              <div
+                id="google-signin-btn"
+                className="w-full flex justify-center"
+              ></div>
             </div>
           </div>
 

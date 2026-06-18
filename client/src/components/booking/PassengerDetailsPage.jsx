@@ -632,13 +632,17 @@ export function PassengerDetailsPage() {
               phoneNumber:
                 profilePassengerType === "CHILD"
                   ? ""
-                  : profile.phoneNumber || "",
+                  : profile.phoneNumber === "N/A"
+                    ? ""
+                    : profile.phoneNumber || "",
               email:
                 profilePassengerType === "CHILD" ? "" : profile.email || "",
               nationalId:
                 profilePassengerType === "CHILD"
                   ? ""
-                  : profile.nationalId || "",
+                  : profile.nationalId === "N/A"
+                    ? ""
+                    : profile.nationalId || "",
               nationalIdType:
                 profilePassengerType === "CHILD"
                   ? ""
