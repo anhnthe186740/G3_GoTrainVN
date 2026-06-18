@@ -332,36 +332,250 @@ export const getAdminBookings = asyncHandler(async (req, res) => {
 // GET /api/v1/bookings/admin/stats - Admin booking statistics
 // ============================================================
 export const getAdminBookingStats = asyncHandler(async (req, res) => {
+  const period = ["daily", "monthly", "yearly"].includes(req.query.period)
+    ? req.query.period
+    : "monthly";
+  const now = new Date();
+  const reportStart = new Date(now);
+  const reportEnd = new Date(now);
+
+  if (period === "daily") {
+    reportStart.setHours(0, 0, 0, 0);
+    reportEnd.setHours(23, 59, 59, 999);
+  } else if (period === "yearly") {
+    reportStart.setMonth(0, 1);
+    reportStart.setHours(0, 0, 0, 0);
+    reportEnd.setMonth(11, 31);
+    reportEnd.setHours(23, 59, 59, 999);
+  } else {
+    reportStart.setDate(1);
+    reportStart.setHours(0, 0, 0, 0);
+    reportEnd.setMonth(reportEnd.getMonth() + 1, 0);
+    reportEnd.setHours(23, 59, 59, 999);
+  }
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
   const [
-    totalBookings,
-    confirmedBookings,
-    cancelledBookings,
-    pendingBookings,
-    totalAmountResult,
-    refundedAmountResult,
-    totalPassengers,
+    bookingsForReports,
+    totalUsers,
+    totalCustomers,
+    totalAdmins,
+    totalTrains,
+    totalRoutes,
+    totalSchedules,
+    activeSchedules,
+    delayedSchedules,
+    totalWalletBalance,
+    pendingWithdrawals,
+    refundThisMonth,
   ] = await Promise.all([
-    prisma.booking.count(),
-    prisma.booking.count({ where: { status: "CONFIRMED" } }),
-    prisma.booking.count({ where: { status: "CANCELLED" } }),
-    prisma.booking.count({ where: { status: "PENDING" } }),
-    prisma.booking.aggregate({
-      _sum: { totalAmount: true },
-      where: { paymentStatus: "COMPLETED" },
+    prisma.booking.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        schedule: {
+          include: {
+            route: {
+              include: {
+                startStation: { select: { stationName: true } },
+                endStation: { select: { stationName: true } },
+              },
+            },
+            train: { select: { trainType: true, trainName: true } },
+          },
+        },
+        bookingDetails: {
+          select: {
+            carriageType: true,
+            finalPrice: true,
+          },
+        },
+      },
     }),
-    prisma.booking.aggregate({
-      _sum: { refundAmount: true },
-      where: { status: "REFUNDED" },
+    prisma.user.count({
+      where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
     }),
-    prisma.passenger.count(),
+    prisma.user.count({
+      where: {
+        userType: "CUSTOMER",
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+    }),
+    prisma.user.count({
+      where: {
+        userType: "ADMIN",
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+    }),
+    prisma.train.count(),
+    prisma.route.count({ where: { isActive: true } }),
+    prisma.schedule.count(),
+    prisma.schedule.count({ where: { status: "ACTIVE" } }),
+    prisma.schedule.count({ where: { status: "DELAYED" } }),
+    prisma.wallet.aggregate({ _sum: { balance: true } }),
+    prisma.walletTransaction.count({
+      where: { type: "WITHDRAWAL", status: "PENDING" },
+    }),
+    prisma.walletTransaction.aggregate({
+      where: {
+        type: "REFUND",
+        status: "COMPLETED",
+        createdAt: { gte: startOfMonth },
+      },
+      _sum: { amount: true },
+    }),
   ]);
 
-  const totalRevenue = totalAmountResult._sum.totalAmount || 0;
-  const totalRefunds = refundedAmountResult._sum.refundAmount || 0;
-  const completedBookings = confirmedBookings;
+  const inRange = (date, start, end) => {
+    const time = new Date(date).getTime();
+    return time >= start.getTime() && time <= end.getTime();
+  };
+  const dateKey = (date) => {
+    const d = new Date(date);
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${month}-${day}`;
+  };
+  const filteredBookings = bookingsForReports.filter((booking) =>
+    inRange(booking.createdAt, reportStart, reportEnd),
+  );
+  const completedReportBookings = bookingsForReports.filter(
+    (booking) =>
+      booking.paymentStatus === "COMPLETED" &&
+      inRange(booking.createdAt, reportStart, reportEnd),
+  );
+  const routeMap = new Map();
+  const carriageMap = new Map();
+  const dayMap = new Map([
+    ["T2", 0],
+    ["T3", 0],
+    ["T4", 0],
+    ["T5", 0],
+    ["T6", 0],
+    ["T7", 0],
+    ["CN", 0],
+  ]);
+
+  const revenueMap = new Map();
+  if (period === "daily") {
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now);
+      day.setDate(now.getDate() - i);
+      const key = dateKey(day);
+      revenueMap.set(key, {
+        label: day.toLocaleDateString("vi-VN", {
+          day: "2-digit",
+          month: "2-digit",
+        }),
+        value: 0,
+      });
+    }
+  } else if (period === "yearly") {
+    for (let i = 4; i >= 0; i--) {
+      const year = now.getFullYear() - i;
+      revenueMap.set(String(year), {
+        label: String(year),
+        value: 0,
+      });
+    }
+  } else {
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${monthDate.getFullYear()}-${monthDate.getMonth()}`;
+      revenueMap.set(key, {
+        label: `T${monthDate.getMonth() + 1}`,
+        value: 0,
+      });
+    }
+  }
+
+  for (const booking of bookingsForReports) {
+    if (booking.paymentStatus !== "COMPLETED") continue;
+
+    const createdAt = new Date(booking.createdAt);
+    const bucketKey =
+      period === "daily"
+        ? dateKey(createdAt)
+        : period === "yearly"
+          ? String(createdAt.getFullYear())
+          : `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
+
+    if (revenueMap.has(bucketKey)) {
+      revenueMap.get(bucketKey).value += booking.totalAmount || 0;
+    }
+  }
+
+  for (const booking of filteredBookings) {
+    const createdAt = new Date(booking.createdAt);
+    const dayLabel =
+      createdAt.getDay() === 0 ? "CN" : `T${createdAt.getDay() + 1}`;
+    if (dayMap.has(dayLabel)) {
+      dayMap.set(dayLabel, dayMap.get(dayLabel) + 1);
+    }
+  }
+
+  for (const booking of completedReportBookings) {
+    const route =
+      booking.schedule?.route?.routeName ||
+      [
+        booking.schedule?.route?.startStation?.stationName,
+        booking.schedule?.route?.endStation?.stationName,
+      ]
+        .filter(Boolean)
+        .join(" → ") ||
+      "Chưa xác định";
+    const routeStats = routeMap.get(route) || {
+      name: route,
+      bookings: 0,
+      revenue: 0,
+    };
+    routeStats.bookings += 1;
+    routeStats.revenue += booking.totalAmount || 0;
+    routeMap.set(route, routeStats);
+
+    for (const detail of booking.bookingDetails || []) {
+      const type = detail.carriageType || "Chưa xác định";
+      const typeStats = carriageMap.get(type) || {
+        name: type,
+        count: 0,
+      };
+      typeStats.count += 1;
+      carriageMap.set(type, typeStats);
+    }
+  }
+
+  const carriageTotal = [...carriageMap.values()].reduce(
+    (sum, item) => sum + item.count,
+    0,
+  );
+  const totalBookings = filteredBookings.length;
+  const confirmedBookings = filteredBookings.filter(
+    (booking) => booking.status === "CONFIRMED",
+  ).length;
+  const cancelledBookings = filteredBookings.filter((booking) =>
+    ["CANCELLED", "REFUNDED"].includes(booking.status),
+  ).length;
+  const pendingBookings = filteredBookings.filter(
+    (booking) => booking.status === "PENDING",
+  ).length;
+  const totalRevenue = completedReportBookings.reduce(
+    (sum, booking) => sum + (booking.totalAmount || 0),
+    0,
+  );
+  const totalRefunds = filteredBookings.reduce((sum, booking) => {
+    if (!["CANCELLED", "REFUNDED"].includes(booking.status)) return sum;
+    return sum + (booking.refundAmount || 0);
+  }, 0);
+  const totalPassengers = filteredBookings.reduce(
+    (sum, booking) => sum + (booking.totalPassengers || 0),
+    0,
+  );
 
   res.json({
     stats: {
+      period,
       overview: {
         totalBookings,
         confirmedBookings,
@@ -372,10 +586,48 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
         totalRefunds,
         totalPassengers,
         avgBookingValue:
-          completedBookings > 0
-            ? Math.round(totalRevenue / completedBookings)
+          completedReportBookings.length > 0
+            ? Math.round(totalRevenue / completedReportBookings.length)
             : 0,
       },
+      adminOverview: {
+        totalUsers,
+        totalCustomers,
+        totalAdmins,
+        totalTrains,
+        totalRoutes,
+        totalSchedules,
+        activeSchedules,
+        delayedSchedules,
+        totalWalletBalance: totalWalletBalance._sum.balance ?? 0,
+        pendingWithdrawals,
+        refundThisMonth: refundThisMonth._sum.amount ?? 0,
+      },
+      revenueSeries: [...revenueMap.values()].map((item) => ({
+        ...item,
+        value: Math.round(item.value),
+      })),
+      monthly: [...revenueMap.values()].map((item) => ({
+        ...item,
+        value: Math.round(item.value),
+      })),
+      topRoutes: [...routeMap.values()]
+        .sort((a, b) => b.bookings - a.bookings)
+        .slice(0, 5)
+        .map((item) => ({ ...item, revenue: Math.round(item.revenue) })),
+      trainTypes: [...carriageMap.values()]
+        .sort((a, b) => b.count - a.count)
+        .map((item) => ({
+          ...item,
+          pct:
+            carriageTotal > 0
+              ? Number(((item.count / carriageTotal) * 100).toFixed(1))
+              : 0,
+        })),
+      bookingByDay: [...dayMap.entries()].map(([label, value]) => ({
+        label,
+        value,
+      })),
     },
   });
 });
