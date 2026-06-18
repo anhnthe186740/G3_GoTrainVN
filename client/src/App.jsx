@@ -10,6 +10,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Wallet } from "./pages/Wallet";
 import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
+import { TicketExchange } from "./pages/TicketExchange";
 import { Promotions } from "./pages/Promotions";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="booking/passengers" element={<PassengerDetailsPage />} />
 
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
+        <Route path="doi-ve" element={<TicketExchange />} />
         <Route path="promotions" element={<Promotions />} />
 
         <Route

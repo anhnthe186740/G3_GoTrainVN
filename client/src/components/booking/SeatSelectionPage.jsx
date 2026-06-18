@@ -385,6 +385,7 @@ function BookingCart({
   canPrimary,
   held,
   onChangeSeats,
+  primaryLabel,
 }) {
   const currentItems = items.filter((item) => item.leg === activeLeg);
   const total = items.reduce((sum, item) => sum + Number(item.price), 0);
@@ -453,7 +454,8 @@ function BookingCart({
           onClick={onPrimary}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition hover:bg-primary-container disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
         >
-          {held ? "Nhập thông tin hành khách" : `Giữ ${items.length} ghế`}
+          {primaryLabel ||
+            (held ? "Nhập thông tin hành khách" : `Giữ ${items.length} ghế`)}
           <ArrowRight className="h-4 w-4" />
         </button>
         {held && (
@@ -907,6 +909,15 @@ export function SeatSelectionPage() {
   const returnFromStationId = searchParams.get("returnFromStationId");
   const returnToStationId = searchParams.get("returnToStationId");
   const restoredSessionId = searchParams.get("sessionId");
+  const mode = searchParams.get("mode");
+  const exchangeBookingId = searchParams.get("exchangeBookingId");
+  const exchangeBookingCode = searchParams.get("exchangeBookingCode");
+  const exchangePaidAmount = searchParams.get("exchangePaidAmount");
+  const exchangePassengerCount = Math.max(
+    1,
+    Number(searchParams.get("exchangePassengerCount") || 1),
+  );
+  const isExchangeMode = mode === "exchange" && Boolean(exchangeBookingId);
 
   const journeyPayload = useMemo(
     () => ({
@@ -1135,8 +1146,13 @@ export function SeatSelectionPage() {
     setDraftSelections((previous) => {
       const selected = previous[activeLeg];
       const exists = selected.some((item) => item.id === seat.id);
-      if (!exists && selected.length >= 4) {
-        toast.error("Mỗi lượt chỉ được chọn tối đa 4 ghế.");
+      const maxSeats = isExchangeMode ? exchangePassengerCount : 4;
+      if (!exists && selected.length >= maxSeats) {
+        toast.error(
+          isExchangeMode
+            ? `Vé này cần đổi đúng ${exchangePassengerCount} ghế.`
+            : "Mỗi lượt chỉ được chọn tối đa 4 ghế.",
+        );
         return previous;
       }
       return {
@@ -1168,9 +1184,13 @@ export function SeatSelectionPage() {
   };
   const canConfirm =
     !session &&
-    counts.outbound > 0 &&
+    (isExchangeMode
+      ? counts.outbound === exchangePassengerCount
+      : counts.outbound > 0) &&
     (!journeyPayload.return ||
-      (counts.return > 0 && counts.return === counts.outbound));
+      (isExchangeMode
+        ? counts.return === exchangePassengerCount
+        : counts.return > 0 && counts.return === counts.outbound));
 
   const cartItems = session
     ? session.holds.map((hold) => ({
@@ -1277,6 +1297,17 @@ export function SeatSelectionPage() {
 
   const continueBooking = () => {
     if (!session || expired) return;
+    if (isExchangeMode) {
+      const params = new URLSearchParams({
+        sessionId: session.id,
+        mode: "exchange",
+        exchangeBookingId,
+        exchangeBookingCode: exchangeBookingCode || "",
+        exchangePaidAmount: exchangePaidAmount || "0",
+      });
+      navigate(`/booking/passengers?${params.toString()}`);
+      return;
+    }
     navigate(`/booking/passengers?sessionId=${session.id}`);
   };
 
@@ -1319,6 +1350,13 @@ export function SeatSelectionPage() {
         <ArrowLeft className="h-4 w-4" />
         Chọn chuyến khác
       </button>
+
+      {isExchangeMode && (
+        <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-800">
+          Đang đổi vé {exchangeBookingCode || exchangeBookingId}. Vui lòng chọn
+          đúng {exchangePassengerCount} ghế cho chuyến mới trước khi tiếp tục.
+        </div>
+      )}
 
       <JourneyHeader
         schedule={currentMap?.schedule}
@@ -1433,6 +1471,15 @@ export function SeatSelectionPage() {
           canPrimary={session ? !expired : canConfirm}
           held={Boolean(session)}
           onChangeSeats={changeSeats}
+          primaryLabel={
+            session
+              ? isExchangeMode
+                ? "Tiếp tục đổi vé"
+                : "Nhập thông tin hành khách"
+              : isExchangeMode
+                ? `Giữ ghế đổi vé (${counts.outbound}/${exchangePassengerCount})`
+                : `Giữ ${cartItems.length} ghế`
+          }
         />
       </div>
 
@@ -1445,9 +1492,11 @@ export function SeatSelectionPage() {
             <p className="truncate text-[10px] font-semibold text-slate-500">
               {session
                 ? "Ghế đã được giữ, đồng hồ đang chạy"
-                : journeyPayload.return
-                  ? `Lượt đi ${counts.outbound} · Lượt về ${counts.return}`
-                  : "Chưa giữ ghế · xác nhận để bắt đầu 10 phút"}
+                : isExchangeMode
+                  ? `Cần chọn ${exchangePassengerCount} ghế cho vé đổi`
+                  : journeyPayload.return
+                    ? `Lượt đi ${counts.outbound} · Lượt về ${counts.return}`
+                    : "Chưa giữ ghế · xác nhận để bắt đầu 10 phút"}
             </p>
           </div>
           <button
@@ -1456,7 +1505,11 @@ export function SeatSelectionPage() {
             onClick={session ? continueBooking : () => setConfirmOpen(true)}
             className="rounded-xl bg-primary px-4 py-3 text-xs font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
           >
-            {session ? "Tiếp tục" : "Xác nhận giữ"}
+            {session
+              ? isExchangeMode
+                ? "Đổi vé"
+                : "Tiếp tục"
+              : "Xác nhận giữ"}
           </button>
         </div>
       </div>
@@ -1501,6 +1554,8 @@ export function SeatSelectionPage() {
               Đồng hồ 10 phút chỉ bắt đầu sau khi toàn bộ ghế được giữ thành
               công. Nếu một ghế vừa có người khác giữ, giao dịch sẽ hủy toàn bộ
               và bạn có thể chọn lại.
+              {isExchangeMode &&
+                ` Luồng đổi vé yêu cầu đúng ${exchangePassengerCount} ghế.`}
             </p>
             <button
               type="button"

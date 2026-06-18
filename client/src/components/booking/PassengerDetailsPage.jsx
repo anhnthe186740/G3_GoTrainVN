@@ -367,6 +367,13 @@ export function PassengerDetailsPage() {
   const navigate = useNavigate();
   const { user, isHydrating } = useAuthStore();
   const sessionId = searchParams.get("sessionId");
+  const mode = searchParams.get("mode");
+  const exchangeBookingId = searchParams.get("exchangeBookingId");
+  const exchangeBookingCode = searchParams.get("exchangeBookingCode");
+  const exchangePaidAmount = Number(
+    searchParams.get("exchangePaidAmount") || 0,
+  );
+  const isExchangeMode = mode === "exchange" && Boolean(exchangeBookingId);
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [errors, setErrors] = useState([]);
@@ -525,6 +532,18 @@ export function PassengerDetailsPage() {
   const expired = session && new Date(session.expiresAt).getTime() <= now;
   const timerText = session ? countdown(session.expiresAt, now) : "10:00";
   const timerUrgent = timerText <= "02:00";
+  const exchangeFixedFee = isExchangeMode && quote ? 20000 : 0;
+  const exchangePercentFee =
+    isExchangeMode && quote ? Math.round(exchangePaidAmount * 0.1) : 0;
+  const exchangeFareDifference =
+    isExchangeMode && quote
+      ? Math.max((quote.totalAmount || 0) - exchangePaidAmount, 0)
+      : 0;
+  const exchangeTotalDue =
+    exchangeFareDifference + exchangeFixedFee + exchangePercentFee;
+  const payableAmount = isExchangeMode
+    ? exchangeTotalDue
+    : quote?.totalAmount || 0;
 
   const updatePassenger = (index, field, value) => {
     setPassengers((current) =>
@@ -687,6 +706,14 @@ export function PassengerDetailsPage() {
     }
 
     setSubmitting(true);
+    if (isExchangeMode) {
+      toast.info(
+        "Đã tính đúng phí đổi vé. Backend xác nhận đổi vé/thanh toán chênh lệch chưa được triển khai.",
+      );
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const { data } = await bookingApi.checkout({
         sessionId: session.id,
@@ -985,11 +1012,14 @@ export function PassengerDetailsPage() {
                 UC-12 · Thông tin xuất vé
               </p>
               <h1 className="mt-1 font-headline-md text-2xl font-bold sm:text-3xl">
-                Ai sẽ đi trên chuyến tàu này?
+                {isExchangeMode
+                  ? "Kiểm tra hành khách cho vé đổi"
+                  : "Ai sẽ đi trên chuyến tàu này?"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-50/70">
-                Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với
-                một hành khách và một vé điện tử.
+                {isExchangeMode
+                  ? `Vé ${exchangeBookingCode || exchangeBookingId} đang được đổi sang chuyến mới. Số tiền bên phải chỉ là phần cần thanh toán thêm.`
+                  : "Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với một hành khách và một vé điện tử."}
               </p>
             </div>
           </div>
@@ -1386,16 +1416,20 @@ export function PassengerDetailsPage() {
                 <div className="mt-2 flex gap-2">
                   <input
                     value={voucherInput}
+                    disabled={isExchangeMode}
                     onChange={(event) =>
                       setVoucherInput(event.target.value.toUpperCase())
                     }
-                    placeholder="GOTRAIN10"
-                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 font-utility-mono text-xs font-bold uppercase outline-none focus:border-[#087a91]"
+                    placeholder={
+                      isExchangeMode ? "Không áp dụng khi đổi vé" : "GOTRAIN10"
+                    }
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 font-utility-mono text-xs font-bold uppercase outline-none focus:border-[#087a91] disabled:bg-slate-50 disabled:text-slate-400"
                   />
                   <button
                     type="button"
+                    disabled={isExchangeMode}
                     onClick={applyVoucher}
-                    className="rounded-xl bg-cyan-50 px-3 text-xs font-extrabold text-[#087a91]"
+                    className="rounded-xl bg-cyan-50 px-3 text-xs font-extrabold text-[#087a91] disabled:cursor-not-allowed disabled:text-slate-400"
                   >
                     Áp dụng
                   </button>
@@ -1469,33 +1503,71 @@ export function PassengerDetailsPage() {
             </div>
 
             <div className="space-y-2 border-t border-dashed border-slate-200 pt-4 text-sm">
-              <div className="flex justify-between text-slate-500">
-                <span>Giá trước ưu đãi</span>
-                <span>{money(quote?.subtotal)}</span>
-              </div>
-              {quote?.passengerDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Ưu đãi hành khách</span>
-                  <span>-{money(quote.passengerDiscount)}</span>
-                </div>
+              {isExchangeMode ? (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Giá vé mới</span>
+                    <span>{money(quote?.totalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Giá trị vé cũ áp dụng</span>
+                    <span>{money(exchangePaidAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Chênh lệch giá vé</span>
+                    <span>{money(exchangeFareDifference)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Phí đổi vé cố định</span>
+                    <span>{money(exchangeFixedFee)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Phí đổi vé 10%</span>
+                    <span>{money(exchangePercentFee)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Giá trước ưu đãi</span>
+                    <span>{money(quote?.subtotal)}</span>
+                  </div>
+                  {quote?.passengerDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Ưu đãi hành khách</span>
+                      <span>-{money(quote.passengerDiscount)}</span>
+                    </div>
+                  )}
+                  {quote?.voucherDiscount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Mã giảm giá</span>
+                      <span>-{money(quote.voucherDiscount)}</span>
+                    </div>
+                  )}
+                </>
               )}
-              {quote?.voucherDiscount > 0 && (
-                <div className="flex justify-between text-emerald-600">
-                  <span>Mã giảm giá</span>
-                  <span>-{money(quote.voucherDiscount)}</span>
-                </div>
-              )}
+              {isExchangeMode &&
+                quote &&
+                exchangePaidAmount > (quote.totalAmount || 0) && (
+                  <div className="rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-700">
+                    Vé mới thấp hơn vé cũ{" "}
+                    {money(exchangePaidAmount - quote.totalAmount)}. Khoản này
+                    chưa được cộng vào tổng cần thanh toán.
+                  </div>
+                )}
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
-                <span className="font-bold text-slate-800">Tổng cộng</span>
+                <span className="font-bold text-slate-800">
+                  {isExchangeMode ? "Tổng cần thanh toán" : "Tổng cộng"}
+                </span>
                 <span className="text-xl font-extrabold text-[#073b4c]">
-                  {quoteLoading ? "..." : money(quote?.totalAmount)}
+                  {quoteLoading ? "..." : money(payableAmount)}
                 </span>
               </div>
             </div>
 
             {paymentMethod === "WALLET" &&
               walletBalance != null &&
-              walletBalance < (quote?.totalAmount || 0) && (
+              walletBalance < payableAmount && (
                 <p className="rounded-xl bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-700">
                   Số dư ví chưa đủ. Hãy chọn QR ngân hàng hoặc nạp thêm tiền.
                 </p>
@@ -1508,8 +1580,7 @@ export function PassengerDetailsPage() {
                 quoteLoading ||
                 !quote ||
                 expired ||
-                (paymentMethod === "WALLET" &&
-                  walletBalance < quote.totalAmount)
+                (paymentMethod === "WALLET" && walletBalance < payableAmount)
               }
               onClick={handleCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#087a91] px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#066478] focus:outline-none focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
@@ -1522,8 +1593,12 @@ export function PassengerDetailsPage() {
                 <CreditCard className="h-4 w-4" />
               )}
               {paymentMethod === "BANK_QR"
-                ? "Tạo QR thanh toán"
-                : "Thanh toán bằng ví"}
+                ? isExchangeMode
+                  ? "Xác nhận thanh toán phí đổi"
+                  : "Tạo QR thanh toán"
+                : isExchangeMode
+                  ? "Thanh toán phí đổi bằng ví"
+                  : "Thanh toán bằng ví"}
             </button>
 
             <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
@@ -1539,7 +1614,7 @@ export function PassengerDetailsPage() {
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-slate-500">Tổng thanh toán</p>
             <p className="text-lg font-extrabold text-[#073b4c]">
-              {quoteLoading ? "Đang tính..." : money(quote?.totalAmount)}
+              {quoteLoading ? "Đang tính..." : money(payableAmount)}
             </p>
           </div>
           <button
@@ -1549,7 +1624,7 @@ export function PassengerDetailsPage() {
               quoteLoading ||
               !quote ||
               expired ||
-              (paymentMethod === "WALLET" && walletBalance < quote.totalAmount)
+              (paymentMethod === "WALLET" && walletBalance < payableAmount)
             }
             onClick={handleCheckout}
             className="flex items-center gap-2 rounded-xl bg-[#087a91] px-4 py-3 text-xs font-extrabold text-white disabled:bg-slate-200 disabled:text-slate-500"
