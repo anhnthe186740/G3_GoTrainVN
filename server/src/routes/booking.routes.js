@@ -4,6 +4,7 @@ import {
   cancelBooking,
   getBookingQuote,
   createBookingCheckout,
+  createStaffBookingCheckout,
   confirmBookingQrPayment,
   getBookingPaymentState,
   receivePayosWebhook,
@@ -15,9 +16,11 @@ import {
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
+import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
 export const bookingRoutes = Router();
 
+bookingRoutes.get("/staff/lookup", authMiddleware, staffOrAdmin, lookupBooking);
 bookingRoutes.get("/lookup", lookupBooking);
 bookingRoutes.post("/payos/webhook", receivePayosWebhook);
 
@@ -34,6 +37,12 @@ bookingRoutes.get(
 bookingRoutes.get("/admin", authMiddleware, adminOnly, getAdminBookings);
 
 bookingRoutes.post("/quote", bookingIdentity, getBookingQuote);
+bookingRoutes.post(
+  "/staff/checkout",
+  authMiddleware,
+  staffOrAdmin,
+  createStaffBookingCheckout,
+);
 bookingRoutes.post("/checkout", bookingIdentity, createBookingCheckout);
 bookingRoutes.get(
   "/:id/payment-status",

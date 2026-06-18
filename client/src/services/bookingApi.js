@@ -5,6 +5,7 @@ export const bookingApi = {
   checkout: (payload) => api.post("/bookings/checkout", payload),
   exchange: (bookingId, payload) =>
     api.post(`/bookings/${bookingId}/exchange`, payload),
+  staffCheckout: (payload) => api.post("/bookings/staff/checkout", payload),
   paymentStatus: (bookingId) =>
     api.get(`/bookings/${bookingId}/payment-status`),
   confirmQrPayment: (bookingId) =>

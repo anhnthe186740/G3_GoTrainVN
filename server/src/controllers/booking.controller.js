@@ -25,6 +25,20 @@ export const createBookingCheckout = asyncHandler(async (req, res) => {
   });
 });
 
+export const createStaffBookingCheckout = asyncHandler(async (req, res) => {
+  const result = await checkoutBooking(
+    { userId: req.user.id, guestToken: null },
+    { ...req.body, salesChannel: "STAFF_COUNTER" },
+  );
+  res.status(201).json({
+    message:
+      result.booking.paymentStatus === "COMPLETED"
+        ? "Đặt vé tại quầy và thanh toán thành công."
+        : "Đơn hàng tại quầy đã được tạo. Vui lòng xác nhận thanh toán.",
+    ...result,
+  });
+});
+
 export const confirmBookingQrPayment = asyncHandler(async (req, res) => {
   const booking = await confirmQrPayment(req.bookingIdentity, req.params.id);
   res.json({
@@ -155,6 +169,10 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       });
     }
 
+    if (["STAFF", "ADMIN"].includes(req.user?.role)) {
+      return res.json({ type: "single", ticket: passenger });
+    }
+
     const maskedTicket = {
       ...passenger,
       email: passenger.email
@@ -208,7 +226,9 @@ export const getMyBookings = asyncHandler(async (req, res) => {
   }
 
   const bookings = await prisma.booking.findMany({
-    where: { userId },
+    where: {
+      OR: [{ userId }, { passengers: { some: { userId } } }],
+    },
     orderBy: { createdAt: "desc" },
     include: {
       schedule: {
