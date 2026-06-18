@@ -17,9 +17,11 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
+  Plus,
   QrCode,
   ShieldCheck,
   Sparkles,
+  Trash2,
   TicketCheck,
   TrainFront,
   UserRound,
@@ -63,6 +65,14 @@ const EMPTY_PASSENGER = {
   email: "",
   dateOfBirth: "",
   passengerType: "ADULT",
+  seatRequired: true,
+};
+
+const EMPTY_LAP_CHILD = {
+  ...EMPTY_PASSENGER,
+  nationalIdType: "",
+  passengerType: "CHILD",
+  seatRequired: false,
 };
 
 function money(value) {
@@ -110,10 +120,19 @@ function passengerTypeFromAge(age, currentType) {
   return currentType === "STUDENT" ? "STUDENT" : "ADULT";
 }
 
+function isUnderSix(passenger) {
+  const age = ageFromDateOfBirth(passenger.dateOfBirth);
+  return age != null && age < 6;
+}
+
 function validatePassenger(passenger, { requireEmail = true } = {}) {
   const errors = {};
   if (passenger.fullName.trim().length < 2) {
     errors.fullName = "Nhập họ và tên như trên giấy tờ.";
+  }
+  if (passenger.seatRequired === false && passenger.passengerType !== "CHILD") {
+    errors.passengerType =
+      "Hành khách đi kèm không ghế phải là trẻ dưới 6 tuổi.";
   }
   const birthDate = new Date(`${passenger.dateOfBirth}T00:00:00`);
   if (
@@ -122,8 +141,17 @@ function validatePassenger(passenger, { requireEmail = true } = {}) {
     birthDate >= new Date()
   ) {
     errors.dateOfBirth = "Chọn ngày sinh hợp lệ.";
+  } else {
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    if (passenger.seatRequired === false && (age == null || age >= 6)) {
+      errors.dateOfBirth = "Chi tre duoi 6 tuoi moi di kem khong chon ghe.";
+    }
+    if (passenger.seatRequired !== false && age != null && age < 6) {
+      errors.dateOfBirth =
+        "Tre duoi 6 tuoi di kem nguoi lon, khong dat ghe rieng.";
+    }
   }
-  if (passenger.passengerType !== "CHILD") {
+  if (passenger.passengerType !== "CHILD" && passenger.seatRequired !== false) {
     const document = passenger.nationalId.trim().toUpperCase();
     if (passenger.nationalIdType === "CCCD" && !/^\d{12}$/.test(document)) {
       errors.nationalId = "CCCD gồm đúng 12 chữ số.";
@@ -152,7 +180,8 @@ function duplicateDocumentMessages(passengers) {
   const documentOwners = new Map();
 
   passengers.forEach((passenger, index) => {
-    if (passenger.passengerType === "CHILD") return;
+    if (passenger.passengerType === "CHILD" || passenger.seatRequired === false)
+      return;
     const document = passenger.nationalId.trim().toUpperCase();
     const validDocument =
       (passenger.nationalIdType === "CCCD" && /^\d{12}$/.test(document)) ||
@@ -201,6 +230,22 @@ function passengerRuleError(passengers) {
   );
   if (hasChild && !hasCompanion) {
     return "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
+  }
+  if (
+    passengers.some(
+      (passenger) => passenger.seatRequired !== false && isUnderSix(passenger),
+    )
+  ) {
+    return "Tre duoi 6 tuoi di kem nguoi lon va khong chon ghe rieng.";
+  }
+  const lapChildCount = passengers.filter(
+    (passenger) => passenger.seatRequired === false,
+  ).length;
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  if (lapChildCount > seatedPassengerCount) {
+    return "Mỗi ghế chỉ được xếp tối đa 1 hành khách có ghế và 1 trẻ dưới 6 tuổi.";
   }
   return "";
 }
@@ -505,7 +550,17 @@ export function PassengerDetailsPage({
     }));
   }, [session]);
 
-  const passengerTypes = passengers.map((passenger) => passenger.passengerType);
+  const quotePassengers = passengers.map((passenger) => ({
+    dateOfBirth: passenger.dateOfBirth,
+    passengerType: passenger.passengerType,
+    seatRequired: passenger.seatRequired !== false,
+  }));
+  const quotePassengerKey = JSON.stringify(quotePassengers);
+  const hasInvalidLapChild = passengers.some((passenger) => {
+    if (passenger.seatRequired !== false) return false;
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    return age == null || age >= 6 || passenger.passengerType !== "CHILD";
+  });
   const passengerDocuments = passengers
     .map(
       (passenger) =>
@@ -533,13 +588,18 @@ export function PassengerDetailsPage({
   }, [passengerDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!session || passengerTypes.length === 0) return;
+    if (!session || quotePassengers.length === 0) return;
+    if (hasInvalidLapChild) {
+      setQuote(null);
+      setQuoteLoading(false);
+      return;
+    }
     let active = true;
     setQuoteLoading(true);
     bookingApi
       .quote({
         sessionId: session.id,
-        passengerTypes,
+        passengers: quotePassengers,
         voucherCode: appliedVoucher || undefined,
       })
       .then(({ data }) => {
@@ -566,8 +626,8 @@ export function PassengerDetailsPage({
     return () => {
       active = false;
     };
-    // The joined key keeps the quote synchronized with every passenger type.
-  }, [appliedVoucher, passengerTypes.join("|"), session]);
+    // The serialized key keeps the quote synchronized with passenger eligibility.
+  }, [appliedVoucher, quotePassengerKey, session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const expired = session && new Date(session.expiresAt).getTime() <= now;
   const timerText = session ? countdown(session.expiresAt, now) : "10:00";
@@ -587,6 +647,14 @@ export function PassengerDetailsPage({
         passengerIndex === index
           ? (() => {
               const updated = { ...passenger, [field]: value };
+              if (passenger.seatRequired === false) {
+                updated.passengerType = "CHILD";
+                updated.nationalId = "";
+                updated.nationalIdType = "";
+                updated.phoneNumber = "";
+                updated.email = "";
+                return updated;
+              }
               if (field === "dateOfBirth") {
                 updated.passengerType = passengerTypeFromAge(
                   ageFromDateOfBirth(value),
@@ -710,6 +778,27 @@ export function PassengerDetailsPage({
       ),
     );
     toast.success("Đã dùng cùng thông tin nhận vé cho các hành khách.");
+  };
+
+  const addLapChild = () => {
+    if (passengers.length >= 4) {
+      toast.error("Moi giao dich chi duoc dat toi da 4 hanh khach.");
+      return;
+    }
+    setPassengers((current) => [...current, { ...EMPTY_LAP_CHILD }]);
+    setErrors((current) => [...current, {}]);
+    setRuleError("");
+  };
+
+  const removePassenger = (index) => {
+    if (passengers[index]?.seatRequired !== false) return;
+    setPassengers((current) =>
+      current.filter((_, passengerIndex) => passengerIndex !== index),
+    );
+    setErrors((current) =>
+      current.filter((_, passengerIndex) => passengerIndex !== index),
+    );
+    setRuleError("");
   };
 
   const applyVoucher = () => {
@@ -1142,16 +1231,36 @@ export function PassengerDetailsPage({
             </div>
           )}
 
-          {pairedSeats.map((seatPair, index) => {
-            const passenger = passengers[index];
+          <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="text-sm font-semibold text-amber-900">
+              Trẻ dưới 6 tuổi đi kèm người lớn được miễn phí và không chọn ghế
+              riêng.
+            </div>
+            <button
+              type="button"
+              onClick={addLapChild}
+              disabled={passengers.length >= 4}
+              className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-amber-800 shadow-sm disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Thêm trẻ dưới 6
+            </button>
+          </div>
+
+          {passengers.map((passenger, index) => {
+            const seatPair = pairedSeats[index];
             const passengerError = errors[index] || {};
             const quotedItem = quote?.items?.[index];
             return (
               <section
-                key={seatPair.outbound.id}
+                key={seatPair?.outbound.id || `lap-child-${index}`}
                 className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"
               >
-                <div className="absolute bottom-0 left-0 top-0 w-1.5 bg-[#087a91]" />
+                <div
+                  className={`absolute bottom-0 left-0 top-0 w-1.5 ${
+                    seatPair ? "bg-[#087a91]" : "bg-amber-500"
+                  }`}
+                />
                 <div className="border-b border-dashed border-slate-200 px-5 py-4 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -1163,22 +1272,44 @@ export function PassengerDetailsPage({
                           Hành khách {index + 1}
                         </h2>
                         <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          Lượt đi · Toa{" "}
-                          {seatPair.outbound.seat.carriage.carriageNumber} · Ghế{" "}
-                          {seatPair.outbound.seat.seatNumber}
-                          {seatPair.return &&
-                            `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
+                          {seatPair ? (
+                            <>
+                              Lượt đi · Toa{" "}
+                              {seatPair.outbound.seat.carriage.carriageNumber} ·
+                              Ghế {seatPair.outbound.seat.seatNumber}
+                              {seatPair.return &&
+                                `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
+                            </>
+                          ) : (
+                            "Trẻ dưới 6 tuổi đi kèm · Không chiếm ghế"
+                          )}
                         </p>
                       </div>
                     </div>
-                    <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
-                      {quoteLoading ? "Đang tính..." : money(quotedItem?.total)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
+                        {quoteLoading
+                          ? "Đang tính..."
+                          : quote
+                            ? money(quotedItem?.total)
+                            : "Chưa tính"}
+                      </span>
+                      {!seatPair && (
+                        <button
+                          type="button"
+                          onClick={() => removePassenger(index)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 text-rose-600 hover:bg-rose-50"
+                          aria-label="Xóa trẻ đi kèm"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="p-5 sm:p-6">
-                  {user && !isStaffMode && (
+                  {user && !isStaffMode && seatPair && (
                     <button
                       type="button"
                       disabled={
@@ -1569,7 +1700,7 @@ export function PassengerDetailsPage({
             <div className="space-y-2 border-t border-dashed border-slate-200 pt-4 text-sm">
               <div className="flex justify-between text-slate-500">
                 <span>Giá trước ưu đãi</span>
-                <span>{money(quote?.subtotal)}</span>
+                <span>{quote ? money(quote.subtotal) : "Chưa tính"}</span>
               </div>
               {quote?.passengerDiscount > 0 && (
                 <div className="flex justify-between text-emerald-600">
@@ -1592,7 +1723,11 @@ export function PassengerDetailsPage({
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
                 <span className="font-bold text-slate-800">Tổng cộng</span>
                 <span className="text-xl font-extrabold text-[#073b4c]">
-                  {quoteLoading ? "..." : money(quote?.totalAmount)}
+                  {quoteLoading
+                    ? "..."
+                    : quote
+                      ? money(quote.totalAmount)
+                      : "Chưa tính"}
                 </span>
               </div>
             </div>
@@ -1644,7 +1779,11 @@ export function PassengerDetailsPage({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-slate-500">Tổng thanh toán</p>
             <p className="text-lg font-extrabold text-[#073b4c]">
-              {quoteLoading ? "Đang tính..." : money(quote?.totalAmount)}
+              {quoteLoading
+                ? "Đang tính..."
+                : quote
+                  ? money(quote.totalAmount)
+                  : "Chưa tính"}
             </p>
           </div>
           <button

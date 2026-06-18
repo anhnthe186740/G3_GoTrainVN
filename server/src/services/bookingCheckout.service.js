@@ -11,6 +11,13 @@ import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
 const PAYMENT_METHODS = ["BANK_QR", "WALLET", "CASH"];
+const FARE_DISCOUNTS = {
+  ADULT: 0,
+  CHILD_6_UNDER_10: 25,
+  CHILD_UNDER_6: 100,
+  STUDENT: 10,
+  SENIOR: 15,
+};
 
 function httpError(statusCode, message, details = null) {
   const error = new Error(message);
@@ -54,10 +61,64 @@ export function calculatePassengerAge(dateOfBirth, today = new Date()) {
   return age;
 }
 
-function passengerTypeForAge(age, requestedType) {
+function passengerTypeForAge(age, requestedType, passenger = {}) {
   if (age < 10) return "CHILD";
   if (age >= 60) return "SENIOR";
-  return requestedType === "STUDENT" ? "STUDENT" : "ADULT";
+  if (
+    requestedType === "STUDENT" &&
+    String(passenger.studentLevel || "").toUpperCase() !== "POSTGRADUATE" &&
+    passenger.isPostgraduate !== true
+  ) {
+    return "STUDENT";
+  }
+  return "ADULT";
+}
+
+function fallbackDiscountForType(passengerType) {
+  if (passengerType === "CHILD") {
+    return {
+      discountPercentage: FARE_DISCOUNTS.CHILD_6_UNDER_10,
+      discountReason: "CHILD_6_UNDER_10",
+    };
+  }
+  if (passengerType === "SENIOR") {
+    return {
+      discountPercentage: FARE_DISCOUNTS.SENIOR,
+      discountReason: "SENIOR_60_PLUS",
+    };
+  }
+  if (passengerType === "STUDENT") {
+    return {
+      discountPercentage: FARE_DISCOUNTS.STUDENT,
+      discountReason: "STUDENT",
+    };
+  }
+  return { discountPercentage: FARE_DISCOUNTS.ADULT, discountReason: null };
+}
+
+export function passengerDiscountPolicy(age, passengerType) {
+  if (age != null && age < 6) {
+    return {
+      discountPercentage: FARE_DISCOUNTS.CHILD_UNDER_6,
+      discountReason: "CHILD_UNDER_6_FREE",
+      seatRequired: false,
+    };
+  }
+  if (age != null && age < 10) {
+    return {
+      discountPercentage: FARE_DISCOUNTS.CHILD_6_UNDER_10,
+      discountReason: "CHILD_6_UNDER_10",
+      seatRequired: true,
+    };
+  }
+  if (age != null && age >= 60) {
+    return {
+      discountPercentage: FARE_DISCOUNTS.SENIOR,
+      discountReason: "SENIOR_60_PLUS",
+      seatRequired: true,
+    };
+  }
+  return { ...fallbackDiscountForType(passengerType), seatRequired: true };
 }
 
 export function normalizePassenger(
@@ -85,8 +146,19 @@ export function normalizePassenger(
   }
 
   const requestedType = requestedTypeValue || "ADULT";
-  const passengerType = passengerTypeForAge(age, requestedType);
+  const passengerType = passengerTypeForAge(age, requestedType, passenger);
+  const discountPolicy = passengerDiscountPolicy(age, passengerType);
+  const seatRequired =
+    age < 6
+      ? !(passenger.seatRequired === false || passenger.sharingSeat === true)
+      : true;
   if (passengerType === "CHILD") {
+    if (age < 6 && seatRequired) {
+      throw httpError(
+        400,
+        `${label}: trẻ dưới 6 tuổi được miễn phí khi ngồi chung ghế với người đi kèm, không đặt ghế riêng.`,
+      );
+    }
     return {
       fullName,
       nationalId: null,
@@ -95,6 +167,9 @@ export function normalizePassenger(
       email: null,
       dateOfBirth,
       passengerType,
+      seatRequired,
+      discountReason: discountPolicy.discountReason,
+      ageAtDeparture: age,
     };
   }
 
@@ -131,6 +206,9 @@ export function normalizePassenger(
     email: email || null,
     dateOfBirth,
     passengerType,
+    seatRequired: true,
+    discountReason: discountPolicy.discountReason,
+    ageAtDeparture: age,
   };
 }
 
@@ -151,6 +229,19 @@ export function validatePassengerBusinessRules(passengers) {
     throw httpError(
       400,
       "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một hành khách ADULT, STUDENT hoặc SENIOR.",
+    );
+  }
+
+  const lapChildCount = passengers.filter(
+    (passenger) => passenger.seatRequired === false,
+  ).length;
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  if (lapChildCount > seatedPassengerCount) {
+    throw httpError(
+      400,
+      "Mỗi ghế chỉ được xếp tối đa một hành khách có ghế và một trẻ dưới 6 tuổi ngồi chung.",
     );
   }
 
@@ -215,6 +306,77 @@ async function fareRulesForLeg(session, leg) {
   };
 }
 
+async function departureReferenceForSession(session) {
+  const { segment } = await getJourney(
+    session.outboundScheduleId,
+    session.outboundFromStationId,
+    session.outboundToStationId,
+  );
+  return segment.departureTime;
+}
+
+export function normalizeQuotePassenger(passenger, index, referenceDate) {
+  const requestedTypeValue = String(
+    passenger.passengerType || "ADULT",
+  ).toUpperCase();
+  const requestedType = PASSENGER_TYPES.includes(requestedTypeValue)
+    ? requestedTypeValue
+    : "ADULT";
+  const age = passenger.dateOfBirth
+    ? calculatePassengerAge(passenger.dateOfBirth, referenceDate)
+    : null;
+  const passengerType =
+    age == null
+      ? requestedType
+      : passengerTypeForAge(age, requestedType, passenger);
+  const policy =
+    age == null
+      ? { ...fallbackDiscountForType(passengerType), seatRequired: true }
+      : passengerDiscountPolicy(age, passengerType);
+  const requestsSharedSeat =
+    passenger.seatRequired === false || passenger.sharingSeat === true;
+  if (requestsSharedSeat && (age == null || age >= 6)) {
+    throw httpError(
+      400,
+      `Hành khách ${index + 1}: chỉ trẻ dưới 6 tuổi mới được đi kèm không chọn ghế riêng.`,
+    );
+  }
+  const seatRequired = requestsSharedSeat
+    ? false
+    : age != null && age < 6
+      ? false
+      : true;
+
+  return {
+    passengerIndex: index,
+    passengerType,
+    ageAtDeparture: age,
+    seatRequired,
+    discountPercentage: policy.discountPercentage,
+    discountReason: policy.discountReason,
+  };
+}
+
+function quotePassengersFromPayload(payload, referenceDate) {
+  if (Array.isArray(payload.passengers)) {
+    return payload.passengers.map((passenger, index) =>
+      normalizeQuotePassenger(passenger, index, referenceDate),
+    );
+  }
+
+  return (payload.passengerTypes || []).map((passengerType, index) => {
+    const normalizedType = String(passengerType || "").toUpperCase();
+    if (!PASSENGER_TYPES.includes(normalizedType)) return null;
+    return {
+      passengerIndex: index,
+      passengerType: normalizedType,
+      ageAtDeparture: null,
+      seatRequired: true,
+      ...fallbackDiscountForType(normalizedType),
+    };
+  });
+}
+
 async function resolveVoucher(voucherCode, subtotal, identity) {
   const code = String(voucherCode || "")
     .trim()
@@ -263,7 +425,7 @@ async function resolveVoucher(voucherCode, subtotal, identity) {
 
 export async function quoteBooking(
   identity,
-  { sessionId, passengerTypes, voucherCode },
+  { sessionId, passengerTypes, passengers, voucherCode },
 ) {
   const session = await getSession(identity, sessionId);
   if (
@@ -281,10 +443,17 @@ export async function quoteBooking(
         (hold) => hold.scheduleId === session.returnScheduleId,
       )
     : [];
+  const departureReference = await departureReferenceForSession(session);
+  const quotePassengers = quotePassengersFromPayload(
+    { passengerTypes, passengers },
+    departureReference,
+  );
+  const seatedPassengers = quotePassengers.filter(
+    (passenger) => passenger && passenger.seatRequired !== false,
+  );
   if (
-    !Array.isArray(passengerTypes) ||
-    passengerTypes.length !== outboundHolds.length ||
-    passengerTypes.some((type) => !PASSENGER_TYPES.includes(type))
+    quotePassengers.some((passenger) => !passenger) ||
+    seatedPassengers.length !== outboundHolds.length
   ) {
     throw httpError(400, "Danh sách loại hành khách chưa hợp lệ.");
   }
@@ -296,31 +465,60 @@ export async function quoteBooking(
       : Promise.resolve(null),
   ]);
 
-  const items = passengerTypes.map((passengerType, index) => {
+  let seatIndex = 0;
+  const items = quotePassengers.map((passenger) => {
+    if (passenger.seatRequired === false) {
+      return {
+        passengerIndex: passenger.passengerIndex,
+        passengerType: passenger.passengerType,
+        ageAtDeparture: passenger.ageAtDeparture,
+        seatRequired: false,
+        discountPercentage: passenger.discountPercentage,
+        discountReason: passenger.discountReason,
+        legs: [],
+        total: 0,
+      };
+    }
+
+    const currentSeatIndex = seatIndex;
+    seatIndex += 1;
     const legs = [
       {
         leg: "outbound",
-        hold: outboundHolds[index],
+        hold: outboundHolds[currentSeatIndex],
         pricing: outboundPricing,
       },
-      ...(returnHolds[index]
+      ...(returnHolds[currentSeatIndex]
         ? [
             {
               leg: "return",
-              hold: returnHolds[index],
+              hold: returnHolds[currentSeatIndex],
               pricing: returnPricing,
             },
           ]
         : []),
     ].map(({ leg, hold, pricing }) => {
-      const rule = pricing.rules.get(`${passengerType}:${hold.carriageType}`);
+      const rule =
+        pricing.rules.get(`ADULT:${hold.carriageType}`) ||
+        pricing.rules.get(`${passenger.passengerType}:${hold.carriageType}`);
       if (!rule) {
         throw httpError(
           409,
           "Chưa có chính sách giá cho loại hành khách đã chọn.",
         );
       }
-      const fare = calculateFare(rule, pricing.distance, rule.taxPercentage);
+      const fare = calculateFare(
+        { ...rule, discountPercentage: 0 },
+        pricing.distance,
+        rule.taxPercentage,
+      );
+      const discountAmount = Math.round(
+        fare.boundedAmount * (passenger.discountPercentage / 100),
+      );
+      const afterDiscount = Math.max(0, fare.boundedAmount - discountAmount);
+      const taxAmount = Math.round(
+        afterDiscount * (Number(rule.taxPercentage || 0) / 100),
+      );
       return {
         leg,
         holdId: hold.id,
@@ -330,14 +528,18 @@ export async function quoteBooking(
         carriageNumber: hold.seat.carriage.carriageNumber,
         seatNumber: hold.seat.seatNumber,
         basePrice: fare.boundedAmount,
-        discountAmount: fare.discountAmount,
-        taxAmount: fare.taxAmount,
-        finalPrice: fare.finalPrice,
+        discountAmount,
+        taxAmount,
+        finalPrice: afterDiscount + taxAmount,
       };
     });
     return {
-      passengerIndex: index,
-      passengerType,
+      passengerIndex: passenger.passengerIndex,
+      passengerType: passenger.passengerType,
+      ageAtDeparture: passenger.ageAtDeparture,
+      seatRequired: true,
+      discountPercentage: passenger.discountPercentage,
+      discountReason: passenger.discountReason,
       legs,
       total: legs.reduce((sum, leg) => sum + leg.finalPrice, 0),
     };
@@ -530,8 +732,19 @@ export async function checkoutBooking(identity, payload) {
     throw httpError(400, "Mỗi giao dịch chỉ được đặt từ 1 đến 4 hành khách.");
   }
   validateAccountHolderSelection(payload.passengers, identity);
+  const session = await getSession(identity, payload.sessionId);
+  if (
+    session.status !== "ACTIVE" ||
+    new Date(session.expiresAt).getTime() <= Date.now()
+  ) {
+    throw httpError(
+      409,
+      "PhiÃªn giá»¯ gháº¿ Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng chá»n láº¡i gháº¿.",
+    );
+  }
+  const departureReference = await departureReferenceForSession(session);
   const passengers = payload.passengers.map((passenger, index) =>
-    normalizePassenger(passenger, index, new Date(), {
+    normalizePassenger(passenger, index, departureReference, {
       requireEmail: !isStaffCounter,
     }),
   );
@@ -573,7 +786,7 @@ export async function checkoutBooking(identity, payload) {
 
   const quote = await quoteBooking(identity, {
     sessionId: payload.sessionId,
-    passengerTypes: passengers.map((passenger) => passenger.passengerType),
+    passengers,
     voucherCode: payload.voucherCode,
   });
   if (passengers.length !== quote.items.length) {
@@ -681,20 +894,23 @@ export async function checkoutBooking(identity, payload) {
     const createdPassengers = [];
     for (const [index, passenger] of passengers.entries()) {
       const primaryLeg = quote.items[index].legs[0];
+      const { seatRequired, ageAtDeparture, discountReason, ...passengerData } =
+        passenger;
       const created = await tx.passenger.create({
         data: {
           bookingId: booking.id,
           userId: passengerUserIds[index],
-          ...passenger,
+          ...passengerData,
           ticketCode: ticketCode(),
-          seatId: primaryLeg.seatId,
-          carriageNumber: primaryLeg.carriageNumber,
+          seatId: primaryLeg?.seatId ?? null,
+          carriageNumber: primaryLeg?.carriageNumber ?? null,
           discountPercentage:
-            primaryLeg.basePrice > 0
+            primaryLeg?.basePrice > 0
               ? Math.round(
                   (primaryLeg.discountAmount / primaryLeg.basePrice) * 100,
                 )
-              : 0,
+              : quote.items[index].discountPercentage,
+          discountReason,
         },
       });
       createdPassengers.push(created);
