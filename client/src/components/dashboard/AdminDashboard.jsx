@@ -11,6 +11,7 @@ import { AdminPricingPanel } from "./AdminPricingPanel.jsx";
 import { AdminBookingPanel } from "./AdminBookingPanel.jsx";
 import { AdminReportsPanel } from "./AdminReportsPanel.jsx";
 import { AdminPromotionPanel } from "./AdminPromotionPanel.jsx";
+import { AdminAuditLogsPanel } from "./AdminAuditLogsPanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -34,6 +35,7 @@ export function AdminDashboard() {
     { label: "Người Dùng", icon: "group" },
     { label: "Quản Lý Ví", icon: "account_balance_wallet" },
     { label: "Báo Cáo", icon: "analytics" },
+    { label: "Lịch Sử Hệ Thống", icon: "history" },
   ];
 
   // Mock schedule data for pagination demonstration
@@ -305,6 +307,7 @@ export function AdminDashboard() {
             {activeSidebar === "Khuyến Mãi" && <AdminPromotionPanel />}
             {activeSidebar === "Đặt Vé" && <AdminBookingPanel />}
             {activeSidebar === "Báo Cáo" && <AdminReportsPanel />}
+            {activeSidebar === "Lịch Sử Hệ Thống" && <AdminAuditLogsPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
@@ -314,7 +317,8 @@ export function AdminDashboard() {
               activeSidebar !== "Khuyến Mãi" &&
               activeSidebar !== "Đặt Vé" &&
               activeSidebar !== "Báo Cáo" &&
-              activeSidebar !== "Người Dùng" && (
+              activeSidebar !== "Người Dùng" &&
+              activeSidebar !== "Lịch Sử Hệ Thống" && (
                 <>
                   {/* Welcome Section */}
                   <section>

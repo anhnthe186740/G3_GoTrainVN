@@ -150,6 +150,17 @@ export const createAdminUser = asyncHandler(async (req, res) => {
     },
   });
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "User",
+      entityId: user.id,
+      description: `Tạo người dùng mới: ${user.fullName} (${user.email}) với vai trò ${user.userType}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.status(201).json({
     success: true,
     message: "Tạo người dùng thành công",
@@ -243,6 +254,32 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     successMessage = "Mở khóa tài khoản thành công";
   }
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "UPDATE",
+      entity: "User",
+      entityId: updated.id,
+      changes: JSON.stringify({
+        fullName: fullName !== undefined ? fullName : undefined,
+        email: email !== undefined ? email : undefined,
+        phoneNumber: phoneNumber !== undefined ? phoneNumber : undefined,
+        userType: userType !== undefined ? userType : undefined,
+        isActive: isActive !== undefined ? isActive : undefined,
+        lockReason: lockReason !== undefined ? lockReason : undefined,
+        passwordChanged: password ? true : undefined,
+      }),
+      description: `Cập nhật thông tin người dùng: ${updated.fullName} (${updated.email}). ${
+        isActive === false && user.isActive === true
+          ? `Lý do khóa: ${lockReason || "Không có"}`
+          : ""
+      }${
+        isActive === true && user.isActive === false ? "Mở khóa tài khoản" : ""
+      }${password ? "Đã đặt lại mật khẩu." : ""}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.json({
     success: true,
     message: successMessage,
@@ -278,6 +315,17 @@ export const deleteAdminUser = asyncHandler(async (req, res) => {
     data: { deletedAt: new Date() },
   });
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "DELETE",
+      entity: "User",
+      entityId: id,
+      description: `Xóa mềm người dùng: ${user.fullName} (${user.email})`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.json({
     success: true,
     message: "Xóa người dùng thành công (Xóa mềm)",
@@ -303,6 +351,182 @@ export const getAdminRolesStats = asyncHandler(async (req, res) => {
       admin: totalAdmins,
       staff: totalStaff,
       banned: totalBanned,
+    },
+  });
+});
+
+// Get system audit logs with pagination, search, and filters
+export const getAdminAuditLogs = asyncHandler(async (req, res) => {
+  const {
+    search,
+    action,
+    entity,
+    adminId,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = req.query;
+  const skip = (Number(page) - 1) * Number(limit);
+  const take = Number(limit);
+
+  const where = {};
+
+  if (action) {
+    where.action = action;
+  }
+
+  if (entity) {
+    where.entity = entity;
+  }
+
+  if (adminId) {
+    where.adminId = adminId;
+  }
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) {
+      where.createdAt.gte = new Date(startDate);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
+  if (search) {
+    where.OR = [
+      { description: { contains: search, mode: "insensitive" } },
+      { changes: { contains: search, mode: "insensitive" } },
+      {
+        admin: {
+          OR: [
+            { fullName: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        },
+      },
+    ];
+  }
+
+  const [total, logs] = await Promise.all([
+    prisma.adminLog.count({ where }),
+    prisma.adminLog.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            userType: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  res.json({
+    success: true,
+    logs,
+    pagination: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)),
+    },
+  });
+});
+
+// Get security logs with pagination, search, and filters
+export const getSecurityLogs = asyncHandler(async (req, res) => {
+  const {
+    search,
+    eventType,
+    status,
+    userId,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = req.query;
+  const skip = (Number(page) - 1) * Number(limit);
+  const take = Number(limit);
+
+  const where = {};
+
+  if (eventType) {
+    where.eventType = eventType;
+  }
+
+  if (status) {
+    where.status = status;
+  }
+
+  if (userId) {
+    where.userId = userId;
+  }
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) {
+      where.createdAt.gte = new Date(startDate);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
+  if (search) {
+    where.OR = [
+      { description: { contains: search, mode: "insensitive" } },
+      { ipAddress: { contains: search, mode: "insensitive" } },
+      { userAgent: { contains: search, mode: "insensitive" } },
+      {
+        user: {
+          OR: [
+            { fullName: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+          ],
+        },
+      },
+    ];
+  }
+
+  const [total, logs] = await Promise.all([
+    prisma.securityLog.count({ where }),
+    prisma.securityLog.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  res.json({
+    success: true,
+    logs,
+    pagination: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)),
     },
   });
 });

@@ -19,8 +19,43 @@ export const register = asyncHandler(async (req, res) => {
 });
 
 export const login = asyncHandler(async (req, res) => {
-  const result = await loginUser(req.body.email, req.body.password);
-  if (!result) return res.status(401).json({ message: "Invalid credentials" });
+  const { email, password } = req.body;
+  const result = await loginUser(email, password);
+  const ipAddress = req.ip || req.headers["x-forwarded-for"] || "";
+  const userAgent = req.headers["user-agent"] || "";
+
+  if (!result) {
+    // Find if user exists to link userId to the log
+    const user = await prisma.user.findFirst({
+      where: {
+        email,
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+    });
+    await prisma.securityLog.create({
+      data: {
+        userId: user?.id || null,
+        eventType: "LOGIN_FAILED",
+        description: `Đăng nhập thất bại cho email: ${email}`,
+        ipAddress,
+        userAgent,
+        status: "FAILURE",
+      },
+    });
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  await prisma.securityLog.create({
+    data: {
+      userId: result.user.id,
+      eventType: "LOGIN_SUCCESS",
+      description: `Đăng nhập thành công với email: ${email}`,
+      ipAddress,
+      userAgent,
+      status: "SUCCESS",
+    },
+  });
+
   res.cookie("token", result.token, { httpOnly: true, sameSite: "lax" });
   res.json({ user: result.user, token: result.token });
 });
@@ -81,6 +116,17 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     html,
   });
 
+  await prisma.securityLog.create({
+    data: {
+      userId: user.id,
+      eventType: "PASSWORD_RESET_REQUEST",
+      description: `Yêu cầu khôi phục mật khẩu gửi tới email ${email}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      userAgent: req.headers["user-agent"] || "",
+      status: "SUCCESS",
+    },
+  });
+
   res.json({
     success: true,
     message: "Email hướng dẫn khôi phục mật khẩu đã được gửi đi.",
@@ -125,6 +171,17 @@ export const resetPassword = asyncHandler(async (req, res) => {
       password: hashedPassword,
       resetPasswordToken: null,
       resetPasswordExpires: null,
+    },
+  });
+
+  await prisma.securityLog.create({
+    data: {
+      userId: user.id,
+      eventType: "PASSWORD_CHANGE",
+      description: `Thay đổi mật khẩu thành công qua token khôi phục`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      userAgent: req.headers["user-agent"] || "",
+      status: "SUCCESS",
     },
   });
 
@@ -177,6 +234,16 @@ export const googleLogin = asyncHandler(async (req, res) => {
 
     if (user) {
       if (!user.isActive) {
+        await prisma.securityLog.create({
+          data: {
+            userId: user.id,
+            eventType: "LOGIN_FAILED",
+            description: `Đăng nhập Google thất bại do tài khoản bị khóa. Lý do: ${user.lockReason || "Không rõ lý do"}`,
+            ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+            userAgent: req.headers["user-agent"] || "",
+            status: "FAILURE",
+          },
+        });
         return res.status(403).json({
           message: `Tài khoản đã bị khóa. Lý do: ${user.lockReason || "Không rõ lý do"}`,
         });
@@ -213,6 +280,17 @@ export const googleLogin = asyncHandler(async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
     );
 
+    await prisma.securityLog.create({
+      data: {
+        userId: user.id,
+        eventType: "LOGIN_SUCCESS",
+        description: `Đăng nhập Google thành công với email: ${email}`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+        userAgent: req.headers["user-agent"] || "",
+        status: "SUCCESS",
+      },
+    });
+
     res.cookie("token", token, { httpOnly: true, sameSite: "lax" });
     res.json({
       success: true,
@@ -227,6 +305,18 @@ export const googleLogin = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Google login token verification failed:", error.message);
+    const ipAddress = req.ip || req.headers["x-forwarded-for"] || "";
+    const userAgent = req.headers["user-agent"] || "";
+    await prisma.securityLog.create({
+      data: {
+        userId: null,
+        eventType: "LOGIN_FAILED",
+        description: `Đăng nhập Google thất bại: ${error.message}`,
+        ipAddress,
+        userAgent,
+        status: "FAILURE",
+      },
+    });
     return res
       .status(401)
       .json({ message: "Xác thực tài khoản Google thất bại" });

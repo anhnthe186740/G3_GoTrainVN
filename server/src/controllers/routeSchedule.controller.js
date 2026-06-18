@@ -318,6 +318,17 @@ export const generateRoute = asyncHandler(async (req, res) => {
     },
   });
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "Route",
+      entityId: route.id,
+      description: `Tạo tuyến đường mới: ${route.routeName} (${route.startStation.stationName} → ${route.endStation.stationName}), khoảng cách ${distance} km`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res
     .status(201)
     .json({ message: "Tuyến đường đã được tạo thành công!", route });
@@ -520,6 +531,17 @@ export const generateSchedules = asyncHandler(async (req, res) => {
   }
 
   const totalSkipped = conflicts.length + dbConflictCount;
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "Schedule",
+      description: `Tự động tạo ${insertedCount} lịch trình chạy tàu cho tuyến đường ID ${routeId} và tàu ID ${trainId}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.status(201).json({
     message: `Đã tạo thành công ${insertedCount} lịch trình.${totalSkipped > 0 ? ` Bỏ qua ${totalSkipped} lịch trình bị xung đột.` : ""}`,
     created: insertedCount,
@@ -533,7 +555,20 @@ export const generateSchedules = asyncHandler(async (req, res) => {
 // ============================================================
 export const deleteRoute = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await prisma.route.update({ where: { id }, data: { isActive: false } });
+  const route = await prisma.route.update({
+    where: { id },
+    data: { isActive: false },
+  });
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "DELETE",
+      entity: "Route",
+      entityId: id,
+      description: `Vô hiệu hóa tuyến đường: ${route.routeName}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
   res.json({ message: "Tuyến đường đã được vô hiệu hóa." });
 });
 
@@ -594,6 +629,17 @@ export const createTrain = asyncHandler(async (req, res) => {
 
     await createTrainInventory(tx, newTrain.id, carriages);
 
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "CREATE",
+        entity: "Train",
+        entityId: newTrain.id,
+        description: `Tạo đoàn tàu mới: ${trainName} (${trainCode}) với 5 toa, tổng công suất ${totalCapacity} ghế`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+
     return newTrain;
   });
 
@@ -607,9 +653,22 @@ export const createTrain = asyncHandler(async (req, res) => {
 // ============================================================
 export const deleteTrain = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await prisma.train.delete({
-    where: { id },
-  });
+  const train = await prisma.train.findUnique({ where: { id } });
+  if (train) {
+    await prisma.train.delete({
+      where: { id },
+    });
+    await prisma.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE",
+        entity: "Train",
+        entityId: id,
+        description: `Xóa đoàn tàu: ${train.trainName} (${train.trainCode})`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+  }
   res.json({ message: "Đoàn tàu đã được xóa thành công." });
 });
 
@@ -625,6 +684,16 @@ export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
     startDate.toISOString().split("T")[0],
     endDate.toISOString().split("T")[0],
   );
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "Schedule",
+      description: `Kích hoạt thủ công tạo lịch trình 30 ngày tiếp theo. Tạo thành công ${result.created} lịch trình.`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
 
   res.json({
     message: `Kích hoạt tự động tạo lịch trình thành công! ${result.message}`,
@@ -702,6 +771,17 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
     },
   });
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "RouteTemplate",
+      entityId: template.id,
+      description: `Tạo mẫu lịch chạy mới cho tuyến ${template.route.routeName} và tàu ${template.train.trainCode}, giờ chạy: [${departureTimes.join(", ")}]`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.status(201).json({
     message: "Tạo mẫu lịch chạy thành công!",
     template,
@@ -740,6 +820,18 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
     },
   });
 
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "UPDATE",
+      entity: "RouteTemplate",
+      entityId: id,
+      changes: JSON.stringify(updateData),
+      description: `Cập nhật mẫu lịch chạy của tuyến ${template.route.routeName} và tàu ${template.train.trainCode}: Giờ chạy: [${template.departureTimes.join(", ")}], Active: ${template.isActive}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
   res.json({
     message: "Cập nhật mẫu lịch chạy thành công!",
     template,
@@ -751,10 +843,29 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
 // ============================================================
 export const deleteRouteTemplate = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
-  await prisma.routeTemplate.delete({
+  const template = await prisma.routeTemplate.findUnique({
     where: { id },
+    include: {
+      route: true,
+      train: true,
+    },
   });
+
+  if (template) {
+    await prisma.routeTemplate.delete({
+      where: { id },
+    });
+    await prisma.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE",
+        entity: "RouteTemplate",
+        entityId: id,
+        description: `Xóa mẫu lịch chạy của tuyến ${template.route.routeName} và tàu ${template.train.trainCode}`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+  }
 
   res.json({
     message: "Đã xóa mẫu lịch chạy thành công.",
@@ -774,6 +885,21 @@ export const generateSchedulesByRange = asyncHandler(async (req, res) => {
   }
 
   const result = await generateSchedulesForRange(startDate, endDate);
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "CREATE",
+      entity: "Schedule",
+      changes: JSON.stringify({
+        startDate,
+        endDate,
+        createdCount: result.created,
+      }),
+      description: `Đồng bộ và tự động tạo lịch trình chạy tàu từ ${startDate} đến ${endDate}. Tạo thành công ${result.created} lịch trình.`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
 
   res.json({
     message: result.message,
@@ -935,5 +1061,74 @@ export const getScheduleTimeline = asyncHandler(async (req, res) => {
       routeName: schedule.route.routeName,
     },
     timeline,
+  });
+});
+
+export const updateScheduleDelay = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status, delayMinutes, notes } = req.body;
+
+  const schedule = await prisma.schedule.findUnique({
+    where: { id },
+    include: {
+      train: true,
+      route: true,
+    },
+  });
+
+  if (!schedule) {
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  }
+
+  // Check if schedule has already departed
+  const delayMs =
+    schedule.status === "DELAYED" ? (schedule.delayMinutes || 0) * 60000 : 0;
+  const actualDeparture = new Date(schedule.departureTime).getTime() + delayMs;
+  if (actualDeparture < Date.now()) {
+    return res
+      .status(400)
+      .json({
+        message:
+          "Không thể báo trễ/sự cố cho lịch trình đã xuất phát hoặc đã qua giờ chạy.",
+      });
+  }
+
+  const updatedSchedule = await prisma.schedule.update({
+    where: { id },
+    data: {
+      status: status || schedule.status,
+      delayMinutes:
+        delayMinutes !== undefined
+          ? Number(delayMinutes)
+          : schedule.delayMinutes,
+      notes: notes !== undefined ? notes : schedule.notes,
+    },
+  });
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: req.user.id,
+      action: "UPDATE",
+      entity: "Schedule",
+      entityId: id,
+      changes: JSON.stringify({
+        oldStatus: schedule.status,
+        newStatus: status || schedule.status,
+        oldDelay: schedule.delayMinutes,
+        newDelay:
+          delayMinutes !== undefined
+            ? Number(delayMinutes)
+            : schedule.delayMinutes,
+        notes,
+      }),
+      description: `Cập nhật trạng thái lịch trình tàu ${schedule.train.trainCode} (${schedule.route.routeName}): Trạng thái: ${status || schedule.status}, Trễ: ${delayMinutes || 0} phút. Ghi chú: ${notes || "Không có"}`,
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    },
+  });
+
+  res.json({
+    success: true,
+    message: "Cập nhật trạng thái và thời gian trễ của lịch trình thành công.",
+    schedule: updatedSchedule,
   });
 });

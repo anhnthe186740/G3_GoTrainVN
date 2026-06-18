@@ -11,6 +11,8 @@ import {
   updateAdminUser,
   deleteAdminUser,
   getAdminRolesStats,
+  getAdminAuditLogs,
+  getSecurityLogs,
 } from "../controllers/userAdmin.controller.js";
 import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
@@ -47,4 +49,18 @@ userRoutes.get(
   authMiddleware,
   adminOnly,
   getAdminRolesStats,
+);
+
+userRoutes.get(
+  "/admin/audit-logs",
+  authMiddleware,
+  adminOnly,
+  getAdminAuditLogs,
+);
+
+userRoutes.get(
+  "/admin/security-logs",
+  authMiddleware,
+  adminOnly,
+  getSecurityLogs,
 );
