@@ -235,6 +235,7 @@ export function AdminSchedulePanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tất cả");
+  const [filterTrainId, setFilterTrainId] = useState("Tất cả");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -525,7 +526,11 @@ export function AdminSchedulePanel() {
     // Status check
     const matchStatus = filterStatus === "Tất cả" || status === filterStatus;
 
-    return matchSearch && matchDate && matchStatus;
+    // Train filter check
+    const matchTrain =
+      filterTrainId === "Tất cả" || s.trainId === filterTrainId;
+
+    return matchSearch && matchDate && matchStatus && matchTrain;
   });
 
   // ── Stats calculation ───────────────────────────────────────────
@@ -549,7 +554,7 @@ export function AdminSchedulePanel() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterDate, filterStatus]);
+  }, [searchTerm, filterDate, filterStatus, filterTrainId]);
 
   return (
     <div className="space-y-8">
@@ -956,12 +961,34 @@ export function AdminSchedulePanel() {
           </select>
         </div>
 
-        {(searchTerm || filterDate || filterStatus !== "Tất cả") && (
+        <div className="w-full md:w-auto min-w-[160px]">
+          <label className="block font-label-sm text-xs font-bold text-[#3f4852] mb-2">
+            Đoàn tàu
+          </label>
+          <select
+            value={filterTrainId}
+            onChange={(e) => setFilterTrainId(e.target.value)}
+            className="w-full px-4 py-2.5 bg-[#f2f4f6] rounded-xl border-none focus:ring-2 focus:ring-[#00a3ff] outline-none text-sm cursor-pointer"
+          >
+            <option value="Tất cả">Tất cả tàu</option>
+            {trains.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.trainCode} - {t.trainName}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(searchTerm ||
+          filterDate ||
+          filterStatus !== "Tất cả" ||
+          filterTrainId !== "Tất cả") && (
           <button
             onClick={() => {
               setSearchTerm("");
               setFilterDate("");
               setFilterStatus("Tất cả");
+              setFilterTrainId("Tất cả");
             }}
             className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer"
             title="Xóa bộ lọc"
