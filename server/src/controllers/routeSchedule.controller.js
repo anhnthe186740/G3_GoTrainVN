@@ -99,6 +99,7 @@ export const getRoutes = asyncHandler(async (_req, res) => {
     include: {
       startStation: { select: { stationName: true, city: true } },
       endStation: { select: { stationName: true, city: true } },
+      stations: true,
       _count: { select: { schedules: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -387,8 +388,12 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     });
   }
 
-  const durationMs = route.estimatedDuration * 60 * 1000;
-  const bufferMs = parseInt(bufferMinutes) * 60 * 1000;
+  const bufferMins = parseInt(bufferMinutes) || 60;
+  const numStops = route.stations ? route.stations.length : 0;
+  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+
+  const durationMs = totalDurationMins * 60 * 1000;
+  const bufferMs = bufferMins * 60 * 1000;
 
   // 2. Generate all proposed (departure, arrival) pairs for each day in range
   const proposed = [];
@@ -476,33 +481,43 @@ export const generateSchedules = asyncHandler(async (req, res) => {
             departureTime: trip.departure,
             arrivalTime: trip.arrival,
             distance: routeWithStations.distance,
-            duration: routeWithStations.estimatedDuration,
+            duration: totalDurationMins,
             status: "ACTIVE",
           },
         });
 
         if (routeWithStations.stations.length > 0) {
-          const tripDurationMs =
-            trip.arrival.getTime() - trip.departure.getTime();
+          const sortedStations = [...routeWithStations.stations].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
           await tx.scheduleStop.createMany({
-            data: routeWithStations.stations.map((stop) => {
-              const progress = Math.min(
-                1,
-                Math.max(
-                  0,
-                  stop.distanceFromStart / routeWithStations.distance,
-                ),
+            data: sortedStations.map((stop, index) => {
+              const progress =
+                routeWithStations.distance > 0
+                  ? Math.min(
+                      1,
+                      Math.max(
+                        0,
+                        stop.distanceFromStart / routeWithStations.distance,
+                      ),
+                    )
+                  : 0;
+              const movingTimeMs =
+                routeWithStations.estimatedDuration * progress * 60 * 1000;
+              const restingTimeMs = index * bufferMins * 60 * 1000;
+              const stopArrivalTime = new Date(
+                trip.departure.getTime() + movingTimeMs + restingTimeMs,
               );
-              const stopTime = new Date(
-                trip.departure.getTime() + tripDurationMs * progress,
+              const stopDepartureTime = new Date(
+                stopArrivalTime.getTime() + bufferMins * 60 * 1000,
               );
 
               return {
                 scheduleId: schedule.id,
                 stationId: stop.stationId,
                 stopOrder: stop.stopOrder,
-                arrivalTime: stopTime,
-                departureTime: stopTime,
+                arrivalTime: stopArrivalTime,
+                departureTime: stopDepartureTime,
               };
             }),
           });

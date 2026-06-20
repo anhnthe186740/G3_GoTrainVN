@@ -985,7 +985,7 @@ export function RouteScheduleMgmt({ mode }) {
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Khoảng giãn cách dọn dẹp (phút)
+                  Thời gian nghỉ tại mỗi ga (phút)
                 </label>
                 <input
                   type="number"
@@ -1000,7 +1000,8 @@ export function RouteScheduleMgmt({ mode }) {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian tối thiểu giữa 2 chuyến của cùng 1 tàu.
+                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
+                  cuối).
                 </p>
               </div>
 
