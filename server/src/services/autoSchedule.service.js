@@ -452,10 +452,13 @@ export async function generateSchedulesForDay30() {
   targetDate.setHours(0, 0, 0, 0);
 
   console.log(
-    `[AutoSchedule] Bắt đầu tự động tạo lịch trình cho ngày thứ 30 tới: ${targetDate.toDateString()}`,
+    `[AutoSchedule] Bắt đầu tự động quét và tạo lịch trình cho 30 ngày tới: từ ${today.toLocaleDateString("vi-VN")} đến ${targetDate.toLocaleDateString("vi-VN")}`,
   );
 
-  return generateSchedulesByTemplate(targetDate);
+  return generateSchedulesForRange(
+    today.toISOString().split("T")[0],
+    targetDate.toISOString().split("T")[0],
+  );
 }
 
 /**
