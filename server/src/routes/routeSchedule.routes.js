@@ -9,6 +9,7 @@ import {
   generateRoute,
   generateSchedules,
   deleteRoute,
+  activateRoute,
   createTrain,
   deleteTrain,
   triggerAutoGenerateSchedules,
@@ -45,6 +46,11 @@ routeScheduleRoutes.post(
   generateRoute,
 );
 routeScheduleRoutes.delete("/routes/:id", ...adminOnlyRoute, deleteRoute);
+routeScheduleRoutes.put(
+  "/routes/:id/activate",
+  ...adminOnlyRoute,
+  activateRoute,
+);
 
 // Route Templates (Mẫu lịch chạy)
 routeScheduleRoutes.get(

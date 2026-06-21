@@ -367,6 +367,18 @@ export function RouteScheduleMgmt({ mode }) {
     }
   };
 
+  // ── Activate/Unlock Route ──────────────────────────────────────
+  const handleActivateRoute = async (id, name) => {
+    if (!window.confirm(`Kích hoạt lại tuyến đường "${name}"?`)) return;
+    try {
+      await api.put(`/routes/${id}/activate`);
+      toast.success("Đã kích hoạt lại tuyến đường thành công!");
+      loadAll({ force: true });
+    } catch {
+      toast.error("Lỗi khi kích hoạt lại tuyến đường.");
+    }
+  };
+
   // ═══════════════════════════════════════════════════════════════
   const isRouteMode = mode === "route";
   const isScheduleMode = mode === "schedule";
@@ -852,16 +864,31 @@ export function RouteScheduleMgmt({ mode }) {
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <button
-                            onClick={() => handleDeleteRoute(r.id, r.routeName)}
-                            disabled={!r.isActive}
-                            className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg disabled:opacity-30 transition-all"
-                            title="Vô hiệu hóa"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              block
-                            </span>
-                          </button>
+                          {r.isActive ? (
+                            <button
+                              onClick={() =>
+                                handleDeleteRoute(r.id, r.routeName)
+                              }
+                              className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all"
+                              title="Vô hiệu hóa"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                block
+                              </span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                handleActivateRoute(r.id, r.routeName)
+                              }
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                              title="Kích hoạt lại"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                check_circle
+                              </span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
