@@ -63,6 +63,9 @@ export function Home() {
   // Live tracking progress bar logic
   const [progress, setProgress] = useState(66.05);
 
+  const [promotionsList, setPromotionsList] = useState([]);
+  const [loadingPromotions, setLoadingPromotions] = useState(true);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setProgress((prev) => (prev + 0.05) % 100);
@@ -97,6 +100,63 @@ export function Home() {
         console.error("Lỗi khi tải danh sách ga từ API:", err);
         toast.error("Không thể tải danh sách ga đang hoạt động.");
       });
+  }, []);
+
+  // Fetch active promotions & vouchers from server on load
+  useEffect(() => {
+    const fetchPromotions = async () => {
+      try {
+        setLoadingPromotions(true);
+        const { data } = await api.get("/promotions");
+        const list = [];
+        if (data) {
+          // Map vouchers
+          if (Array.isArray(data.vouchers)) {
+            data.vouchers.forEach((v) => {
+              list.push({
+                id: `voucher-${v.id}`,
+                code: v.voucherCode,
+                title: `Mã giảm giá ${v.voucherCode}`,
+                description:
+                  v.description ||
+                  `Giảm ngay ${v.discountType === "PERCENTAGE" ? `${v.discountValue}%` : `${v.discountValue.toLocaleString("vi-VN")}đ`}`,
+                discount:
+                  v.discountType === "PERCENTAGE"
+                    ? `${v.discountValue}%`
+                    : `${v.discountValue / 1000}k`,
+                isVoucher: true,
+              });
+            });
+          }
+          // Map promotions
+          if (Array.isArray(data.promotions)) {
+            data.promotions.forEach((p) => {
+              list.push({
+                id: `promo-${p.id}`,
+                code: "Tự động áp dụng",
+                title: p.title,
+                description:
+                  p.description ||
+                  "Ưu đãi tự động áp dụng trực tiếp cho các chặng/chuyến tàu đủ điều kiện.",
+                discount:
+                  p.discountType === "PERCENTAGE"
+                    ? `${p.discountValue}%`
+                    : p.discountType === "FREE_UPGRADE"
+                      ? "Nâng hạng"
+                      : `${p.discountValue / 1000}k`,
+                isVoucher: false,
+              });
+            });
+          }
+        }
+        setPromotionsList(list);
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách khuyến mãi trên trang chủ:", err);
+      } finally {
+        setLoadingPromotions(false);
+      }
+    };
+    fetchPromotions();
   }, []);
 
   // Close dropdowns on click outside
@@ -721,48 +781,81 @@ export function Home() {
             Khuyến Mãi Hấp Dẫn
           </h2>
 
-          <div className="flex overflow-x-auto gap-md pb-md scrollbar-none">
-            {/* Promo Card 1 */}
-            <div className="flex-shrink-0 w-full md:w-[570px] bg-gradient-to-br from-primary-container to-primary p-lg rounded-[24px] text-white flex justify-between items-center relative overflow-hidden">
-              <div className="relative z-10">
-                <span className="bg-white/20 px-sm py-1 rounded-full text-xs font-semibold mb-md inline-block">
-                  Mã: GOTRAINV20
-                </span>
-                <h3 className="text-2xl font-bold text-white mb-sm">
-                  Giảm 20% cho
-                  <br />
-                  người dùng mới
-                </h3>
-                <button
-                  onClick={() => handleCopyVoucher("GOTRAINV20")}
-                  className="bg-white text-primary px-lg py-sm rounded-xl font-bold mt-md hover:bg-slate-50 transition active:scale-95 cursor-pointer"
-                >
-                  Nhận Ngay
-                </button>
+          <div className="flex overflow-x-auto gap-md pb-md scrollbar-none w-full">
+            {loadingPromotions ? (
+              <div className="flex gap-md w-full">
+                {[1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex-shrink-0 w-full md:w-[570px] bg-slate-200/50 animate-pulse h-[180px] rounded-[24px]"
+                  />
+                ))}
               </div>
-              <Ticket className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
-            </div>
+            ) : promotionsList.length === 0 ? (
+              <div className="w-full bg-white p-lg rounded-[24px] border border-surface-container text-center py-xl shadow-sm">
+                <p className="text-on-surface-variant font-medium">
+                  Hiện tại không có chương trình khuyến mãi nào đang diễn ra.
+                </p>
+              </div>
+            ) : (
+              promotionsList.map((promo, idx) => {
+                const isEven = idx % 2 === 0;
+                const bgClass = isEven
+                  ? "bg-gradient-to-br from-primary-container to-primary"
+                  : "bg-gradient-to-br from-tertiary-container to-tertiary";
+                const btnTextClass = isEven ? "text-primary" : "text-tertiary";
 
-            {/* Promo Card 2 */}
-            <div className="flex-shrink-0 w-full md:w-[570px] bg-gradient-to-br from-tertiary-container to-tertiary p-lg rounded-[24px] text-white flex justify-between items-center relative overflow-hidden">
-              <div className="relative z-10">
-                <span className="bg-white/20 px-sm py-1 rounded-full text-xs font-semibold mb-md inline-block">
-                  Hạn đến 31/12
-                </span>
-                <h3 className="text-2xl font-bold text-white mb-sm">
-                  Hoàn tiền 50k
-                  <br />
-                  qua ví điện tử
-                </h3>
-                <button
-                  onClick={() => handleCopyVoucher("GOTRAIN50K")}
-                  className="bg-white text-tertiary px-lg py-sm rounded-xl font-bold mt-md hover:bg-slate-50 transition active:scale-95 cursor-pointer"
-                >
-                  Khám Phá
-                </button>
-              </div>
-              <Wallet className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
-            </div>
+                return (
+                  <div
+                    key={promo.id}
+                    className={`flex-shrink-0 w-full md:w-[570px] ${bgClass} p-lg rounded-[24px] text-white flex justify-between items-start relative overflow-hidden`}
+                  >
+                    <div className="relative z-10 flex flex-col justify-between h-full min-h-[140px] pr-[120px]">
+                      <div>
+                        <span className="bg-white/20 px-sm py-1 rounded-full text-[11px] font-bold mb-xs inline-block">
+                          {promo.isVoucher
+                            ? `Mã: ${promo.code}`
+                            : "Khuyến mãi hệ thống"}
+                        </span>
+                        <h3 className="text-xl md:text-2xl font-bold text-white mb-xs line-clamp-1">
+                          {promo.title}
+                        </h3>
+                        <p className="text-xs md:text-sm text-white/80 line-clamp-2 leading-relaxed">
+                          {promo.description}
+                        </p>
+                      </div>
+                      <div className="mt-md">
+                        {promo.isVoucher ? (
+                          <button
+                            onClick={() => handleCopyVoucher(promo.code)}
+                            className="bg-white hover:bg-slate-50 text-primary px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm"
+                          >
+                            Sao chép mã
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                              toast.info(
+                                "Vui lòng chọn chặng đi/đến ở phía trên để tìm vé!",
+                              );
+                            }}
+                            className={`bg-white hover:bg-slate-50 ${btnTextClass} px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm`}
+                          >
+                            Khám Phá
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {promo.isVoucher ? (
+                      <Ticket className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
+                    ) : (
+                      <Wallet className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </section>
