@@ -53,6 +53,8 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
   if (durationMins <= 0) return null;
 
   const bufferMins = parseInt(bufferMinutes) || 0;
+  const numStops = selectedRoute.stations ? selectedRoute.stations.length : 0;
+  const totalDurationMins = durationMins + numStops * bufferMins;
 
   const times = departureTimes
     .split(",")
@@ -61,8 +63,8 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
 
   if (times.length === 0) return null;
 
-  const durHours = Math.floor(durationMins / 60);
-  const durMins = durationMins % 60;
+  const durHours = Math.floor(totalDurationMins / 60);
+  const durMins = totalDurationMins % 60;
 
   return (
     <div className="mt-3 p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
@@ -74,7 +76,7 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
       <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
         {times.map((t) => {
           const [h, m] = t.split(":").map(Number);
-          const totalMins = h * 60 + m + durationMins;
+          const totalMins = h * 60 + m + totalDurationMins;
           const availableMins = totalMins + bufferMins;
 
           const arrDay = Math.floor(totalMins / (24 * 60)) + 1;
@@ -120,7 +122,7 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
                     <span className="material-symbols-outlined text-[11px]">
                       schedule
                     </span>
-                    Khả dụng từ (sau đệm): <strong>{avTimeStr}</strong>
+                    Khả dụng từ (sau nghỉ ga cuối): <strong>{avTimeStr}</strong>
                   </span>
                   <span>
                     {avDayLabel} (+{bufferMins}p)
@@ -233,6 +235,7 @@ export function AdminSchedulePanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tất cả");
+  const [filterTrainId, setFilterTrainId] = useState("Tất cả");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -523,7 +526,11 @@ export function AdminSchedulePanel() {
     // Status check
     const matchStatus = filterStatus === "Tất cả" || status === filterStatus;
 
-    return matchSearch && matchDate && matchStatus;
+    // Train filter check
+    const matchTrain =
+      filterTrainId === "Tất cả" || s.trainId === filterTrainId;
+
+    return matchSearch && matchDate && matchStatus && matchTrain;
   });
 
   // ── Stats calculation ───────────────────────────────────────────
@@ -547,7 +554,7 @@ export function AdminSchedulePanel() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterDate, filterStatus]);
+  }, [searchTerm, filterDate, filterStatus, filterTrainId]);
 
   return (
     <div className="space-y-8">
@@ -954,12 +961,34 @@ export function AdminSchedulePanel() {
           </select>
         </div>
 
-        {(searchTerm || filterDate || filterStatus !== "Tất cả") && (
+        <div className="w-full md:w-auto min-w-[160px]">
+          <label className="block font-label-sm text-xs font-bold text-[#3f4852] mb-2">
+            Đoàn tàu
+          </label>
+          <select
+            value={filterTrainId}
+            onChange={(e) => setFilterTrainId(e.target.value)}
+            className="w-full px-4 py-2.5 bg-[#f2f4f6] rounded-xl border-none focus:ring-2 focus:ring-[#00a3ff] outline-none text-sm cursor-pointer"
+          >
+            <option value="Tất cả">Tất cả tàu</option>
+            {trains.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.trainCode} - {t.trainName}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(searchTerm ||
+          filterDate ||
+          filterStatus !== "Tất cả" ||
+          filterTrainId !== "Tất cả") && (
           <button
             onClick={() => {
               setSearchTerm("");
               setFilterDate("");
               setFilterStatus("Tất cả");
+              setFilterTrainId("Tất cả");
             }}
             className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer"
             title="Xóa bộ lọc"
@@ -1360,7 +1389,7 @@ export function AdminSchedulePanel() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Khoảng thời gian dọn dẹp tối thiểu (phút)
+                  Thời gian nghỉ tại mỗi ga (phút)
                 </label>
                 <input
                   type="number"
@@ -1375,8 +1404,8 @@ export function AdminSchedulePanel() {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian giãn cách bắt buộc giữa hai chuyến liên tiếp của
-                  cùng 1 tàu.
+                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
+                  cuối).
                 </p>
               </div>
 
@@ -1685,7 +1714,7 @@ export function AdminSchedulePanel() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Thời gian đệm tối thiểu (phút)
+                  Thời gian nghỉ tại mỗi ga (phút)
                 </label>
                 <input
                   type="number"
@@ -1701,7 +1730,8 @@ export function AdminSchedulePanel() {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Giãn cách bắt buộc trước/sau chuyến để tránh xung đột tàu.
+                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
+                  cuối).
                 </p>
               </div>
 
