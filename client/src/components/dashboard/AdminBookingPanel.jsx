@@ -79,13 +79,14 @@ export function AdminBookingPanel() {
     fetchBookings();
   };
 
-  const handleCancelBooking = async (bookingId) => {
+  const handleCancelBooking = async (booking) => {
     if (!window.confirm("Bạn có chắc chắn muốn hủy đặt vé này?")) return;
     setCancelling(true);
     try {
-      await api.post(`/bookings/${bookingId}/cancel`, {
+      await api.post(`/bookings/${booking.id}/cancel`, {
+        passengerIds: booking.passengers?.map((passenger) => passenger.id),
         reason: "Admin hủy vé",
-        refundMethod: "WALLET",
+        refundMethod: booking.user?.id ? "WALLET" : "BANK_TRANSFER",
       });
       toast.success("Hủy vé thành công!");
       setShowDetail(false);
@@ -311,7 +312,7 @@ export function AdminBookingPanel() {
                         {booking.status !== "CANCELLED" &&
                           booking.status !== "REFUNDED" && (
                             <button
-                              onClick={() => handleCancelBooking(booking.id)}
+                              onClick={() => handleCancelBooking(booking)}
                               className="p-2 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all"
                               title="Hủy vé"
                             >
@@ -550,7 +551,7 @@ export function AdminBookingPanel() {
               {selectedBooking.status !== "CANCELLED" &&
                 selectedBooking.status !== "REFUNDED" && (
                   <button
-                    onClick={() => handleCancelBooking(selectedBooking.id)}
+                    onClick={() => handleCancelBooking(selectedBooking)}
                     disabled={cancelling}
                     className="w-full py-3 bg-[#ba1a1a] hover:bg-[#ba1a1a]/90 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                   >

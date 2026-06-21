@@ -352,6 +352,9 @@ export function Profile() {
       const response = await api.post(
         `/bookings/${selectedCancelBooking.id}/cancel`,
         {
+          passengerIds: selectedCancelBooking.passengers?.map(
+            (passenger) => passenger.id,
+          ),
           reason: cancelReason,
           refundMethod: cancelMethod,
         },
