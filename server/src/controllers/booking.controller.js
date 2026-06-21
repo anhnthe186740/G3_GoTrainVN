@@ -8,6 +8,7 @@ import {
   handlePayosWebhook,
   quoteBooking,
 } from "../services/bookingCheckout.service.js";
+import { cancelBookingTickets } from "../services/bookingCancellation.service.js";
 
 export const getBookingQuote = asyncHandler(async (req, res) => {
   const quote = await quoteBooking(req.bookingIdentity, req.body);
@@ -103,6 +104,8 @@ export const lookupBooking = asyncHandler(async (req, res) => {
   };
 
   const seatInclude = { include: { carriage: true } };
+  const isPrivilegedLookup = ["STAFF", "ADMIN"].includes(req.user?.role);
+  const currentUserId = req.user?.id || req.bookingIdentity?.userId;
 
   // ------------------------------------------------------------------
   // Scenario 1: Both Ticket Code AND Contact Info → secure single lookup
@@ -148,13 +151,36 @@ export const lookupBooking = asyncHandler(async (req, res) => {
   // Scenario 2: Only Ticket Code → public lookup (masked PII)
   // ------------------------------------------------------------------
   if (ticketCode) {
+    if (!isPrivilegedLookup && !currentUserId) {
+      return res.status(400).json({
+        message:
+          "Vui lòng nhập thêm Email/Số điện thoại liên hệ để tra cứu vé.",
+      });
+    }
+
     const cleanTicketCode = ticketCode.trim().toUpperCase();
+
+    const ownerLookupFilter = isPrivilegedLookup
+      ? []
+      : [
+          {
+            OR: [
+              { userId: currentUserId },
+              { booking: { userId: currentUserId } },
+            ],
+          },
+        ];
 
     const passenger = await prisma.passenger.findFirst({
       where: {
-        OR: [
-          { ticketCode: cleanTicketCode },
-          { booking: { bookingCode: cleanTicketCode } },
+        AND: [
+          {
+            OR: [
+              { ticketCode: cleanTicketCode },
+              { booking: { bookingCode: cleanTicketCode } },
+            ],
+          },
+          ...ownerLookupFilter,
         ],
       },
       include: {
@@ -169,34 +195,42 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       });
     }
 
-    if (["STAFF", "ADMIN"].includes(req.user?.role)) {
-      return res.json({ type: "single", ticket: passenger });
-    }
-
-    const maskedTicket = {
-      ...passenger,
-      email: passenger.email
-        ? passenger.email.replace(/(.{2})(.*)(@.*)/, "$1***$3")
-        : null,
-      phoneNumber: passenger.phoneNumber
-        ? passenger.phoneNumber.replace(/(.{3})(.*)(.{3})/, "$1****$3")
-        : null,
-    };
-
-    return res.json({ type: "single", ticket: maskedTicket, isMasked: true });
+    return res.json({ type: "single", ticket: passenger });
   }
 
   // ------------------------------------------------------------------
   // Scenario 3: Only Contact Info → return list of all bookings
   // ------------------------------------------------------------------
   if (contactInfo) {
+    if (!isPrivilegedLookup && !currentUserId) {
+      return res.status(400).json({
+        message: "Vui lòng nhập mã vé kèm Email/Số điện thoại để tra cứu.",
+      });
+    }
+
     const cleanContact = contactInfo.trim().toLowerCase();
+
+    const ownerLookupFilter = isPrivilegedLookup
+      ? []
+      : [
+          {
+            OR: [
+              { userId: currentUserId },
+              { booking: { userId: currentUserId } },
+            ],
+          },
+        ];
 
     const passengers = await prisma.passenger.findMany({
       where: {
-        OR: [
-          { email: { equals: cleanContact, mode: "insensitive" } },
-          { phoneNumber: cleanContact },
+        AND: [
+          {
+            OR: [
+              { email: { equals: cleanContact, mode: "insensitive" } },
+              { phoneNumber: cleanContact },
+            ],
+          },
+          ...ownerLookupFilter,
         ],
       },
       include: {
@@ -919,7 +953,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
 // ============================================================
 // POST /api/v1/bookings/:id/cancel - Request ticket cancellation & refund
 // ============================================================
-export const cancelBooking = asyncHandler(async (req, res) => {
+export const legacyCancelBooking = asyncHandler(async (req, res) => {
   const { id } = req.params; // bookingId
   const { reason, refundMethod = "WALLET" } = req.body;
 
@@ -1090,5 +1124,36 @@ export const cancelBooking = asyncHandler(async (req, res) => {
     refundAmount: result.refundAmount,
     refundPercentage: refundPercentage * 100,
     bookingStatus: result.updatedBooking.status,
+  });
+});
+export const cancelBooking = asyncHandler(async (req, res) => {
+  const result = await cancelBookingTickets({
+    bookingId: req.params.id,
+    passengerIds: req.body.passengerIds,
+    refundMethod: req.body.refundMethod,
+    reason: req.body.reason,
+    identity: req.bookingIdentity,
+    verification: {
+      ticketCode: req.body.ticketCode,
+      contactInfo: req.body.contactInfo,
+    },
+    bankInfo: {
+      bankName: req.body.bankName,
+      bankAccount: req.body.bankAccount,
+    },
+  });
+
+  res.json({
+    message:
+      result.refundStatus === "COMPLETED"
+        ? "Hủy vé và hoàn tiền thành công."
+        : "Hủy vé thành công. Yêu cầu hoàn tiền đang chờ xử lý.",
+    refundAmount: result.refundAmount,
+    refundPercentage: result.refundPercentage,
+    bookingStatus: result.booking.status,
+    paymentStatus: result.booking.paymentStatus,
+    cancelledPassengerIds: result.cancelledPassengerIds,
+    refundMethod: result.refundMethod,
+    refundStatus: result.refundStatus,
   });
 });
