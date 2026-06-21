@@ -1479,6 +1479,12 @@ export function PassengerDetailsPage() {
                   <span>-{money(quote.passengerDiscount)}</span>
                 </div>
               )}
+              {quote?.promotionDiscount > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>{quote.promotion?.title || "Khuyến mãi tự động"}</span>
+                  <span>-{money(quote.promotionDiscount)}</span>
+                </div>
+              )}
               {quote?.voucherDiscount > 0 && (
                 <div className="flex justify-between text-emerald-600">
                   <span>Mã giảm giá</span>

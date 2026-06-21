@@ -256,6 +256,13 @@ async function resolveVoucher(voucherCode, subtotal, identity) {
   };
 }
 
+function getDowngradedCarriageType(carriageType) {
+  if (carriageType === "AC_SEAT") return "NORMAL_SEAT";
+  if (carriageType === "SLEEPER_6") return "AC_SEAT";
+  if (carriageType === "SLEEPER_4") return "SLEEPER_6";
+  return carriageType;
+}
+
 export async function quoteBooking(
   identity,
   { sessionId, passengerTypes, voucherCode },
@@ -316,6 +323,27 @@ export async function quoteBooking(
         );
       }
       const fare = calculateFare(rule, pricing.distance, rule.taxPercentage);
+
+      // Upgrade logic: calculate target carriage class price if upgraded
+      const downgradedType = getDowngradedCarriageType(hold.carriageType);
+      let upgradeSavings = 0;
+      if (downgradedType !== hold.carriageType) {
+        const upgradedRule = pricing.rules.get(
+          `${passengerType}:${downgradedType}`,
+        );
+        if (upgradedRule) {
+          const upgradedFare = calculateFare(
+            upgradedRule,
+            pricing.distance,
+            upgradedRule.taxPercentage,
+          );
+          upgradeSavings = Math.max(
+            0,
+            fare.finalPrice - upgradedFare.finalPrice,
+          );
+        }
+      }
+
       return {
         leg,
         holdId: hold.id,
@@ -328,6 +356,7 @@ export async function quoteBooking(
         discountAmount: fare.discountAmount,
         taxAmount: fare.taxAmount,
         finalPrice: fare.finalPrice,
+        upgradeSavings,
       };
     });
     return {
@@ -354,14 +383,32 @@ export async function quoteBooking(
   );
   const beforeVoucher = items.reduce((sum, item) => sum + item.total, 0);
 
-  const scheduleIds = [
-    ...new Set(session.holds.map((hold) => hold.scheduleId)),
-  ];
+  // Group inputs by schedule for automatic promotion search
+  const scheduleAmounts = new Map();
+  for (const item of items) {
+    for (const leg of item.legs) {
+      const current = scheduleAmounts.get(leg.scheduleId) || {
+        amount: 0,
+        upgradeSavings: 0,
+      };
+      current.amount += leg.finalPrice;
+      current.upgradeSavings += leg.upgradeSavings || 0;
+      scheduleAmounts.set(leg.scheduleId, current);
+    }
+  }
+  const scheduleInputs = Array.from(scheduleAmounts.entries()).map(
+    ([scheduleId, data]) => ({
+      scheduleId,
+      amount: data.amount,
+      upgradeSavings: data.upgradeSavings,
+    }),
+  );
+
   const { findBestPromotion, validateVoucher } =
     await import("./promotion.service.js");
 
   const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
-    await findBestPromotion(scheduleIds, beforeVoucher);
+    await findBestPromotion(scheduleInputs, beforeVoucher);
 
   const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
 
