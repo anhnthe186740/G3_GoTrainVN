@@ -24,41 +24,43 @@ import { adminOnly } from "../middlewares/adminOnly.js";
 
 export const routeScheduleRoutes = Router();
 
+const adminOnlyRoute = [authMiddleware, adminOnly];
+
 // Stations & Trains (reference data)
 routeScheduleRoutes.get("/stations", getStations);
 routeScheduleRoutes.get("/trains", getTrains);
 routeScheduleRoutes.get("/trains/:id", getTrainById);
-routeScheduleRoutes.post("/trains", createTrain);
-routeScheduleRoutes.delete("/trains/:id", deleteTrain);
+routeScheduleRoutes.post("/trains", ...adminOnlyRoute, createTrain);
+routeScheduleRoutes.delete("/trains/:id", ...adminOnlyRoute, deleteTrain);
 
 // Routes
 routeScheduleRoutes.get("/routes", getRoutes);
-routeScheduleRoutes.post("/routes/auto-generate", generateRoute);
-routeScheduleRoutes.delete("/routes/:id", deleteRoute);
+routeScheduleRoutes.post(
+  "/routes/auto-generate",
+  ...adminOnlyRoute,
+  generateRoute,
+);
+routeScheduleRoutes.delete("/routes/:id", ...adminOnlyRoute, deleteRoute);
 
 // Route Templates (Mẫu lịch chạy)
 routeScheduleRoutes.get(
   "/route-templates",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   getRouteTemplates,
 );
 routeScheduleRoutes.post(
   "/route-templates",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   createRouteTemplate,
 );
 routeScheduleRoutes.put(
   "/route-templates/:id",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   updateRouteTemplate,
 );
 routeScheduleRoutes.delete(
   "/route-templates/:id",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   deleteRouteTemplate,
 );
 
@@ -66,16 +68,18 @@ routeScheduleRoutes.delete(
 routeScheduleRoutes.get("/schedules/search", searchSchedules);
 routeScheduleRoutes.get("/schedules", getSchedules);
 routeScheduleRoutes.get("/schedules/:id/timeline", getScheduleTimeline);
-routeScheduleRoutes.post("/schedules/auto-generate", generateSchedules);
+routeScheduleRoutes.post(
+  "/schedules/auto-generate",
+  ...adminOnlyRoute,
+  generateSchedules,
+);
 routeScheduleRoutes.post(
   "/schedules/trigger-auto-generate",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   triggerAutoGenerateSchedules,
 );
 routeScheduleRoutes.post(
   "/schedules/generate-range",
-  authMiddleware,
-  adminOnly,
+  ...adminOnlyRoute,
   generateSchedulesByRange,
 );
