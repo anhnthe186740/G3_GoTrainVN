@@ -31,7 +31,7 @@ const getScheduleStatus = (s) => {
   const dep = new Date(s.departureTime);
   const arr = s.arrivalTime
     ? new Date(s.arrivalTime)
-    : new Date(dep.getTime() + 6 * 3600 * 1000); // Mặc định 6 tiếng nếu không có thời gian đến
+    : new Date(dep.getTime() + 6 * 3600 * 1000);
 
   if (now >= dep && now <= arr) return "Đang chạy";
   if (now > arr) return "Hoàn thành";
@@ -137,94 +137,6 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
   );
 };
 
-// ─── Mock RouteTemplate Data ───────────────────────────────────
-const MOCK_ROUTE_TEMPLATES = [
-  {
-    id: "tpl-mock-1",
-    routeId: "r1",
-    trainId: "t1",
-    route: {
-      routeName: "Hà Nội – Huế",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "HUE", stationName: "Ga Huế" },
-    },
-    train: { trainCode: "SE1", trainName: "SE1" },
-    departureTimes: ["08:00"],
-    bufferMinutes: 60,
-    isActive: true,
-  },
-  {
-    id: "tpl-mock-2",
-    routeId: "r2",
-    trainId: "t2",
-    route: {
-      routeName: "Hà Nội – Sài Gòn",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "SGN", stationName: "Ga Sài Gòn" },
-    },
-    train: { trainCode: "SE2", trainName: "SE2" },
-    departureTimes: ["06:00", "22:00"],
-    bufferMinutes: 60,
-    isActive: true,
-  },
-  {
-    id: "tpl-mock-3",
-    routeId: "r3",
-    trainId: "t3",
-    route: {
-      routeName: "Hà Nội – Đà Nẵng",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "DAN", stationName: "Ga Đà Nẵng" },
-    },
-    train: { trainCode: "SE3", trainName: "SE3" },
-    departureTimes: ["08:00", "14:00"],
-    bufferMinutes: 60,
-    isActive: true,
-  },
-  {
-    id: "tpl-mock-4",
-    routeId: "r4",
-    trainId: "t4",
-    route: {
-      routeName: "Hà Nội – Nha Trang",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "NTR", stationName: "Ga Nha Trang" },
-    },
-    train: { trainCode: "TN1", trainName: "TN1" },
-    departureTimes: ["20:00"],
-    bufferMinutes: 90,
-    isActive: false,
-  },
-  {
-    id: "tpl-mock-5",
-    routeId: "r5",
-    trainId: "t5",
-    route: {
-      routeName: "Hà Nội – Quy Nhơn",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "QNH", stationName: "Ga Quy Nhơn" },
-    },
-    train: { trainCode: "SE4", trainName: "SE4" },
-    departureTimes: ["10:00"],
-    bufferMinutes: 60,
-    isActive: true,
-  },
-  {
-    id: "tpl-mock-6",
-    routeId: "r6",
-    trainId: "t6",
-    route: {
-      routeName: "Hà Nội – Lào Cai",
-      startStation: { stationCode: "HAN", stationName: "Ga Hà Nội" },
-      endStation: { stationCode: "LCA", stationName: "Ga Lào Cai" },
-    },
-    train: { trainCode: "SP1", trainName: "SP1" },
-    departureTimes: ["21:30"],
-    bufferMinutes: 45,
-    isActive: true,
-  },
-];
-
 export function AdminSchedulePanel() {
   const [schedules, setSchedules] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -258,8 +170,40 @@ export function AdminSchedulePanel() {
   const [activeDetails, setActiveDetails] = useState(null);
 
   // Timeline Modal
-  const [timelineSchedule, setTimelineSchedule] = useState(null); // { schedule, timeline }
+  const [timelineSchedule, setTimelineSchedule] = useState(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
+
+  // Live Tracking Modal states
+  const [showLiveModal, setShowLiveModal] = useState(false);
+  const [selectedLiveSchedule, setSelectedLiveSchedule] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [updatingLive, setUpdatingLive] = useState(false);
+  const [delayMinutesVal, setDelayMinutesVal] = useState("0");
+  const [liveTrackingData, setLiveTrackingData] = useState({
+    speed: 0,
+    temperature: 25,
+    passengerCount: 0,
+    latitude: 21.0285,
+    longitude: 105.8542,
+    currentStation: "",
+    status: "ON_TIME",
+  });
+
+  const [triggeringAuto, setTriggeringAuto] = useState(false);
+
+  // RouteTemplate Management State
+  const [templates, setTemplates] = useState([]);
+  const [showTemplateSection, setShowTemplateSection] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({
+    routeId: "",
+    trainId: "",
+    departureTimes: "08:00",
+    bufferMinutes: "60",
+    isActive: true,
+  });
+  const [templateSubmitting, setTemplateSubmitting] = useState(false);
 
   const handleViewTimeline = async (scheduleId) => {
     setTimelineLoading(true);
@@ -274,21 +218,108 @@ export function AdminSchedulePanel() {
     }
   };
 
-  const [triggeringAuto, setTriggeringAuto] = useState(false);
+  // Open Live Tracking & Incident Controls
+  const handleOpenLiveTracking = async (schedule) => {
+    setSelectedLiveSchedule(schedule);
+    setDelayMinutesVal(String(schedule.delayMinutes || 0));
+    setShowLiveModal(true);
+    setLiveLoading(true);
+    try {
+      const res = await api.get(`/schedules/${schedule.id}/live-tracking`);
+      setLiveTrackingData(res.data.tracking);
+    } catch {
+      toast.error("Không thể tải thông tin định vị thời gian thực.");
+    } finally {
+      setLiveLoading(false);
+    }
+  };
 
-  // ── RouteTemplate Management State ─────────────────────────────
-  const [templates, setTemplates] = useState([]);
-  const [showTemplateSection, setShowTemplateSection] = useState(true);
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState(null);
-  const [templateForm, setTemplateForm] = useState({
-    routeId: "",
-    trainId: "",
-    departureTimes: "08:00",
-    bufferMinutes: "60",
-    isActive: true,
-  });
-  const [templateSubmitting, setTemplateSubmitting] = useState(false);
+  // Update Live Telemetry parameters
+  const handleUpdateLiveTelemetry = async (field, value) => {
+    if (!selectedLiveSchedule) return;
+    try {
+      const payload = {
+        ...liveTrackingData,
+        [field]: value,
+      };
+      const res = await api.put(
+        `/schedules/${selectedLiveSchedule.id}/live-tracking`,
+        payload,
+      );
+      setLiveTrackingData(res.data.tracking);
+      toast.success("Đã đồng bộ thông số live!");
+    } catch {
+      toast.error("Lỗi khi cập nhật thông số live.");
+    }
+  };
+
+  // Submit Delay Minute Recalculations
+  const handleUpdateDelay = async (e) => {
+    e.preventDefault();
+    if (!selectedLiveSchedule) return;
+    setUpdatingLive(true);
+    try {
+      const res = await api.put(`/schedules/${selectedLiveSchedule.id}/delay`, {
+        delayMinutes: parseInt(delayMinutesVal) || 0,
+      });
+      toast.success(
+        res.data.message || "Cập nhật delay và tính toán lại lịch thành công!",
+      );
+      setShowLiveModal(false);
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Lỗi khi cập nhật thời gian trễ.",
+      );
+    } finally {
+      setUpdatingLive(false);
+    }
+  };
+
+  // Emergency Stop Trigger (Remote Deactivation)
+  const handleEmergencyStop = async () => {
+    if (!selectedLiveSchedule) return;
+    if (
+      !window.confirm(
+        "CẢNH BÁO CỰC KỲ QUAN TRỌNG: Bạn có chắc chắn muốn DỪNG TÀU KHẨN CẤP? Lịch trình này sẽ bị HỦY, hệ thống sẽ tự động hoàn tiền cho khách hàng và đưa tàu đi sửa chữa lập tức.",
+      )
+    )
+      return;
+
+    setUpdatingLive(true);
+    try {
+      // 1. Deactivate train to MAINTENANCE status
+      await api.put(`/trains/${selectedLiveSchedule.trainId}/status`, {
+        status: "MAINTENANCE",
+      });
+
+      // 2. Establish Emergency Maintenance Log
+      const now = new Date();
+      const end = new Date(now.getTime() + 24 * 3600 * 1000); // 1 day
+      await api.post("/maintenance", {
+        trainId: selectedLiveSchedule.trainId,
+        maintenanceType: "EMERGENCY",
+        description:
+          "DỪNG TÀU KHẨN CẤP: Gặp sự cố động cơ đột xuất trên hành trình.",
+        startDate: now.toISOString(),
+        endDate: end.toISOString(),
+        affectedScheduleIds: [selectedLiveSchedule.id],
+        notes: "Dừng tàu khẩn cấp do can thiệp từ xa của Admin.",
+      });
+
+      toast.success(
+        "Đã kích hoạt dừng tàu khẩn cấp và chuyển tàu đi bảo trì thành công!",
+      );
+      setShowLiveModal(false);
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể thực hiện dừng tàu khẩn cấp.",
+      );
+    } finally {
+      setUpdatingLive(false);
+    }
+  };
 
   const handleTriggerAutoGenerate = async () => {
     setTriggeringAuto(true);
@@ -483,7 +514,6 @@ export function AdminSchedulePanel() {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa lịch trình của ${name}?`))
       return;
     try {
-      // Check if it is a mock schedule or server schedule
       if (id.startsWith("mock-")) {
         setSchedules((prev) => prev.filter((s) => s.id !== id));
         toast.success("Đã xóa lịch trình (Dữ liệu mô phỏng).");
@@ -501,7 +531,6 @@ export function AdminSchedulePanel() {
   const filteredSchedules = schedules.filter((s) => {
     const status = getScheduleStatus(s);
 
-    // Search term check
     const matchSearch =
       (s.train?.trainCode || "")
         .toLowerCase()
@@ -516,17 +545,13 @@ export function AdminSchedulePanel() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
 
-    // Date check
     let matchDate = true;
     if (filterDate) {
       const sDateStr = new Date(s.departureTime).toISOString().split("T")[0];
       matchDate = sDateStr === filterDate;
     }
 
-    // Status check
     const matchStatus = filterStatus === "Tất cả" || status === filterStatus;
-
-    // Train filter check
     const matchTrain =
       filterTrainId === "Tất cả" || s.trainId === filterTrainId;
 
@@ -556,6 +581,9 @@ export function AdminSchedulePanel() {
     setCurrentPage(1);
   }, [searchTerm, filterDate, filterStatus, filterTrainId]);
 
+  // BR-32 Warning filter: find delayed schedules > 10 mins
+  const delayedSchedules = schedules.filter((s) => s.delayMinutes > 10);
+
   return (
     <div className="space-y-8">
       {/* Local App Header */}
@@ -571,14 +599,50 @@ export function AdminSchedulePanel() {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95"
+          className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95 border-none cursor-pointer"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
           Tạo lịch trình mới
         </button>
       </div>
 
-      {/* Stats Summary (Asymmetric Layout matching HTML) */}
+      {/* Warning Alerts for Delays > 10 mins (BR-32) */}
+      {delayedSchedules.length > 0 && (
+        <div className="bg-[#ffdad6] border border-[#ba1a1a]/20 rounded-2xl p-5 flex flex-col gap-3">
+          <h4 className="text-sm font-bold text-[#ba1a1a] flex items-center gap-1.5">
+            <span className="material-symbols-outlined">warning</span>
+            Cảnh báo Quy tắc nghiệp vụ (BR-32): Tàu trễ &gt; 10 phút
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {delayedSchedules.map((ds) => (
+              <div
+                key={ds.id}
+                className="bg-white rounded-xl p-3 border border-[#ffdad6] flex items-center justify-between text-xs font-semibold"
+              >
+                <div>
+                  <p className="text-[#ba1a1a] font-bold">
+                    {ds.train?.trainCode} ({ds.route?.routeName})
+                  </p>
+                  <p className="text-[#3f4852] mt-0.5">
+                    Số hiệu delay:{" "}
+                    <strong className="text-red-600">
+                      {ds.delayMinutes} phút
+                    </strong>
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleOpenLiveTracking(ds)}
+                  className="px-2.5 py-1 bg-[#ba1a1a] hover:bg-[#ba1a1a]/90 text-white rounded-lg text-[10px] font-bold cursor-pointer border-none"
+                >
+                  Điều hành Live
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8 bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 flex items-center justify-between">
           <div>
@@ -745,7 +809,6 @@ export function AdminSchedulePanel() {
 
         {showTemplateSection && (
           <>
-            {/* Info Banner */}
             <div className="px-6 py-3 bg-violet-50/60 border-b border-violet-100/60 flex items-start gap-2">
               <span className="material-symbols-outlined text-violet-500 text-[16px] mt-0.5 shrink-0">
                 info
@@ -759,7 +822,6 @@ export function AdminSchedulePanel() {
               </p>
             </div>
 
-            {/* Table */}
             {templates.length === 0 ? (
               <div className="py-14 text-center">
                 <span className="material-symbols-outlined text-5xl text-[#bec7d4] block mb-3">
@@ -990,7 +1052,7 @@ export function AdminSchedulePanel() {
               setFilterStatus("Tất cả");
               setFilterTrainId("Tất cả");
             }}
-            className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer"
+            className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer border-none"
             title="Xóa bộ lọc"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -1009,7 +1071,7 @@ export function AdminSchedulePanel() {
         </button>
       </div>
 
-      {/* Schedule Table (Modern List Pattern) */}
+      {/* Schedule Table */}
       <div className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-[#3f4852]">
@@ -1129,11 +1191,21 @@ export function AdminSchedulePanel() {
                             }`}
                           >
                             {status}
+                            {s.delayMinutes > 0 && ` (+${s.delayMinutes}p)`}
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handleOpenLiveTracking(s)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#d97706] hover:bg-white hover:shadow-sm hover:text-[#b45309] transition-all cursor-pointer border-none bg-transparent"
+                            title="Điều hành & Giám sát Live"
+                          >
+                            <span className="material-symbols-outlined text-[20px]">
+                              sensors
+                            </span>
+                          </button>
                           <button
                             onClick={() => setActiveDetails(s)}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[#3f4852] hover:bg-white hover:shadow-sm hover:text-[#00a3ff] transition-all cursor-pointer border-none bg-transparent"
@@ -1150,19 +1222,6 @@ export function AdminSchedulePanel() {
                           >
                             <span className="material-symbols-outlined text-[20px]">
                               route
-                            </span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              toast.info(
-                                "Tính năng chỉnh sửa lịch trình đơn lẻ đang được phát triển.",
-                              );
-                            }}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#00629d] hover:bg-white hover:shadow-sm hover:text-[#005a90] transition-all cursor-pointer border-none bg-transparent"
-                            title="Chỉnh sửa"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              edit
                             </span>
                           </button>
                           <button
@@ -1261,7 +1320,314 @@ export function AdminSchedulePanel() {
         )}
       </div>
 
-      {/* ── Add Schedule Modal (Drawer style / Centered Modal) ── */}
+      {/* MODAL: LIVE TRACKING & INCIDENT DELAY MANAGEMENT */}
+      {showLiveModal && selectedLiveSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-[#0b1b2b] text-white rounded-3xl shadow-2xl border border-cyan-500/20 w-full max-w-2xl p-6 relative my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <button
+              onClick={() => setShowLiveModal(false)}
+              className="absolute top-4 right-4 text-cyan-300 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all cursor-pointer border-none bg-transparent"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-5">
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                <span className="material-symbols-outlined text-[24px]">
+                  sensors
+                </span>
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-white">
+                  Live Operations: {selectedLiveSchedule.train?.trainName} (
+                  {selectedLiveSchedule.train?.trainCode})
+                </h3>
+                <p className="text-xs text-cyan-300/70">
+                  Lộ trình: {selectedLiveSchedule.route?.routeName} · Khởi hành:{" "}
+                  {formatDateTime(selectedLiveSchedule.departureTime)}
+                </p>
+              </div>
+            </div>
+
+            {liveLoading ? (
+              <div className="py-20 flex flex-col items-center justify-center text-cyan-400">
+                <span className="material-symbols-outlined animate-spin text-3xl mb-2">
+                  progress_activity
+                </span>
+                <p className="text-sm font-semibold">
+                  Đang nạp dữ liệu định vị tàu...
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Telemetry Widgets Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Speed Widget */}
+                  <div className="bg-[#12283f] border border-cyan-500/10 p-3 rounded-2xl flex flex-col justify-between items-center text-center">
+                    <span className="material-symbols-outlined text-[24px] text-cyan-400 mb-1">
+                      speed
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Tốc độ hiện tại
+                    </span>
+                    <span className="text-xl font-extrabold text-white mt-1">
+                      {liveTrackingData.speed}{" "}
+                      <span className="text-xs font-normal">km/h</span>
+                    </span>
+                    {/* Simulated adjustment controls */}
+                    <div className="flex gap-1.5 mt-2">
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "speed",
+                            Math.max(0, liveTrackingData.speed - 10),
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "speed",
+                            liveTrackingData.speed + 10,
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Temp Widget */}
+                  <div className="bg-[#12283f] border border-cyan-500/10 p-3 rounded-2xl flex flex-col justify-between items-center text-center">
+                    <span className="material-symbols-outlined text-[24px] text-orange-400 mb-1">
+                      thermostat
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Nhiệt độ toa xe
+                    </span>
+                    <span className="text-xl font-extrabold text-white mt-1">
+                      {liveTrackingData.temperature}{" "}
+                      <span className="text-xs font-normal">°C</span>
+                    </span>
+                    <div className="flex gap-1.5 mt-2">
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "temperature",
+                            Math.max(16, liveTrackingData.temperature - 1),
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "temperature",
+                            Math.min(32, liveTrackingData.temperature + 1),
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Occupancy Widget */}
+                  <div className="bg-[#12283f] border border-cyan-500/10 p-3 rounded-2xl flex flex-col justify-between items-center text-center">
+                    <span className="material-symbols-outlined text-[24px] text-emerald-400 mb-1">
+                      airline_seat_recline_normal
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Hành khách
+                    </span>
+                    <span className="text-xl font-extrabold text-white mt-1">
+                      {liveTrackingData.passengerCount}{" "}
+                      <span className="text-xs font-normal">người</span>
+                    </span>
+                    <div className="flex gap-1.5 mt-2">
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "passengerCount",
+                            Math.max(0, liveTrackingData.passengerCount - 5),
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        -
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "passengerCount",
+                            liveTrackingData.passengerCount + 5,
+                          )
+                        }
+                        className="w-6 h-5 rounded bg-white/10 text-xs font-bold hover:bg-white/20"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* GPS Widget */}
+                  <div className="bg-[#12283f] border border-cyan-500/10 p-3 rounded-2xl flex flex-col justify-between items-center text-center">
+                    <span className="material-symbols-outlined text-[24px] text-blue-400 mb-1">
+                      distance
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      Tọa độ GPS
+                    </span>
+                    <span className="text-[11px] font-mono text-white mt-1.5">
+                      {liveTrackingData.latitude?.toFixed(4)},{" "}
+                      {liveTrackingData.longitude?.toFixed(4)}
+                    </span>
+                    <div className="flex gap-1.5 mt-2">
+                      <button
+                        onClick={() =>
+                          handleUpdateLiveTelemetry(
+                            "latitude",
+                            (liveTrackingData.latitude || 21.0285) + 0.01,
+                          )
+                        }
+                        className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-bold hover:bg-white/20"
+                      >
+                        Di chuyển
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* GPS Location simulator Map mockup */}
+                <div className="bg-[#0e2236] border border-white/5 p-4 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-cyan-400">
+                      location_on
+                    </span>
+                    <div className="text-left">
+                      <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">
+                        Vị trí hiện tại (Trạm kế)
+                      </p>
+                      <p className="text-sm font-bold text-white mt-0.5">
+                        {liveTrackingData.currentStation ||
+                          "Đang trên hành trình (Giữa các Ga)"}
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="VD: Ga Phủ Lý..."
+                    value={liveTrackingData.currentStation || ""}
+                    onChange={(e) =>
+                      setLiveTrackingData((prev) => ({
+                        ...prev,
+                        currentStation: e.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      handleUpdateLiveTelemetry(
+                        "currentStation",
+                        liveTrackingData.currentStation,
+                      )
+                    }
+                    className="bg-[#12283f] border border-cyan-500/20 rounded-xl px-3 py-1.5 text-xs outline-none text-white focus:ring-1 focus:ring-cyan-500"
+                  />
+                </div>
+
+                {/* Delay Update Form & Stop Recalculator */}
+                <div className="bg-[#12283f] border border-cyan-500/10 p-5 rounded-2xl">
+                  <h4 className="font-bold text-sm text-cyan-300 mb-3 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined">schedule</span>
+                    Điều hành Sự cố & Ghi nhận Delay ga đến (Recalculating)
+                  </h4>
+                  <form onSubmit={handleUpdateDelay} className="space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-3 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                          Số phút trễ kỹ thuật (Delay Minutes) *
+                        </label>
+                        <input
+                          required
+                          type="number"
+                          min="0"
+                          value={delayMinutesVal}
+                          onChange={(e) => setDelayMinutesVal(e.target.value)}
+                          className="w-full bg-[#0b1b2b] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={updatingLive}
+                        className="w-full sm:w-auto bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-all cursor-pointer border-none flex items-center justify-center gap-1"
+                      >
+                        {updatingLive ? (
+                          <>
+                            <span className="material-symbols-outlined animate-spin text-[16px]">
+                              progress_activity
+                            </span>
+                            Đang lưu...
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[16px]">
+                              update
+                            </span>
+                            Cập nhật & Tính lại lịch
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-cyan-300/60 leading-relaxed">
+                      💡 Khi ghi nhận Delay, hệ thống sẽ tự động dời thời điểm
+                      đến/đi dự kiến của ga đích chính và tất cả ga trung gian
+                      dừng tiếp theo (ScheduleStop) tương ứng bằng đúng số phút
+                      trễ.
+                    </p>
+                  </form>
+                </div>
+
+                {/* Emergency Controls (Safety rules triggers) */}
+                <div className="border border-red-500/25 bg-red-500/[0.04] p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="text-left space-y-1">
+                    <h4 className="text-sm font-bold text-red-400 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[20px]">
+                        report_gmailerrorred
+                      </span>
+                      Dừng tàu Khẩn cấp kỹ thuật (Emergency Shutdown)
+                    </h4>
+                    <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+                      Chỉ sử dụng nút này trong tình huống khẩn cấp xảy ra tai
+                      nạn hoặc hư hỏng nặng tại chỗ trên đường ray. Tàu sẽ được
+                      kéo về xưởng bảo trì lập tức và các đơn đặt vé đang chờ sẽ
+                      bị từ chối.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleEmergencyStop}
+                    disabled={updatingLive}
+                    className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-xs px-5 py-3 rounded-xl transition-all active:scale-95 border-none cursor-pointer flex items-center gap-1 shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      dangerous
+                    </span>
+                    Dừng tàu khẩn cấp
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Schedule Modal ── */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-lg p-6 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -1416,7 +1782,7 @@ export function AdminSchedulePanel() {
                     setShowAddModal(false);
                     setConflicts([]);
                   }}
-                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer"
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer border-none bg-transparent"
                 >
                   Đóng
                 </button>
@@ -1597,7 +1963,7 @@ export function AdminSchedulePanel() {
       {/* ── RouteTemplate Add/Edit Modal ── */}
       {showTemplateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.18)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
               <h3 className="font-bold text-lg text-[#191c1e] flex items-center gap-2">
                 <span className="material-symbols-outlined text-violet-600">
@@ -1605,7 +1971,7 @@ export function AdminSchedulePanel() {
                 </span>
                 {editingTemplate
                   ? "Chỉnh sửa mẫu lịch chạy"
-                  : "Thêm mẫu lịch chạy"}
+                  : "Thêm mới mẫu lịch chạy"}
               </h3>
               <button
                 onClick={() => {
@@ -1619,72 +1985,66 @@ export function AdminSchedulePanel() {
             </div>
 
             <form onSubmit={handleSaveTemplate} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Tuyến đường *
-                </label>
-                <select
-                  required
-                  value={templateForm.routeId}
-                  onChange={(e) =>
-                    setTemplateForm({
-                      ...templateForm,
-                      routeId: e.target.value,
-                    })
-                  }
-                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
-                >
-                  <option value="">-- Chọn tuyến đường --</option>
-                  {routes
-                    .filter((r) => r.isActive !== false)
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.routeName} ({r.startStation?.stationName} →{" "}
-                        {r.endStation?.stationName})
-                      </option>
-                    ))}
-                </select>
-                {routes.length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">
-                    ⚠ Không có tuyến nào — dữ liệu sẽ được giữ nguyên khi lưu.
-                  </p>
-                )}
-              </div>
+              {!editingTemplate && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                      Tuyến đường *
+                    </label>
+                    <select
+                      required
+                      value={templateForm.routeId}
+                      onChange={(e) =>
+                        setTemplateForm({
+                          ...templateForm,
+                          routeId: e.target.value,
+                        })
+                      }
+                      className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                    >
+                      <option value="">-- Chọn tuyến đường --</option>
+                      {routes
+                        .filter((r) => r.isActive !== false)
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.routeName} ({r.startStation?.stationName} →{" "}
+                            {r.endStation?.stationName})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Tàu hỏa *
-                </label>
-                <select
-                  required
-                  value={templateForm.trainId}
-                  onChange={(e) =>
-                    setTemplateForm({
-                      ...templateForm,
-                      trainId: e.target.value,
-                    })
-                  }
-                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
-                >
-                  <option value="">-- Chọn tàu hỏa --</option>
-                  {trains.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.trainName} ({t.trainCode})
-                    </option>
-                  ))}
-                </select>
-                {trains.length === 0 && (
-                  <p className="text-[11px] text-amber-600 mt-1">
-                    ⚠ Không có tàu nào — dữ liệu sẽ được giữ nguyên khi lưu.
-                  </p>
-                )}
-              </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                      Đoàn tàu hoạt động *
+                    </label>
+                    <select
+                      required
+                      value={templateForm.trainId}
+                      onChange={(e) =>
+                        setTemplateForm({
+                          ...templateForm,
+                          trainId: e.target.value,
+                        })
+                      }
+                      className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                    >
+                      <option value="">-- Chọn tàu hỏa --</option>
+                      {trains.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.trainName} ({t.trainCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
                   Giờ khởi hành hàng ngày *
-                  <span className="font-normal text-[#3f4852]/60 ml-1">
-                    (phân tách bằng dấu phẩy)
+                  <span className="text-[#3f4852]/60 font-normal ml-1">
+                    (phân tách nhiều giờ bằng dấu phẩy)
                   </span>
                 </label>
                 <input
@@ -1696,30 +2056,18 @@ export function AdminSchedulePanel() {
                       departureTimes: e.target.value,
                     })
                   }
-                  placeholder="06:00, 14:00, 22:00"
+                  placeholder="06:00, 12:00, 20:00"
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
-                />
-                <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  VD: <code>06:00, 14:30, 22:00</code> — mỗi giờ sẽ tạo 1 lịch
-                  mỗi ngày.
-                </p>
-                <TripPreview
-                  selectedRoute={routes.find(
-                    (r) => r.id === templateForm.routeId,
-                  )}
-                  departureTimes={templateForm.departureTimes}
-                  bufferMinutes={templateForm.bufferMinutes}
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Thời gian nghỉ tại mỗi ga (phút)
+                  Thời gian ga nghỉ buffer (phút)
                 </label>
                 <input
                   type="number"
                   min="0"
-                  max="480"
                   value={templateForm.bufferMinutes}
                   onChange={(e) =>
                     setTemplateForm({
@@ -1729,36 +2077,27 @@ export function AdminSchedulePanel() {
                   }
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
-                <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
-                  cuối).
-                </p>
               </div>
 
-              <div className="flex items-center justify-between py-3 px-4 bg-[#f7f9fb] rounded-xl border border-[#bec7d4]/20">
-                <div>
-                  <p className="text-xs font-semibold text-[#191c1e]">
-                    Kích hoạt mẫu
-                  </p>
-                  <p className="text-[11px] text-[#3f4852]/60 mt-0.5">
-                    Mẫu sẽ được dùng trong lần gen lịch tiếp theo
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setTemplateForm((f) => ({ ...f, isActive: !f.isActive }))
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="templateActive"
+                  checked={templateForm.isActive}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      isActive: e.target.checked,
+                    })
                   }
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer border-none focus:outline-none ${
-                    templateForm.isActive ? "bg-[#00629d]" : "bg-[#bec7d4]"
-                  }`}
+                  className="rounded text-primary focus:ring-0 cursor-pointer"
+                />
+                <label
+                  htmlFor="templateActive"
+                  className="text-xs font-semibold text-[#3f4852] cursor-pointer"
                 >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                      templateForm.isActive ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                  Mẫu lịch đang hoạt động (Active)
+                </label>
               </div>
 
               <div className="flex gap-3 pt-3 border-t border-[#bec7d4]/10">
@@ -1768,30 +2107,16 @@ export function AdminSchedulePanel() {
                     setShowTemplateModal(false);
                     setEditingTemplate(null);
                   }}
-                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer"
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer border-none bg-transparent"
                 >
-                  Hủy
+                  Đóng
                 </button>
                 <button
                   type="submit"
                   disabled={templateSubmitting}
                   className="flex-1 py-3 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
                 >
-                  {templateSubmitting ? (
-                    <>
-                      <span className="material-symbols-outlined text-[16px] animate-spin">
-                        progress_activity
-                      </span>
-                      Đang lưu...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-[16px]">
-                        {editingTemplate ? "save" : "add"}
-                      </span>
-                      {editingTemplate ? "Cập nhật" : "Thêm mẫu"}
-                    </>
-                  )}
+                  {templateSubmitting ? "Đang lưu..." : "Lưu mẫu lịch"}
                 </button>
               </div>
             </form>
@@ -1799,253 +2124,78 @@ export function AdminSchedulePanel() {
         </div>
       )}
 
-      {/* Sticky Footer matching HTML */}
-      <footer className="py-4 border-t border-[#bec7d4]/10 flex flex-col sm:flex-row items-center justify-between text-xs text-[#3f4852]/40 gap-2">
-        <div>© 2026 GoTrain VN System Admin</div>
-        <div className="flex gap-4">
-          <span>Trạng thái máy chủ: Ổn định</span>
-          <span>Version 2.4.1-stable</span>
-        </div>
-      </footer>
-
-      {/* ── Timeline Loading Overlay ── */}
-      {timelineLoading && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-3 shadow-2xl">
-            <span className="material-symbols-outlined animate-spin text-4xl text-[#00629d]">
-              progress_activity
-            </span>
-            <p className="text-sm font-semibold text-[#191c1e]">
-              Đang tải lịch trình liên tục...
+      {/* ── Timeline Modal ── */}
+      {timelineSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-xl p-6 relative">
+            <button
+              onClick={() => setTimelineSchedule(null)}
+              className="absolute top-4 right-4 text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+            <h3 className="font-bold text-lg text-[#191c1e] mb-2 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[#7c4dff]">
+                route
+              </span>
+              Lịch Trình Tuyến Tính:{" "}
+              {timelineSchedule.schedule.train?.trainCode}
+            </h3>
+            <p className="text-xs text-[#3f4852] mb-5">
+              Hành trình {timelineSchedule.schedule.routeName} chi tiết từng
+              chặng dừng (phút, km).
             </p>
-          </div>
-        </div>
-      )}
 
-      {/* ── Train Timeline Modal ── */}
-      {timelineSchedule && !timelineLoading && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="px-7 py-5 border-b border-[#bec7d4]/20 flex items-start justify-between bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="material-symbols-outlined text-[#00629d] text-[20px]">
-                    train
-                  </span>
-                  <span className="font-extrabold text-lg text-[#191c1e]">
-                    {timelineSchedule.schedule.train?.trainName}
-                  </span>
-                  <span className="text-xs bg-[#00629d]/10 text-[#00629d] px-2 py-0.5 rounded-full font-bold">
-                    {timelineSchedule.schedule.train?.trainCode}
-                  </span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border uppercase ${
-                      STATUS_BADGE_CLASS[
-                        getScheduleStatus(timelineSchedule.schedule)
-                      ] || "bg-[#f2f4f6] text-[#3f4852] border-[#bec7d4]"
+            <div className="relative border-l-2 border-[#7c4dff]/20 ml-4 pl-6 space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {timelineSchedule.timeline?.map((point, index) => (
+                <div key={index} className="relative">
+                  <div
+                    className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
+                      point.type === "START"
+                        ? "bg-green-500"
+                        : point.type === "END"
+                          ? "bg-[#7c4dff]"
+                          : "bg-amber-500"
                     }`}
-                  >
-                    {getScheduleStatus(timelineSchedule.schedule)}
-                  </span>
+                  />
+                  <div>
+                    <h5 className="font-bold text-sm text-[#191c1e] flex items-center gap-1.5">
+                      {point.stationName} ({point.city})
+                      {point.type === "START" && (
+                        <span className="text-[9px] bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded-full">
+                          Khởi hành
+                        </span>
+                      )}
+                      {point.type === "END" && (
+                        <span className="text-[9px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+                          Ga cuối
+                        </span>
+                      )}
+                    </h5>
+                    <p className="text-xs text-[#3f4852]/60 mt-1">
+                      {point.arrivalTime &&
+                        `Đến: ${new Date(point.arrivalTime).toLocaleTimeString("vi-VN")}`}
+                      {point.arrivalTime && point.departureTime && " | "}
+                      {point.departureTime &&
+                        `Đi: ${new Date(point.departureTime).toLocaleTimeString("vi-VN")}`}
+                    </p>
+                    {point.segmentMinutes != null && (
+                      <p className="text-[10px] text-[#7c4dff] font-bold mt-0.5">
+                        Chặng: +{point.segmentMinutes} phút (+
+                        {point.segmentDistanceKm} km)
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-[#3f4852] font-medium">
-                  {timelineSchedule.schedule.routeName} &nbsp;·&nbsp;
-                  <span className="text-[#00629d] font-semibold">
-                    {timelineSchedule.schedule.distance} km
-                  </span>
-                  &nbsp;·&nbsp;
-                  {Math.floor(
-                    (timelineSchedule.schedule.duration || 0) / 60,
-                  )}h {(timelineSchedule.schedule.duration || 0) % 60}m hành
-                  trình
-                </p>
-              </div>
-              <button
-                onClick={() => setTimelineSchedule(null)}
-                className="p-2 hover:bg-[#f2f4f6] rounded-xl transition-all text-[#3f4852] hover:text-[#191c1e] cursor-pointer border-none bg-transparent flex-shrink-0"
-              >
-                <span className="material-symbols-outlined text-[22px]">
-                  close
-                </span>
-              </button>
+              ))}
             </div>
 
-            {/* Timeline body */}
-            <div className="overflow-y-auto flex-1 px-7 py-6">
-              <h4 className="text-xs font-bold text-[#3f4852] uppercase tracking-widest mb-5 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#7c4dff] text-[16px]">
-                  route
-                </span>
-                Lịch Trình Nối Tiếp Liên Tục
-              </h4>
-
-              <div className="relative">
-                {timelineSchedule.timeline.map((point, idx) => {
-                  const isStart = point.type === "START";
-                  const isEnd = point.type === "END";
-                  const isLast = idx === timelineSchedule.timeline.length - 1;
-
-                  const dotColor = isStart
-                    ? "bg-[#00629d] ring-[#00629d]/20"
-                    : isEnd
-                      ? "bg-[#7c4dff] ring-[#7c4dff]/20"
-                      : "bg-white ring-[#00629d]/30 border-2 border-[#00629d]";
-
-                  const labelColor = isStart
-                    ? "text-[#00629d]"
-                    : isEnd
-                      ? "text-[#7c4dff]"
-                      : "text-[#191c1e]";
-
-                  const timeDisplay = isStart
-                    ? formatDateTime(point.departureTime)
-                    : isEnd
-                      ? formatDateTime(point.arrivalTime)
-                      : `${formatDateTime(point.arrivalTime)} → ${formatDateTime(point.departureTime)}`;
-
-                  return (
-                    <div key={idx} className="flex gap-4">
-                      {/* Left: dot + connector line */}
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div
-                          className={`w-5 h-5 rounded-full ring-4 flex items-center justify-center mt-0.5 flex-shrink-0 ${dotColor}`}
-                        >
-                          {(isStart || isEnd) && (
-                            <span className="material-symbols-outlined text-white text-[10px]">
-                              {isStart ? "play_arrow" : "flag"}
-                            </span>
-                          )}
-                        </div>
-                        {!isLast && (
-                          <div className="flex-1 w-px min-h-[40px] bg-gradient-to-b from-[#00629d]/40 to-[#7c4dff]/40 my-1" />
-                        )}
-                      </div>
-
-                      {/* Right: stop info */}
-                      <div
-                        className={`pb-6 ${isLast ? "pb-0" : ""} flex-1 min-w-0`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p
-                                className={`font-bold text-base leading-tight ${labelColor}`}
-                              >
-                                {point.stationName}
-                              </p>
-                              {isStart && (
-                                <span className="text-[10px] bg-[#00629d] text-white px-1.5 py-0.5 rounded-full font-bold">
-                                  GA ĐẦU
-                                </span>
-                              )}
-                              {isEnd && (
-                                <span className="text-[10px] bg-[#7c4dff] text-white px-1.5 py-0.5 rounded-full font-bold">
-                                  GA CUỐI
-                                </span>
-                              )}
-                              {!isStart && !isEnd && (
-                                <span className="text-[10px] bg-[#cfe5ff] text-[#00629d] px-1.5 py-0.5 rounded-full font-bold">
-                                  GA DỪNG #{point.stopOrder}
-                                </span>
-                              )}
-                            </div>
-                            {point.city && (
-                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
-                                {point.city}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-bold text-[#191c1e] font-mono">
-                              {timeDisplay}
-                            </p>
-                            {point.distanceFromStart != null && (
-                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
-                                📍 {point.distanceFromStart} km từ ga đầu
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Segment info between stops */}
-                        {!isLast && point.segmentMinutes != null && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-full">
-                              <span className="material-symbols-outlined text-[12px] text-[#6f7883]">
-                                schedule
-                              </span>
-                              <span className="text-[11px] text-[#6f7883] font-semibold">
-                                {Math.floor(point.segmentMinutes / 60) > 0
-                                  ? `${Math.floor(point.segmentMinutes / 60)}h `
-                                  : ""}
-                                {point.segmentMinutes % 60}m di chuyển
-                              </span>
-                              {point.segmentDistanceKm != null && (
-                                <>
-                                  <span className="text-[#bec7d4]">·</span>
-                                  <span className="text-[11px] text-[#6f7883] font-semibold">
-                                    {point.segmentDistanceKm} km
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Summary footer */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5 border border-[#bec7d4]/20 rounded-2xl grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Tổng ga dừng
-                  </p>
-                  <p className="text-xl font-extrabold text-[#00629d]">
-                    {timelineSchedule.timeline.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Khoảng cách
-                  </p>
-                  <p className="text-xl font-extrabold text-[#00629d]">
-                    {timelineSchedule.schedule.distance} km
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Hành trình
-                  </p>
-                  <p className="text-xl font-extrabold text-[#7c4dff]">
-                    {Math.floor((timelineSchedule.schedule.duration || 0) / 60)}
-                    h {(timelineSchedule.schedule.duration || 0) % 60}m
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer actions */}
-            <div className="px-7 py-4 border-t border-[#bec7d4]/10 flex items-center justify-between gap-3 bg-[#f7f9fb]">
-              <p className="text-xs text-[#3f4852]/50">
-                💡 Dữ liệu này là nền tảng để hệ thống bán vé chặng lẻ
-              </p>
-              <button
-                onClick={() => setTimelineSchedule(null)}
-                className="px-5 py-2 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white font-semibold text-sm transition-all cursor-pointer border-none"
-              >
-                Đóng
-              </button>
-            </div>
+            <button
+              onClick={() => setTimelineSchedule(null)}
+              className="mt-6 w-full py-2.5 rounded-xl bg-[#f2f4f6] hover:bg-[#eceef0] text-[#3f4852] font-semibold text-sm transition-all cursor-pointer border-none"
+            >
+              Đóng timeline
+            </button>
           </div>
         </div>
       )}

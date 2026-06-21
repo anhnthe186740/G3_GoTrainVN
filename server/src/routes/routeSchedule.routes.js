@@ -18,6 +18,10 @@ import {
   deleteRouteTemplate,
   generateSchedulesByRange,
   getScheduleTimeline,
+  updateTrainStatus,
+  updateScheduleDelay,
+  updateScheduleLiveTracking,
+  getScheduleLiveTracking,
 } from "../controllers/routeSchedule.controller.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
@@ -68,6 +72,11 @@ routeScheduleRoutes.delete(
 routeScheduleRoutes.get("/schedules/search", searchSchedules);
 routeScheduleRoutes.get("/schedules", getSchedules);
 routeScheduleRoutes.get("/schedules/:id/timeline", getScheduleTimeline);
+routeScheduleRoutes.get(
+  "/schedules/:id/live-tracking",
+  authMiddleware,
+  getScheduleLiveTracking,
+);
 routeScheduleRoutes.post(
   "/schedules/auto-generate",
   ...adminOnlyRoute,
@@ -82,4 +91,21 @@ routeScheduleRoutes.post(
   "/schedules/generate-range",
   ...adminOnlyRoute,
   generateSchedulesByRange,
+);
+
+// Trạng thái vận hành & Cập nhật Delay sự cố
+routeScheduleRoutes.put(
+  "/trains/:id/status",
+  ...adminOnlyRoute,
+  updateTrainStatus,
+);
+routeScheduleRoutes.put(
+  "/schedules/:id/delay",
+  ...adminOnlyRoute,
+  updateScheduleDelay,
+);
+routeScheduleRoutes.put(
+  "/schedules/:id/live-tracking",
+  ...adminOnlyRoute,
+  updateScheduleLiveTracking,
 );
