@@ -1,6 +1,7 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { emitSeatState } from "../realtime/seatRealtime.js";
+import { notifyScheduleChange } from "../services/scheduleNotification.service.js";
 
 // Helper: Tự động từ chối (decline) các đặt vé PENDING
 async function declinePendingBookings(scheduleIds, tx) {
@@ -133,6 +134,15 @@ export const createMaintenance = asyncHandler(async (req, res) => {
 
     return vm;
   });
+
+  // Gửi email thông báo hủy chuyến tự động cho hành khách có vé
+  if (affectedScheduleIds && affectedScheduleIds.length > 0) {
+    for (const scheduleId of affectedScheduleIds) {
+      notifyScheduleChange(scheduleId, "CANCELLED", {
+        notes: `Hủy chuyến do tàu đi bảo trì (${description})`,
+      });
+    }
+  }
 
   res.status(201).json({
     message: "Lập lịch bảo trì đoàn tàu thành công!",
