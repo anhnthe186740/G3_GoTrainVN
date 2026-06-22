@@ -24,6 +24,7 @@ import {
   HelpCircle,
   Repeat2,
 } from "lucide-react";
+import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 
 export function TicketLookup() {
   const { user } = useAuth();
@@ -42,17 +43,26 @@ export function TicketLookup() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null); // { type: 'single' | 'list', ticket?: any, tickets?: any[] }
   const [activeTicket, setActiveTicket] = useState(null); // The ticket details currently shown
+  const isGuest = !user;
   const [recentSearches, setRecentSearches] = useState([]);
 
   // Refund Modal state
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState(
     "Thay đổi lịch trình cá nhân",
   );
-  const [refundMethod, setRefundMethod] = useState("WALLET");
+  const [refundMethod, setRefundMethod] = useState(user ? "WALLET" : "BANK");
   const [bankName, setBankName] = useState("");
   const [bankAccount, setBankAccount] = useState("");
+  const [accountHolder, setAccountHolder] = useState("");
   const [refundLoading, setRefundLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeTicket) {
+      setRefundMethod(isGuest ? "BANK" : "WALLET");
+    }
+  }, [activeTicket, isGuest]);
 
   // Load recent searches and pre-fill logged-in user info
   useEffect(() => {
@@ -376,7 +386,16 @@ export function TicketLookup() {
     return [];
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, cancellationStatus) => {
+    if (cancellationStatus === "PENDING") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+          <Clock className="h-3.5 w-3.5" />
+          Chờ hủy vé
+        </span>
+      );
+    }
+
     switch (status) {
       case "CONFIRMED":
         return (
@@ -472,6 +491,7 @@ export function TicketLookup() {
   const canRequestRefund =
     ["CONFIRMED", "COMPLETED"].includes(activeTicket?.booking?.status) &&
     activeTicket?.booking?.paymentStatus === "COMPLETED" &&
+    activeTicket?.booking?.cancellationRequest?.status !== "PENDING" &&
     isVerifiedLookup &&
     activeJourneyState === "UPCOMING";
   const canExchangeTicket =
@@ -498,6 +518,13 @@ export function TicketLookup() {
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     if (!activeTicket || !activeTicket.booking) return;
+    if (
+      isGuest &&
+      (!bankName.trim() || !bankAccount.trim() || !accountHolder.trim())
+    ) {
+      toast.error("Vui lòng nhập đầy đủ thông tin tài khoản nhận hoàn tiền.");
+      return;
+    }
 
     setRefundLoading(true);
     try {
@@ -511,9 +538,17 @@ export function TicketLookup() {
             ticketCode,
           contactInfo,
           reason: refundReason,
-          refundMethod: refundMethod,
-          bankName: refundMethod === "BANK" ? bankName : undefined,
-          bankAccount: refundMethod === "BANK" ? bankAccount : undefined,
+          refundMethod: isGuest ? "BANK" : refundMethod,
+          bankName:
+            isGuest || refundMethod === "BANK" ? bankName.trim() : undefined,
+          bankAccount:
+            isGuest || refundMethod === "BANK"
+              ? bankAccount.replace(/\s/g, "")
+              : undefined,
+          accountHolder:
+            isGuest || refundMethod === "BANK"
+              ? accountHolder.trim()
+              : undefined,
         },
       );
       toast.success(
@@ -785,7 +820,10 @@ export function TicketLookup() {
                             </span>
                           </div>
                         </div>
-                        {getStatusBadge(t.booking?.status || "CONFIRMED")}
+                        {getStatusBadge(
+                          t.booking?.status || "CONFIRMED",
+                          t.booking?.cancellationRequest?.status,
+                        )}
                       </div>
 
                       <div className="flex justify-between items-center py-2 border-t border-b border-dashed border-slate-100">
@@ -856,6 +894,7 @@ export function TicketLookup() {
                     </div>
                     {getStatusBadge(
                       activeTicket.booking?.status || "CONFIRMED",
+                      activeTicket.booking?.cancellationRequest?.status,
                     )}
                   </div>
 
@@ -1007,7 +1046,7 @@ export function TicketLookup() {
                   <button
                     onClick={() => {
                       if (refundInfo.allowed) {
-                        setIsRefundModalOpen(true);
+                        setIsPolicyModalOpen(true);
                       } else {
                         toast.error(refundInfo.message);
                       }
@@ -1021,6 +1060,14 @@ export function TicketLookup() {
                     <AlertTriangle className="h-4.5 w-4.5" />
                     <span>Yêu cầu hoàn vé & Hủy</span>
                   </button>
+                )}
+
+                {activeTicket?.booking?.cancellationRequest?.status ===
+                  "PENDING" && (
+                  <span className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700">
+                    <Clock className="h-4.5 w-4.5" />
+                    Yêu cầu hủy đang chờ Admin duyệt
+                  </span>
                 )}
 
                 {canExchangeTicket && (
@@ -1273,6 +1320,17 @@ export function TicketLookup() {
       {/* ============================================================== */}
       {/* REFUND REQUEST MODAL                                           */}
       {/* ============================================================== */}
+      <CancellationPolicyModal
+        open={isPolicyModalOpen}
+        audience={isGuest ? "guest" : "registered"}
+        onClose={() => setIsPolicyModalOpen(false)}
+        onAccept={() => {
+          setIsPolicyModalOpen(false);
+          if (isGuest) setRefundMethod("BANK");
+          setIsRefundModalOpen(true);
+        }}
+      />
+
       {isRefundModalOpen && activeTicket && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 no-print animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-[500px] p-6 shadow-2xl relative border border-slate-100 flex flex-col gap-6">
@@ -1345,43 +1403,67 @@ export function TicketLookup() {
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
                   Hình thức nhận tiền hoàn
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div
-                    onClick={() => setRefundMethod("WALLET")}
-                    className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
-                      refundMethod === "WALLET"
-                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
-                        : "border-slate-200 hover:border-slate-300 text-slate-600"
-                    }`}
-                  >
-                    <span className="text-sm font-extrabold">
-                      Ví điện tử GoTrain
+                {isGuest ? (
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3.5 text-center">
+                    <span className="text-sm font-extrabold text-blue-800">
+                      Chuyển khoản ngân hàng
                     </span>
-                    <span className="text-[10px] opacity-80 block">
-                      Nhận ngay lập tức
+                    <span className="mt-1 block text-[10px] text-blue-600">
+                      Admin sẽ kiểm tra trước khi hệ thống xử lý hoàn tiền
                     </span>
                   </div>
-                  <div
-                    onClick={() => setRefundMethod("BANK")}
-                    className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
-                      refundMethod === "BANK"
-                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
-                        : "border-slate-200 hover:border-slate-300 text-slate-600"
-                    }`}
-                  >
-                    <span className="text-sm font-extrabold">
-                      Tài khoản ngân hàng
-                    </span>
-                    <span className="text-[10px] opacity-80 block">
-                      Xử lý trong 1-3 ngày
-                    </span>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div
+                      onClick={() => setRefundMethod("WALLET")}
+                      className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
+                        refundMethod === "WALLET"
+                          ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
+                          : "border-slate-200 hover:border-slate-300 text-slate-600"
+                      }`}
+                    >
+                      <span className="text-sm font-extrabold">
+                        Ví điện tử GoTrain
+                      </span>
+                      <span className="text-[10px] opacity-80 block">
+                        Nhận ngay lập tức
+                      </span>
+                    </div>
+                    <div
+                      onClick={() => setRefundMethod("BANK")}
+                      className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
+                        refundMethod === "BANK"
+                          ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
+                          : "border-slate-200 hover:border-slate-300 text-slate-600"
+                      }`}
+                    >
+                      <span className="text-sm font-extrabold">
+                        Tài khoản ngân hàng
+                      </span>
+                      <span className="text-[10px] opacity-80 block">
+                        Xử lý trong 1-3 ngày
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Conditional Bank inputs */}
-              {refundMethod === "BANK" && (
+              {(isGuest || refundMethod === "BANK") && (
                 <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-100 animate-slide-down">
+                  <div className="col-span-2 flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Tên chủ tài khoản
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nhập đúng tên trên tài khoản ngân hàng"
+                      value={accountHolder}
+                      onChange={(e) => setAccountHolder(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary uppercase"
+                    />
+                  </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase">
                       Tên ngân hàng
@@ -1402,6 +1484,8 @@ export function TicketLookup() {
                     <input
                       type="text"
                       required
+                      inputMode="numeric"
+                      pattern="[0-9 ]{6,24}"
                       placeholder="Nhập số tài khoản"
                       value={bankAccount}
                       onChange={(e) => setBankAccount(e.target.value)}

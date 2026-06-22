@@ -11,7 +11,11 @@ import {
   handlePayosWebhook,
   quoteBooking,
 } from "../services/bookingCheckout.service.js";
-import { cancelBookingTickets } from "../services/bookingCancellation.service.js";
+import {
+  cancelBookingTickets,
+  getAdminCancellationRequests,
+  reviewCancellationRequest,
+} from "../services/bookingCancellation.service.js";
 
 export const getBookingQuote = asyncHandler(async (req, res) => {
   const quote = await quoteBooking(req.bookingIdentity, req.body);
@@ -103,6 +107,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       // Actual boarding / alighting stations saved at checkout time
       fromStation: stationSelect,
       toStation: stationSelect,
+      cancellationRequest: true,
     },
   };
 
@@ -286,6 +291,7 @@ export const getMyBookings = asyncHandler(async (req, res) => {
           carriageNumber: true,
         },
       },
+      cancellationRequest: true,
     },
   });
 
@@ -1185,20 +1191,45 @@ export const cancelBooking = asyncHandler(async (req, res) => {
     bankInfo: {
       bankName: req.body.bankName,
       bankAccount: req.body.bankAccount,
+      accountHolder: req.body.accountHolder,
     },
   });
 
-  res.json({
-    message:
-      result.refundStatus === "COMPLETED"
-        ? "Hủy vé và hoàn tiền thành công."
-        : "Hủy vé thành công. Yêu cầu hoàn tiền đang chờ xử lý.",
+  res.status(201).json({
+    message: "Đã gửi yêu cầu hủy vé. Vui lòng chờ Admin phê duyệt.",
+    cancellationStatus: result.cancellationRequest.status,
+    cancellationRequestId: result.cancellationRequest.id,
     refundAmount: result.refundAmount,
     refundPercentage: result.refundPercentage,
     bookingStatus: result.booking.status,
     paymentStatus: result.booking.paymentStatus,
-    cancelledPassengerIds: result.cancelledPassengerIds,
+    requestedPassengerIds: result.requestedPassengerIds,
     refundMethod: result.refundMethod,
     refundStatus: result.refundStatus,
+  });
+});
+
+export const listAdminCancellationRequests = asyncHandler(async (req, res) => {
+  const requests = await getAdminCancellationRequests({
+    status: req.query.status,
+    audience: req.query.audience,
+  });
+  res.json({ requests });
+});
+
+export const decideCancellationRequest = asyncHandler(async (req, res) => {
+  const result = await reviewCancellationRequest({
+    requestId: req.params.requestId,
+    action: req.body.action,
+    rejectionReason: req.body.rejectionReason,
+    adminId: req.user.id,
+  });
+
+  res.json({
+    message:
+      String(req.body.action).toUpperCase() === "APPROVE"
+        ? "Đã duyệt yêu cầu hủy vé và xử lý hoàn tiền."
+        : "Đã từ chối yêu cầu hủy vé.",
+    result,
   });
 });

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { toast } from "sonner";
 import { api } from "../../services/api";
 
 const STATUS_MAP = {
@@ -45,7 +44,6 @@ export function AdminBookingPanel() {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
   const limit = 10;
 
   const fetchBookings = useCallback(async () => {
@@ -77,27 +75,6 @@ export function AdminBookingPanel() {
     e.preventDefault();
     setPage(1);
     fetchBookings();
-  };
-
-  const handleCancelBooking = async (booking) => {
-    if (!window.confirm("Bạn có chắc chắn muốn hủy đặt vé này?")) return;
-    setCancelling(true);
-    try {
-      await api.post(`/bookings/${booking.id}/cancel`, {
-        passengerIds: booking.passengers?.map((passenger) => passenger.id),
-        reason: "Admin hủy vé",
-        refundMethod: booking.user?.id ? "WALLET" : "BANK_TRANSFER",
-      });
-      toast.success("Hủy vé thành công!");
-      setShowDetail(false);
-      fetchBookings();
-    } catch (err) {
-      toast.error(
-        err.response?.data?.message || "Không thể hủy vé. Vui lòng thử lại.",
-      );
-    } finally {
-      setCancelling(false);
-    }
   };
 
   const openDetail = (booking) => {
@@ -309,18 +286,6 @@ export function AdminBookingPanel() {
                             visibility
                           </span>
                         </button>
-                        {booking.status !== "CANCELLED" &&
-                          booking.status !== "REFUNDED" && (
-                            <button
-                              onClick={() => handleCancelBooking(booking)}
-                              className="p-2 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all"
-                              title="Hủy vé"
-                            >
-                              <span className="material-symbols-outlined text-[20px]">
-                                cancel
-                              </span>
-                            </button>
-                          )}
                       </td>
                     </tr>
                   );
@@ -546,25 +511,6 @@ export function AdminBookingPanel() {
                   Đặt lúc: {formatDate(selectedBooking.createdAt)}
                 </p>
               </div>
-
-              {/* Actions */}
-              {selectedBooking.status !== "CANCELLED" &&
-                selectedBooking.status !== "REFUNDED" && (
-                  <button
-                    onClick={() => handleCancelBooking(selectedBooking)}
-                    disabled={cancelling}
-                    className="w-full py-3 bg-[#ba1a1a] hover:bg-[#ba1a1a]/90 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
-                  >
-                    {cancelling ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <span className="material-symbols-outlined text-[18px]">
-                        cancel
-                      </span>
-                    )}
-                    Hủy Đặt Vé & Hoàn Tiền
-                  </button>
-                )}
             </div>
           </div>
         </div>
