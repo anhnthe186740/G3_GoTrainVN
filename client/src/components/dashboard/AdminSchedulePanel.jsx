@@ -437,6 +437,8 @@ export function AdminSchedulePanel() {
     try {
       if (editingTemplate) {
         const res = await api.put(`/route-templates/${editingTemplate.id}`, {
+          routeId: templateForm.routeId,
+          trainId: templateForm.trainId,
           departureTimes: times,
           bufferMinutes: parseInt(templateForm.bufferMinutes) || 60,
           isActive: templateForm.isActive,
@@ -1985,60 +1987,56 @@ export function AdminSchedulePanel() {
             </div>
 
             <form onSubmit={handleSaveTemplate} className="space-y-4">
-              {!editingTemplate && (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                      Tuyến đường *
-                    </label>
-                    <select
-                      required
-                      value={templateForm.routeId}
-                      onChange={(e) =>
-                        setTemplateForm({
-                          ...templateForm,
-                          routeId: e.target.value,
-                        })
-                      }
-                      className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
-                    >
-                      <option value="">-- Chọn tuyến đường --</option>
-                      {routes
-                        .filter((r) => r.isActive !== false)
-                        .map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.routeName} ({r.startStation?.stationName} →{" "}
-                            {r.endStation?.stationName})
-                          </option>
-                        ))}
-                    </select>
-                  </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tuyến đường *
+                </label>
+                <select
+                  required
+                  value={templateForm.routeId}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      routeId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tuyến đường --</option>
+                  {routes
+                    .filter((r) => r.isActive !== false)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.routeName} ({r.startStation?.stationName} →{" "}
+                        {r.endStation?.stationName})
+                      </option>
+                    ))}
+                </select>
+              </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                      Đoàn tàu hoạt động *
-                    </label>
-                    <select
-                      required
-                      value={templateForm.trainId}
-                      onChange={(e) =>
-                        setTemplateForm({
-                          ...templateForm,
-                          trainId: e.target.value,
-                        })
-                      }
-                      className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
-                    >
-                      <option value="">-- Chọn tàu hỏa --</option>
-                      {trains.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.trainName} ({t.trainCode})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Đoàn tàu hoạt động *
+                </label>
+                <select
+                  required
+                  value={templateForm.trainId}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      trainId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tàu hỏa --</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainName} ({t.trainCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
