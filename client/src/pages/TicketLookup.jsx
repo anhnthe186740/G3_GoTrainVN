@@ -125,6 +125,13 @@ export function TicketLookup() {
       return;
     }
 
+    if (!user && (!searchCode || !searchContact)) {
+      setError(
+        "Khách vãng lai cần nhập cả mã vé và Email/Số điện thoại liên hệ.",
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       let url = "/bookings/lookup";
@@ -446,8 +453,11 @@ export function TicketLookup() {
     activeTicket?.booking,
     activeTripStations,
   );
+  const isVerifiedLookup = Boolean(user) || result?.isMasked !== true;
   const canRequestRefund =
     ["CONFIRMED", "COMPLETED"].includes(activeTicket?.booking?.status) &&
+    activeTicket?.booking?.paymentStatus === "COMPLETED" &&
+    isVerifiedLookup &&
     activeJourneyState === "UPCOMING";
   const canExchangeTicket =
     activeTicket?.booking?.status === "CONFIRMED" &&
@@ -479,8 +489,16 @@ export function TicketLookup() {
       const response = await api.post(
         `/bookings/${activeTicket.booking.id}/cancel`,
         {
+          passengerIds: [activeTicket.id],
+          ticketCode:
+            activeTicket.ticketCode ||
+            activeTicket.booking.bookingCode ||
+            ticketCode,
+          contactInfo,
           reason: refundReason,
           refundMethod: refundMethod,
+          bankName: refundMethod === "BANK" ? bankName : undefined,
+          bankAccount: refundMethod === "BANK" ? bankAccount : undefined,
         },
       );
       toast.success(

@@ -83,14 +83,19 @@ export async function generateSchedulesByTemplate(targetDate) {
         const hour = parseInt(hourStr, 10);
         const minute = parseInt(minStr, 10);
 
+        const bufferMins = template.bufferMinutes || 60;
+        const numStops = route.stations ? route.stations.length : 0;
+        const totalDurationMins =
+          route.estimatedDuration + numStops * bufferMins;
+
         const departure = new Date(targetDay);
         departure.setHours(hour, minute, 0, 0);
         const arrival = new Date(
-          departure.getTime() + route.estimatedDuration * 60 * 1000,
+          departure.getTime() + totalDurationMins * 60 * 1000,
         );
 
         // Kiểm tra xung đột (giãn cách bufferMinutes)
-        const bufferMs = (template.bufferMinutes || 60) * 60 * 1000;
+        const bufferMs = bufferMins * 60 * 1000;
         const windowStart = departure.getTime() - bufferMs;
         const windowEnd = arrival.getTime() + bufferMs;
 
@@ -137,30 +142,41 @@ export async function generateSchedulesByTemplate(targetDate) {
               departureTime: departure,
               arrivalTime: arrival,
               distance: route.distance,
-              duration: route.estimatedDuration,
+              duration: totalDurationMins,
               status: "ACTIVE",
             },
           });
 
           // Tạo ScheduleStops
           if (route.stations && route.stations.length > 0) {
-            const tripDurationMs = arrival.getTime() - departure.getTime();
+            const sortedStations = [...route.stations].sort(
+              (a, b) => a.stopOrder - b.stopOrder,
+            );
             await tx.scheduleStop.createMany({
-              data: route.stations.map((stop) => {
-                const progress = Math.min(
-                  1,
-                  Math.max(0, stop.distanceFromStart / route.distance),
+              data: sortedStations.map((stop, index) => {
+                const progress =
+                  route.distance > 0
+                    ? Math.min(
+                        1,
+                        Math.max(0, stop.distanceFromStart / route.distance),
+                      )
+                    : 0;
+                const movingTimeMs =
+                  route.estimatedDuration * progress * 60 * 1000;
+                const restingTimeMs = index * bufferMins * 60 * 1000;
+                const stopArrivalTime = new Date(
+                  departure.getTime() + movingTimeMs + restingTimeMs,
                 );
-                const stopTime = new Date(
-                  departure.getTime() + tripDurationMs * progress,
+                const stopDepartureTime = new Date(
+                  stopArrivalTime.getTime() + bufferMins * 60 * 1000,
                 );
 
                 return {
                   scheduleId: schedule.id,
                   stationId: stop.stationId,
                   stopOrder: stop.stopOrder,
-                  arrivalTime: stopTime,
-                  departureTime: stopTime,
+                  arrivalTime: stopArrivalTime,
+                  departureTime: stopDepartureTime,
                 };
               }),
             });
@@ -310,13 +326,25 @@ export async function generateSchedulesByBaseline(targetDate) {
         continue;
       }
 
+      const template = await prisma.routeTemplate.findUnique({
+        where: {
+          routeId_trainId: {
+            routeId: pattern.routeId,
+            trainId: pattern.trainId,
+          },
+        },
+      });
+      const bufferMins = template ? (template.bufferMinutes ?? 60) : 60;
+      const numStops = route.stations ? route.stations.length : 0;
+      const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+
       const departure = new Date(targetDay);
       departure.setHours(pattern.hour, pattern.minute, 0, 0);
       const arrival = new Date(
-        departure.getTime() + route.estimatedDuration * 60 * 1000,
+        departure.getTime() + totalDurationMins * 60 * 1000,
       );
 
-      const bufferMs = 60 * 60 * 1000;
+      const bufferMs = bufferMins * 60 * 1000;
       const windowStart = departure.getTime() - bufferMs;
       const windowEnd = arrival.getTime() + bufferMs;
 
@@ -361,28 +389,39 @@ export async function generateSchedulesByBaseline(targetDate) {
             departureTime: departure,
             arrivalTime: arrival,
             distance: route.distance,
-            duration: route.estimatedDuration,
+            duration: totalDurationMins,
             status: "ACTIVE",
           },
         });
 
         if (route.stations && route.stations.length > 0) {
-          const tripDurationMs = arrival.getTime() - departure.getTime();
+          const sortedStations = [...route.stations].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
           await tx.scheduleStop.createMany({
-            data: route.stations.map((stop) => {
-              const progress = Math.min(
-                1,
-                Math.max(0, stop.distanceFromStart / route.distance),
+            data: sortedStations.map((stop, index) => {
+              const progress =
+                route.distance > 0
+                  ? Math.min(
+                      1,
+                      Math.max(0, stop.distanceFromStart / route.distance),
+                    )
+                  : 0;
+              const movingTimeMs =
+                route.estimatedDuration * progress * 60 * 1000;
+              const restingTimeMs = index * bufferMins * 60 * 1000;
+              const stopArrivalTime = new Date(
+                departure.getTime() + movingTimeMs + restingTimeMs,
               );
-              const stopTime = new Date(
-                departure.getTime() + tripDurationMs * progress,
+              const stopDepartureTime = new Date(
+                stopArrivalTime.getTime() + bufferMins * 60 * 1000,
               );
               return {
                 scheduleId: schedule.id,
                 stationId: stop.stationId,
                 stopOrder: stop.stopOrder,
-                arrivalTime: stopTime,
-                departureTime: stopTime,
+                arrivalTime: stopArrivalTime,
+                departureTime: stopDepartureTime,
               };
             }),
           });
@@ -413,10 +452,13 @@ export async function generateSchedulesForDay30() {
   targetDate.setHours(0, 0, 0, 0);
 
   console.log(
-    `[AutoSchedule] Bắt đầu tự động tạo lịch trình cho ngày thứ 30 tới: ${targetDate.toDateString()}`,
+    `[AutoSchedule] Bắt đầu tự động quét và tạo lịch trình cho 30 ngày tới: từ ${today.toLocaleDateString("vi-VN")} đến ${targetDate.toLocaleDateString("vi-VN")}`,
   );
 
-  return generateSchedulesByTemplate(targetDate);
+  return generateSchedulesForRange(
+    today.toISOString().split("T")[0],
+    targetDate.toISOString().split("T")[0],
+  );
 }
 
 /**

@@ -5,6 +5,7 @@ import { sendEmail } from "../services/email.service.js";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { getWelcomeEmailTemplate } from "../utils/emailTemplates.js";
 
 export const register = asyncHandler(async (req, res) => {
   const user = await registerUser(req.body);
@@ -266,6 +267,18 @@ export const googleLogin = asyncHandler(async (req, res) => {
             },
           },
         },
+      });
+
+      // Send welcome email asynchronously for Google login registration
+      sendEmail({
+        to: user.email,
+        subject: `[GoTrain VN] Chào mừng ${user.fullName} tham gia GoTrain VN!`,
+        html: getWelcomeEmailTemplate(user.fullName, user.email),
+      }).catch((err) => {
+        console.error(
+          "❌ Gửi email chào mừng Google Login thất bại:",
+          err.message,
+        );
       });
     }
 

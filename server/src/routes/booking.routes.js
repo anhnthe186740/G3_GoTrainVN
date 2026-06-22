@@ -21,7 +21,7 @@ import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 export const bookingRoutes = Router();
 
 bookingRoutes.get("/staff/lookup", authMiddleware, staffOrAdmin, lookupBooking);
-bookingRoutes.get("/lookup", lookupBooking);
+bookingRoutes.get("/lookup", bookingIdentity, lookupBooking);
 bookingRoutes.post("/payos/webhook", receivePayosWebhook);
 
 // Customer: view own bookings
@@ -55,4 +55,4 @@ bookingRoutes.post(
   confirmBookingQrPayment,
 );
 bookingRoutes.post("/:id/exchange", authMiddleware, exchangeBooking);
-bookingRoutes.post("/:id/cancel", cancelBooking);
+bookingRoutes.post("/:id/cancel", bookingIdentity, cancelBooking);
