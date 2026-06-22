@@ -29,31 +29,64 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { bookingApi } from "../../services/bookingApi";
+import { pricingApi } from "../../services/pricingApi";
 import { seatSelectionApi } from "../../services/seatSelectionApi";
 import { walletApi } from "../../services/walletApi";
 import { api } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 
+// Fallback dùng khi API /pricing/ticket-types/public không khả dụng.
+// Phản ánh cùng giá trị mặc định như DEFAULT_TICKET_TYPES trong pricing.service.js.
 const PASSENGER_TYPES = [
   {
     value: "ADULT",
     label: "Người lớn",
     description: "Giá vé tiêu chuẩn",
+    minAge: 10,
+    maxAgeExclusive: 60,
+    autoApply: false,
+    requiresDocument: true,
+    seatMode: "REQUIRED",
+  },
+  {
+    value: "CHILD_UNDER_6",
+    label: "Trẻ em dưới 6 tuổi",
+    description: "Miễn phí khi đi kèm người lớn",
+    minAge: 0,
+    maxAgeExclusive: 6,
+    autoApply: true,
+    requiresDocument: false,
+    seatMode: "NOT_ALLOWED",
   },
   {
     value: "CHILD",
     label: "Trẻ em",
     description: "Theo chính sách độ tuổi",
+    minAge: 6,
+    maxAgeExclusive: 10,
+    autoApply: true,
+    requiresDocument: false,
+    seatMode: "REQUIRED",
   },
   {
     value: "STUDENT",
     label: "Sinh viên",
     description: "Mang theo thẻ khi đi tàu",
+    minAge: 10,
+    maxAgeExclusive: null,
+    autoApply: false,
+    requiresDocument: true,
+    seatMode: "REQUIRED",
   },
   {
     value: "SENIOR",
     label: "Người cao tuổi",
     description: "Theo chính sách hiện hành",
+    minAge: 60,
+    maxAgeExclusive: null,
+    autoApply: true,
+    requiresDocument: true,
+    seatMode: "REQUIRED",
   },
 ];
 
@@ -102,7 +135,7 @@ function toDateInput(value) {
 
 function ageFromDateOfBirth(value, today = new Date()) {
   if (!value) return null;
-  const birthDate = new Date(`${value}T00:00:00`);
+  const birthDate = new Date(`${value}T00:00:00+07:00`);
   if (Number.isNaN(birthDate.getTime()) || birthDate >= today) return null;
   let age = today.getFullYear() - birthDate.getFullYear();
   const birthdayPassed =
@@ -120,17 +153,70 @@ function passengerTypeFromAge(age, currentType) {
   return currentType === "STUDENT" ? "STUDENT" : "ADULT";
 }
 
+function ticketTypeOption(type) {
+  return {
+    value: type.code || type.value,
+    label: type.name || type.label,
+    description: type.description || "",
+    minAge: type.minAge ?? null,
+    maxAgeExclusive: type.maxAgeExclusive ?? null,
+    autoApply: Boolean(type.autoApply),
+    requiresDocument: type.requiresDocument !== false,
+    seatMode: type.seatMode || "REQUIRED",
+  };
+}
+
+function ticketTypeByValue(ticketTypes, value) {
+  return ticketTypes.find((type) => type.value === value);
+}
+
+function ageMatchesTicketType(type, age) {
+  if (age == null) return false;
+  if (type.minAge != null && age < type.minAge) return false;
+  if (type.maxAgeExclusive != null && age >= type.maxAgeExclusive) {
+    return false;
+  }
+  return true;
+}
+
+function passengerTypeFromPolicy(age, currentType, ticketTypes) {
+  if (age == null) return currentType;
+  const autoType = ticketTypes.find(
+    (type) => type.autoApply && ageMatchesTicketType(type, age),
+  );
+  if (autoType) return autoType.value;
+  return passengerTypeFromAge(age, currentType);
+}
+
+function passengerRequiresDocument(passenger, ticketTypes) {
+  if (passenger.seatRequired === false) return false;
+  const type = ticketTypeByValue(ticketTypes, passenger.passengerType);
+  return type?.requiresDocument !== false;
+}
+
+function isAutoAppliedType(passenger, ticketTypes) {
+  const age = ageFromDateOfBirth(passenger.dateOfBirth);
+  const type = ticketTypeByValue(ticketTypes, passenger.passengerType);
+  return Boolean(type?.autoApply && ageMatchesTicketType(type, age));
+}
+
 function isUnderSix(passenger) {
   const age = ageFromDateOfBirth(passenger.dateOfBirth);
   return age != null && age < 6;
 }
 
-function validatePassenger(passenger, { requireEmail = true } = {}) {
+function validatePassenger(
+  passenger,
+  { requireEmail = true, ticketTypes = PASSENGER_TYPES } = {},
+) {
   const errors = {};
   if (passenger.fullName.trim().length < 2) {
     errors.fullName = "Nhập họ và tên như trên giấy tờ.";
   }
-  if (passenger.seatRequired === false && passenger.passengerType !== "CHILD") {
+  if (
+    passenger.seatRequired === false &&
+    !["CHILD", "CHILD_UNDER_6"].includes(passenger.passengerType)
+  ) {
     errors.passengerType =
       "Hành khách đi kèm không ghế phải là trẻ dưới 6 tuổi.";
   }
@@ -144,14 +230,15 @@ function validatePassenger(passenger, { requireEmail = true } = {}) {
   } else {
     const age = ageFromDateOfBirth(passenger.dateOfBirth);
     if (passenger.seatRequired === false && (age == null || age >= 6)) {
-      errors.dateOfBirth = "Chi tre duoi 6 tuoi moi di kem khong chon ghe.";
+      errors.dateOfBirth =
+        "Chỉ trẻ dưới 6 tuổi mới được đi kèm không chọn ghế riêng.";
     }
     if (passenger.seatRequired !== false && age != null && age < 6) {
       errors.dateOfBirth =
-        "Tre duoi 6 tuoi di kem nguoi lon, khong dat ghe rieng.";
+        "Trẻ dưới 6 tuổi đi kèm người lớn, không đặt ghế riêng.";
     }
   }
-  if (passenger.passengerType !== "CHILD" && passenger.seatRequired !== false) {
+  if (passengerRequiresDocument(passenger, ticketTypes)) {
     const document = passenger.nationalId.trim().toUpperCase();
     if (passenger.nationalIdType === "CCCD" && !/^\d{12}$/.test(document)) {
       errors.nationalId = "CCCD gồm đúng 12 chữ số.";
@@ -175,13 +262,12 @@ function validatePassenger(passenger, { requireEmail = true } = {}) {
   return errors;
 }
 
-function duplicateDocumentMessages(passengers) {
+function duplicateDocumentMessages(passengers, ticketTypes = PASSENGER_TYPES) {
   const messages = passengers.map(() => "");
   const documentOwners = new Map();
 
   passengers.forEach((passenger, index) => {
-    if (passenger.passengerType === "CHILD" || passenger.seatRequired === false)
-      return;
+    if (!passengerRequiresDocument(passenger, ticketTypes)) return;
     const document = passenger.nationalId.trim().toUpperCase();
     const validDocument =
       (passenger.nationalIdType === "CCCD" && /^\d{12}$/.test(document)) ||
@@ -212,9 +298,11 @@ function validatePassengerList(passengers, options) {
   const errors = passengers.map((passenger) =>
     validatePassenger(passenger, options),
   );
-  duplicateDocumentMessages(passengers).forEach((message, index) => {
-    if (message) errors[index].nationalId = message;
-  });
+  duplicateDocumentMessages(passengers, options?.ticketTypes).forEach(
+    (message, index) => {
+      if (message) errors[index].nationalId = message;
+    },
+  );
   return errors;
 }
 
@@ -222,12 +310,14 @@ function passengerRuleError(passengers) {
   if (passengers.length === 0 || passengers.length > 4) {
     return "Mỗi giao dịch chỉ được đặt từ 1 đến 4 hành khách.";
   }
-  const hasChild = passengers.some(
-    (passenger) => passenger.passengerType === "CHILD",
-  );
-  const hasCompanion = passengers.some((passenger) =>
-    ["ADULT", "STUDENT", "SENIOR"].includes(passenger.passengerType),
-  );
+  const hasChild = passengers.some((passenger) => {
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    return age != null && age < 10;
+  });
+  const hasCompanion = passengers.some((passenger) => {
+    const age = ageFromDateOfBirth(passenger.dateOfBirth);
+    return passenger.seatRequired !== false && !(age != null && age < 10);
+  });
   if (hasChild && !hasCompanion) {
     return "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
   }
@@ -236,7 +326,7 @@ function passengerRuleError(passengers) {
       (passenger) => passenger.seatRequired !== false && isUnderSix(passenger),
     )
   ) {
-    return "Tre duoi 6 tuoi di kem nguoi lon va khong chon ghe rieng.";
+    return "Trẻ dưới 6 tuổi phải đi kèm người lớn và không chọn ghế riêng.";
   }
   const lapChildCount = passengers.filter(
     (passenger) => passenger.seatRequired === false,
@@ -455,6 +545,7 @@ export function PassengerDetailsPage({
   const sessionId = sessionIdOverride || searchParams.get("sessionId");
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);
+  const [publicTicketTypes, setPublicTicketTypes] = useState(PASSENGER_TYPES);
   const [errors, setErrors] = useState([]);
   const [profile, setProfile] = useState(null);
   const [selfPassengerIndex, setSelfPassengerIndex] = useState(null);
@@ -477,6 +568,17 @@ export function PassengerDetailsPage({
   useEffect(() => {
     if (isExchangeMode) setPaymentMethod("WALLET");
   }, [isExchangeMode]);
+
+  useEffect(() => {
+    pricingApi
+      .getPublicTicketTypes()
+      .then(({ data }) => {
+        if (data.ticketTypes?.length) {
+          setPublicTicketTypes(data.ticketTypes.map(ticketTypeOption));
+        }
+      })
+      .catch(() => setPublicTicketTypes(PASSENGER_TYPES));
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
@@ -507,29 +609,32 @@ export function PassengerDetailsPage({
         }));
         if (customerProfile) {
           const profileDateOfBirth = toDateInput(customerProfile.dateOfBirth);
-          const profilePassengerType = passengerTypeFromAge(
+          const profilePassengerType = passengerTypeFromPolicy(
             ageFromDateOfBirth(profileDateOfBirth),
             "ADULT",
+            publicTicketTypes,
+          );
+          const profileRequiresDocument = passengerRequiresDocument(
+            {
+              ...nextPassengers[0],
+              passengerType: profilePassengerType,
+              seatRequired: true,
+            },
+            publicTicketTypes,
           );
           nextPassengers[0] = {
             ...nextPassengers[0],
             fullName: customerProfile.fullName || "",
-            phoneNumber:
-              profilePassengerType === "CHILD"
-                ? ""
-                : customerProfile.phoneNumber || "",
-            email:
-              profilePassengerType === "CHILD"
-                ? ""
-                : customerProfile.email || "",
-            nationalId:
-              profilePassengerType === "CHILD"
-                ? ""
-                : customerProfile.nationalId || "",
-            nationalIdType:
-              profilePassengerType === "CHILD"
-                ? ""
-                : customerProfile.nationalIdType || "CCCD",
+            phoneNumber: profileRequiresDocument
+              ? customerProfile.phoneNumber || ""
+              : "",
+            email: profileRequiresDocument ? customerProfile.email || "" : "",
+            nationalId: profileRequiresDocument
+              ? customerProfile.nationalId || ""
+              : "",
+            nationalIdType: profileRequiresDocument
+              ? customerProfile.nationalIdType || "CCCD"
+              : "",
             dateOfBirth: profileDateOfBirth,
             passengerType: profilePassengerType,
           };
@@ -544,7 +649,7 @@ export function PassengerDetailsPage({
         ),
       )
       .finally(() => setLoading(false));
-  }, [customerProfile, sessionId]);
+  }, [customerProfile, publicTicketTypes, sessionId]);
 
   useEffect(() => {
     if (!session) return undefined;
@@ -589,7 +694,11 @@ export function PassengerDetailsPage({
   const hasInvalidLapChild = passengers.some((passenger) => {
     if (passenger.seatRequired !== false) return false;
     const age = ageFromDateOfBirth(passenger.dateOfBirth);
-    return age == null || age >= 6 || passenger.passengerType !== "CHILD";
+    return (
+      age == null ||
+      age >= 6 ||
+      !["CHILD", "CHILD_UNDER_6"].includes(passenger.passengerType)
+    );
   });
   const passengerDocuments = passengers
     .map(
@@ -599,7 +708,10 @@ export function PassengerDetailsPage({
     .join("|");
 
   useEffect(() => {
-    const duplicateMessages = duplicateDocumentMessages(passengers);
+    const duplicateMessages = duplicateDocumentMessages(
+      passengers,
+      publicTicketTypes,
+    );
     setErrors((current) =>
       current.map((item, index) => {
         const currentMessage = item.nationalId;
@@ -691,7 +803,12 @@ export function PassengerDetailsPage({
           ? (() => {
               const updated = { ...passenger, [field]: value };
               if (passenger.seatRequired === false) {
-                updated.passengerType = "CHILD";
+                updated.passengerType = ticketTypeByValue(
+                  publicTicketTypes,
+                  "CHILD_UNDER_6",
+                )
+                  ? "CHILD_UNDER_6"
+                  : "CHILD";
                 updated.nationalId = "";
                 updated.nationalIdType = "";
                 updated.phoneNumber = "";
@@ -699,15 +816,21 @@ export function PassengerDetailsPage({
                 return updated;
               }
               if (field === "dateOfBirth") {
-                updated.passengerType = passengerTypeFromAge(
+                updated.passengerType = passengerTypeFromPolicy(
                   ageFromDateOfBirth(value),
                   passenger.passengerType,
+                  publicTicketTypes,
                 );
               }
-              if (
-                updated.passengerType === "CHILD" &&
-                passenger.passengerType !== "CHILD"
-              ) {
+              const updatedRequiresDocument = passengerRequiresDocument(
+                updated,
+                publicTicketTypes,
+              );
+              const previousRequiresDocument = passengerRequiresDocument(
+                passenger,
+                publicTicketTypes,
+              );
+              if (!updatedRequiresDocument && previousRequiresDocument) {
                 updated.nationalId = "";
                 updated.nationalIdType = "";
                 updated.phoneNumber = "";
@@ -715,14 +838,14 @@ export function PassengerDetailsPage({
               }
               if (
                 field === "dateOfBirth" &&
-                updated.passengerType !== "CHILD" &&
-                passenger.passengerType === "CHILD"
+                updatedRequiresDocument &&
+                !previousRequiresDocument
               ) {
                 updated.nationalIdType = "CCCD";
               }
               if (
                 field === "passengerType" &&
-                value !== "CHILD" &&
+                updatedRequiresDocument &&
                 !updated.nationalIdType
               ) {
                 updated.nationalIdType = "CCCD";
@@ -766,9 +889,18 @@ export function PassengerDetailsPage({
     if (!profile) return;
     setSelfPassengerIndex(index);
     const profileDateOfBirth = toDateInput(profile.dateOfBirth);
-    const profilePassengerType = passengerTypeFromAge(
+    const profilePassengerType = passengerTypeFromPolicy(
       ageFromDateOfBirth(profileDateOfBirth),
       passengers[index]?.passengerType || "ADULT",
+      publicTicketTypes,
+    );
+    const profileRequiresDocument = passengerRequiresDocument(
+      {
+        ...passengers[index],
+        passengerType: profilePassengerType,
+        seatRequired: true,
+      },
+      publicTicketTypes,
     );
     setPassengers((current) =>
       current.map((passenger, passengerIndex) =>
@@ -776,24 +908,20 @@ export function PassengerDetailsPage({
           ? {
               ...passenger,
               fullName: profile.fullName || "",
-              phoneNumber:
-                profilePassengerType === "CHILD"
+              phoneNumber: !profileRequiresDocument
+                ? ""
+                : profile.phoneNumber === "N/A"
                   ? ""
-                  : profile.phoneNumber === "N/A"
-                    ? ""
-                    : profile.phoneNumber || "",
-              email:
-                profilePassengerType === "CHILD" ? "" : profile.email || "",
-              nationalId:
-                profilePassengerType === "CHILD"
+                  : profile.phoneNumber || "",
+              email: !profileRequiresDocument ? "" : profile.email || "",
+              nationalId: !profileRequiresDocument
+                ? ""
+                : profile.nationalId === "N/A"
                   ? ""
-                  : profile.nationalId === "N/A"
-                    ? ""
-                    : profile.nationalId || "",
-              nationalIdType:
-                profilePassengerType === "CHILD"
-                  ? ""
-                  : profile.nationalIdType || "CCCD",
+                  : profile.nationalId || "",
+              nationalIdType: !profileRequiresDocument
+                ? ""
+                : profile.nationalIdType || "CCCD",
               dateOfBirth: profileDateOfBirth,
               passengerType: profilePassengerType,
             }
@@ -805,7 +933,7 @@ export function PassengerDetailsPage({
   const copyContact = () => {
     const contactPassenger = passengers.find(
       (passenger) =>
-        passenger.passengerType !== "CHILD" &&
+        passengerRequiresDocument(passenger, publicTicketTypes) &&
         passenger.phoneNumber &&
         passenger.email,
     );
@@ -815,7 +943,7 @@ export function PassengerDetailsPage({
     }
     setPassengers((current) =>
       current.map((passenger) =>
-        passenger.passengerType === "CHILD"
+        !passengerRequiresDocument(passenger, publicTicketTypes)
           ? passenger
           : {
               ...passenger,
@@ -829,7 +957,7 @@ export function PassengerDetailsPage({
 
   const addLapChild = () => {
     if (passengers.length >= 4) {
-      toast.error("Moi giao dich chi duoc dat toi da 4 hanh khach.");
+      toast.error("Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.");
       return;
     }
     setPassengers((current) => [...current, { ...EMPTY_LAP_CHILD }]);
@@ -865,6 +993,7 @@ export function PassengerDetailsPage({
     }
     const nextErrors = validatePassengerList(passengers, {
       requireEmail: !isStaffMode,
+      ticketTypes: publicTicketTypes,
     });
     setErrors(nextErrors);
     if (nextErrors.some((item) => Object.keys(item).length > 0)) {
@@ -929,7 +1058,7 @@ export function PassengerDetailsPage({
     try {
       const { data } = await bookingApi.paymentStatus(paymentResult.booking.id);
       if (data.booking.paymentStatus !== "COMPLETED") {
-        toast.info("Dang cho PayOS xac nhan giao dich.");
+        toast.info("Đang chờ PayOS xác nhận giao dịch.");
         return;
       }
       setCompletedResult({
@@ -963,7 +1092,7 @@ export function PassengerDetailsPage({
             booking: data.booking,
           });
           setPaymentResult(null);
-          toast.success("Thanh toan da duoc PayOS xac nhan.");
+          toast.success("Thanh toán đã được PayOS xác nhận.");
           return;
         }
       } catch {
@@ -1042,7 +1171,7 @@ export function PassengerDetailsPage({
               />
             ) : (
               <div className="flex h-56 w-56 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center text-xs font-semibold leading-5 text-slate-500">
-                Khong the hien thi QR. Vui long mo trang thanh toan PayOS.
+                Không thể hiển thị QR. Vui lòng mở trang thanh toán PayOS.
               </div>
             )}
           </div>
@@ -1132,8 +1261,8 @@ export function PassengerDetailsPage({
           <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <p className="text-xs font-semibold leading-5 text-amber-800">
-              Dang doi PayOS doi soat. Ve chi duoc kich hoat khi server nhan
-              webhook hop le.
+              Đang đợi PayOS đối soát. Vé chỉ được kích hoạt khi server nhận
+              webhook hợp lệ.
             </p>
           </div>
 
@@ -1313,6 +1442,21 @@ export function PassengerDetailsPage({
             const seatPair = pairedSeats[index];
             const passengerError = errors[index] || {};
             const quotedItem = quote?.items?.[index];
+            const selectedTicketType =
+              ticketTypeByValue(publicTicketTypes, passenger.passengerType) ||
+              ticketTypeOption(
+                PASSENGER_TYPES.find(
+                  (type) => type.value === passenger.passengerType,
+                ) || PASSENGER_TYPES[0],
+              );
+            const requiresDocument = passengerRequiresDocument(
+              passenger,
+              publicTicketTypes,
+            );
+            const autoAppliedTicketType = isAutoAppliedType(
+              passenger,
+              publicTicketTypes,
+            );
             return (
               <section
                 key={seatPair?.outbound.id || `lap-child-${index}`}
@@ -1435,7 +1579,7 @@ export function PassengerDetailsPage({
                     <Field
                       label="Ngày sinh"
                       error={passengerError.dateOfBirth}
-                      hint="Tự động xác định loại vé"
+                      hint="Dùng để kiểm tra điều kiện loại vé"
                     >
                       <RailInput
                         type="date"
@@ -1455,11 +1599,11 @@ export function PassengerDetailsPage({
                       />
                     </Field>
 
-                    {passenger.passengerType === "CHILD" ? (
+                    {!requiresDocument ? (
                       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 sm:col-span-2">
                         <p className="flex items-center gap-2 text-sm font-bold text-[#087a91]">
                           <BadgeCheck className="h-4 w-4" />
-                          Vé trẻ em · dưới 10 tuổi
+                          {selectedTicketType.label}
                         </p>
                         <p className="mt-1 text-xs leading-5 text-slate-600">
                           Không cần CCCD, hộ chiếu, số điện thoại hoặc email
@@ -1472,18 +1616,16 @@ export function PassengerDetailsPage({
                     ) : (
                       <>
                         <Field
-                          label="Loại hành khách"
+                          label="Loại vé / đối tượng ưu đãi"
                           hint={
-                            ageFromDateOfBirth(passenger.dateOfBirth) >= 60
+                            autoAppliedTicketType
                               ? "Tự động theo độ tuổi"
-                              : "Sinh viên chọn thủ công"
+                              : "Có thể chọn thủ công"
                           }
                         >
                           <select
                             value={passenger.passengerType}
-                            disabled={
-                              ageFromDateOfBirth(passenger.dateOfBirth) >= 60
-                            }
+                            disabled={autoAppliedTicketType}
                             onChange={(event) =>
                               updatePassenger(
                                 index,
@@ -1493,14 +1635,24 @@ export function PassengerDetailsPage({
                             }
                             className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-[#087a91] focus:ring-4 focus:ring-cyan-50 disabled:bg-slate-50 disabled:text-slate-500"
                           >
-                            {PASSENGER_TYPES.filter(
-                              (type) => type.value !== "CHILD",
-                            ).map((type) => (
-                              <option key={type.value} value={type.value}>
-                                {type.label} · {type.description}
-                              </option>
-                            ))}
+                            {publicTicketTypes
+                              .filter(
+                                (type) =>
+                                  !["CHILD", "CHILD_UNDER_6"].includes(
+                                    type.value,
+                                  ) && type.seatMode !== "NOT_ALLOWED",
+                              )
+                              .map((type) => (
+                                <option key={type.value} value={type.value}>
+                                  {type.label} · {type.description}
+                                </option>
+                              ))}
                           </select>
+                          <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-500">
+                            {autoAppliedTicketType
+                              ? `Đang tự động chọn "${selectedTicketType.label}" vì ngày sinh thuộc điều kiện tuổi của loại vé này.`
+                              : "Loại vé quyết định ưu đãi; ngày sinh dùng để kiểm tra điều kiện tuổi."}
+                          </p>
                         </Field>
 
                         <Field label="Loại giấy tờ">

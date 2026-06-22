@@ -10,6 +10,92 @@ export const CARRIAGE_TYPES = [
 ];
 export const SCOPE_TYPES = ["SYSTEM", "ROUTE", "SCHEDULE"];
 
+export const DEFAULT_TICKET_TYPES = [
+  {
+    code: "ADULT",
+    name: "Người lớn",
+    shortLabel: "NL",
+    description: "Giá vé tiêu chuẩn",
+    discountType: "PERCENTAGE",
+    discountValue: 0,
+    minAge: 10,
+    maxAgeExclusive: 60,
+    seatMode: "REQUIRED",
+    publicSelectable: true,
+    autoApply: false,
+    requiresDocument: true,
+    requiresStudent: false,
+    priority: 100,
+  },
+  {
+    code: "CHILD_UNDER_6",
+    name: "Trẻ em dưới 6 tuổi",
+    shortLabel: "TE<6",
+    description: "Miễn phí khi đi kèm và không giữ ghế riêng",
+    discountType: "FREE",
+    discountValue: 100,
+    minAge: 0,
+    maxAgeExclusive: 6,
+    seatMode: "NOT_ALLOWED",
+    publicSelectable: true,
+    autoApply: true,
+    requiresDocument: false,
+    requiresStudent: false,
+    priority: 10,
+  },
+  {
+    code: "CHILD",
+    name: "Trẻ em từ 6 đến dưới 10 tuổi",
+    shortLabel: "TE",
+    description: "Giảm 25% theo chính sách BR-08",
+    discountType: "PERCENTAGE",
+    discountValue: 25,
+    minAge: 6,
+    maxAgeExclusive: 10,
+    seatMode: "REQUIRED",
+    publicSelectable: true,
+    autoApply: true,
+    requiresDocument: false,
+    requiresStudent: false,
+    priority: 20,
+  },
+  {
+    code: "SENIOR",
+    name: "Người cao tuổi",
+    shortLabel: "NCT",
+    description: "Từ 60 tuổi, giảm 15% theo chính sách BR-08",
+    discountType: "PERCENTAGE",
+    discountValue: 15,
+    minAge: 60,
+    maxAgeExclusive: null,
+    seatMode: "REQUIRED",
+    publicSelectable: true,
+    autoApply: true,
+    requiresDocument: true,
+    requiresStudent: false,
+    priority: 30,
+  },
+  {
+    code: "STUDENT",
+    name: "Học sinh/Sinh viên",
+    shortLabel: "SV",
+    description: "Giảm 10% theo chính sách BR-08",
+    discountType: "PERCENTAGE",
+    discountValue: 10,
+    minAge: 10,
+    maxAgeExclusive: null,
+    seatMode: "REQUIRED",
+    publicSelectable: true,
+    autoApply: false,
+    requiresDocument: true,
+    requiresStudent: true,
+    priority: 40,
+  },
+];
+
+const DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT", "FREE"];
+const SEAT_MODES = ["REQUIRED", "NOT_ALLOWED", "OPTIONAL"];
+
 function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -37,6 +123,209 @@ function finiteNumber(value, fieldName, { min = 0, max } = {}) {
     throw httpError(400, `${fieldName} không hợp lệ.`);
   }
   return number;
+}
+
+function nullableInteger(value, fieldName, { min = 0 } = {}) {
+  if (value === "" || value == null) return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min) {
+    throw httpError(400, `${fieldName} không hợp lệ.`);
+  }
+  return number;
+}
+
+function normalizeTicketTypePayload(payload, existing = null) {
+  const code = String(payload.code ?? existing?.code ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, "_");
+  const name = String(payload.name ?? existing?.name ?? "").trim();
+  if (!code) throw httpError(400, "Vui lòng nhập mã loại vé.");
+  if (!/^[A-Z0-9_]{2,40}$/.test(code)) {
+    throw httpError(400, "Mã loại vé chỉ gồm chữ in hoa, số và dấu gạch dưới.");
+  }
+  if (!name) throw httpError(400, "Vui lòng nhập tên loại vé.");
+
+  const discountType = String(
+    payload.discountType ?? existing?.discountType ?? "PERCENTAGE",
+  ).toUpperCase();
+  if (!DISCOUNT_TYPES.includes(discountType)) {
+    throw httpError(400, "Loại ưu đãi không hợp lệ.");
+  }
+  const discountValue =
+    discountType === "FREE"
+      ? 100
+      : finiteNumber(
+          payload.discountValue ?? existing?.discountValue ?? 0,
+          "Giá trị ưu đãi",
+          {
+            max: discountType === "PERCENTAGE" ? 100 : undefined,
+          },
+        );
+  const minAge = nullableInteger(payload.minAge ?? existing?.minAge, "Tuổi từ");
+  const maxAgeExclusive = nullableInteger(
+    payload.maxAgeExclusive ?? existing?.maxAgeExclusive,
+    "Tuổi đến",
+  );
+  if (minAge != null && maxAgeExclusive != null && minAge >= maxAgeExclusive) {
+    throw httpError(400, "Khoảng tuổi của loại vé không hợp lệ.");
+  }
+
+  const seatMode = String(
+    payload.seatMode ?? existing?.seatMode ?? "REQUIRED",
+  ).toUpperCase();
+  if (!SEAT_MODES.includes(seatMode)) {
+    throw httpError(400, "Cấu hình ghế của loại vé không hợp lệ.");
+  }
+
+  const effectiveFrom = payload.effectiveFrom
+    ? parseDate(payload.effectiveFrom, "Ngày bắt đầu")
+    : existing?.effectiveFrom || new Date();
+  const effectiveTo = payload.effectiveTo
+    ? parseDate(payload.effectiveTo, "Ngày kết thúc", true)
+    : payload.effectiveTo === null
+      ? null
+      : existing?.effectiveTo || null;
+  if (effectiveTo && effectiveTo < effectiveFrom) {
+    throw httpError(400, "Ngày kết thúc phải sau ngày bắt đầu.");
+  }
+
+  return {
+    code,
+    name,
+    shortLabel: String(payload.shortLabel ?? existing?.shortLabel ?? "")
+      .trim()
+      .slice(0, 12),
+    description: String(payload.description ?? existing?.description ?? "")
+      .trim()
+      .slice(0, 300),
+    discountType,
+    discountValue,
+    minAge,
+    maxAgeExclusive,
+    seatMode,
+    publicSelectable: Boolean(
+      payload.publicSelectable ?? existing?.publicSelectable ?? true,
+    ),
+    autoApply: Boolean(payload.autoApply ?? existing?.autoApply ?? false),
+    requiresDocument: Boolean(
+      payload.requiresDocument ?? existing?.requiresDocument ?? true,
+    ),
+    requiresStudent: Boolean(
+      payload.requiresStudent ?? existing?.requiresStudent ?? false,
+    ),
+    priority: nullableInteger(
+      payload.priority ?? existing?.priority ?? 100,
+      "Độ ưu tiên",
+    ),
+    active: Boolean(payload.active ?? existing?.active ?? true),
+    effectiveFrom,
+    effectiveTo,
+  };
+}
+
+async function ensureDefaultTicketTypes() {
+  const count = await prisma.ticketType.count();
+  if (count > 0) return;
+  await prisma.ticketType.createMany({
+    data: DEFAULT_TICKET_TYPES.map((type) => ({
+      ...type,
+      effectiveFrom: new Date(),
+      active: true,
+    })),
+  });
+}
+
+export async function getTicketTypes({ includeInactive = false } = {}) {
+  await ensureDefaultTicketTypes();
+  return prisma.ticketType.findMany({
+    where: includeInactive ? {} : { active: true },
+    orderBy: [{ priority: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function getPublicTicketTypes() {
+  const now = new Date();
+  await ensureDefaultTicketTypes();
+  return prisma.ticketType.findMany({
+    where: {
+      active: true,
+      publicSelectable: true,
+      effectiveFrom: { lte: now },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+    },
+    orderBy: [{ priority: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function getEffectiveTicketTypes(at = new Date()) {
+  const atDate = at instanceof Date ? at : new Date(at);
+  await ensureDefaultTicketTypes();
+  return prisma.ticketType.findMany({
+    where: {
+      active: true,
+      effectiveFrom: { lte: atDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: atDate } }],
+    },
+    orderBy: [{ priority: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function createTicketType(payload, adminContext) {
+  const data = normalizeTicketTypePayload(payload);
+  const created = await prisma.ticketType.create({ data });
+  await prisma.adminLog.create({
+    data: {
+      adminId: adminContext.adminId,
+      action: "CREATE",
+      entity: "TicketType",
+      entityId: created.id,
+      changes: JSON.stringify(data),
+      description: `Tạo loại vé ${created.name}`,
+      ipAddress: adminContext.ipAddress,
+    },
+  });
+  return created;
+}
+
+export async function updateTicketType(id, payload, adminContext) {
+  const existing = await prisma.ticketType.findUnique({ where: { id } });
+  if (!existing) throw httpError(404, "Không tìm thấy loại vé.");
+  const data = normalizeTicketTypePayload(payload, existing);
+  const updated = await prisma.ticketType.update({ where: { id }, data });
+  await prisma.adminLog.create({
+    data: {
+      adminId: adminContext.adminId,
+      action: "UPDATE",
+      entity: "TicketType",
+      entityId: updated.id,
+      changes: JSON.stringify(data),
+      description: `Cập nhật loại vé ${updated.name}`,
+      ipAddress: adminContext.ipAddress,
+    },
+  });
+  return updated;
+}
+
+export async function setTicketTypeActive(id, active, adminContext) {
+  const existing = await prisma.ticketType.findUnique({ where: { id } });
+  if (!existing) throw httpError(404, "Không tìm thấy loại vé.");
+  const updated = await prisma.ticketType.update({
+    where: { id },
+    data: { active: Boolean(active) },
+  });
+  await prisma.adminLog.create({
+    data: {
+      adminId: adminContext.adminId,
+      action: active ? "ACTIVATE" : "DEACTIVATE",
+      entity: "TicketType",
+      entityId: updated.id,
+      changes: JSON.stringify({ active: Boolean(active) }),
+      description: `${active ? "Kích hoạt" : "Tạm dừng"} loại vé ${updated.name}`,
+      ipAddress: adminContext.ipAddress,
+    },
+  });
+  return updated;
 }
 
 async function resolveScope(scopeType, scopeId) {

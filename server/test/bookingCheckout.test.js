@@ -4,7 +4,6 @@ import {
   calculatePassengerAge,
   normalizeQuotePassenger,
   normalizePassenger,
-  passengerDiscountPolicy,
   validateAccountHolderSelection,
   validatePassengerBusinessRules,
 } from "../src/services/bookingCheckout.service.js";
@@ -61,36 +60,64 @@ test("children only require full name and date of birth", () => {
   assert.equal(passenger.phoneNumber, null);
 });
 
-test("BR-08 discount policy matches age and eligibility", () => {
-  assert.deepEqual(passengerDiscountPolicy(5, "CHILD"), {
-    discountPercentage: 100,
-    discountReason: "CHILD_UNDER_6_FREE",
-    seatRequired: false,
-  });
-  assert.deepEqual(passengerDiscountPolicy(6, "CHILD"), {
-    discountPercentage: 25,
-    discountReason: "CHILD_6_UNDER_10",
-    seatRequired: true,
-  });
-  assert.equal(passengerDiscountPolicy(60, "SENIOR").discountPercentage, 15);
-  assert.equal(passengerDiscountPolicy(20, "STUDENT").discountPercentage, 10);
+test("BR-08 discount policy is applied through normalizePassenger", () => {
+  // Trẻ dưới 6 tuổi: miễn phí 100%, không cần ghế riêng
+  const under6 = normalizePassenger(
+    { fullName: "Be Ut", dateOfBirth: "2021-01-01", seatRequired: false },
+    0,
+    TODAY,
+  );
+  assert.equal(under6.discountPercentage, 100);
+  assert.equal(under6.discountReason, "CHILD_UNDER_6");
+  assert.equal(under6.seatRequired, false);
+
+  // Trẻ 6–9 tuổi: giảm 25%
+  const child = normalizePassenger(
+    { fullName: "Be Lon", dateOfBirth: "2019-01-01" },
+    0,
+    TODAY,
+  );
+  assert.equal(child.discountPercentage, 25);
+  assert.equal(child.discountReason, "CHILD");
+  assert.equal(child.seatRequired, true);
+
+  // Người cao tuổi từ 60 tuổi: giảm 15%
+  const senior = normalizePassenger(
+    adult({ dateOfBirth: "1966-01-01" }),
+    0,
+    TODAY,
+  );
+  assert.equal(senior.discountPercentage, 15);
+  assert.equal(senior.passengerType, "SENIOR");
+
+  // Sinh viên: giảm 10%
+  const student = normalizePassenger(
+    adult({ dateOfBirth: "2005-09-17", passengerType: "STUDENT" }),
+    0,
+    TODAY,
+  );
+  assert.equal(student.discountPercentage, 10);
+  assert.equal(student.passengerType, "STUDENT");
 });
 
-test("children under 6 must be marked as sharing a seat", () => {
-  assert.throws(
-    () =>
-      normalizePassenger(
-        {
-          fullName: "Be Nho",
-          dateOfBirth: "2022-01-01",
-          passengerType: "CHILD",
-        },
-        0,
-        TODAY,
-      ),
-    /không đặt ghế riêng/,
-  );
+test("children under 6 are automatically assigned seatRequired=false via CHILD_UNDER_6 ticket type", () => {
+  // Không cần seatRequired: false rõ ràng — hệ thống tự nhận dạng qua ticketType
   const passenger = normalizePassenger(
+    {
+      fullName: "Be Nho",
+      dateOfBirth: "2022-01-01",
+      passengerType: "CHILD",
+    },
+    0,
+    TODAY,
+  );
+  assert.equal(passenger.passengerType, "CHILD_UNDER_6");
+  assert.equal(passenger.seatRequired, false);
+  assert.equal(passenger.discountPercentage, 100);
+  assert.equal(passenger.discountReason, "CHILD_UNDER_6");
+
+  // Kết quả giống nhau dù có hay không có seatRequired: false
+  const passengerExplicit = normalizePassenger(
     {
       fullName: "Be Nho",
       dateOfBirth: "2022-01-01",
@@ -100,8 +127,28 @@ test("children under 6 must be marked as sharing a seat", () => {
     0,
     TODAY,
   );
-  assert.equal(passenger.seatRequired, false);
-  assert.equal(passenger.discountReason, "CHILD_UNDER_6_FREE");
+  assert.equal(passengerExplicit.seatRequired, false);
+  assert.equal(passengerExplicit.discountReason, "CHILD_UNDER_6");
+});
+
+test("quote with unknown age keeps requested type without discount (null < 10 coercion guard)", () => {
+  // Người dùng chưa nhập ngày sinh → age = null.
+  // null < 10 = true trong JS vì null bị ép về 0 → nếu không guard sẽ tính nhầm CHILD 25%.
+  const passenger = normalizeQuotePassenger(
+    { passengerType: "ADULT", dateOfBirth: "" },
+    0,
+    TODAY,
+  );
+  assert.equal(passenger.passengerType, "ADULT");
+  assert.equal(passenger.discountPercentage, 0);
+
+  const student = normalizeQuotePassenger(
+    { passengerType: "STUDENT", dateOfBirth: "" },
+    0,
+    TODAY,
+  );
+  assert.equal(student.passengerType, "STUDENT");
+  assert.equal(student.discountPercentage, 10);
 });
 
 test("quote rejects shared-seat passengers who are not under 6", () => {
