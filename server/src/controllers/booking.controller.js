@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { sendEmail } from "../services/email.service.js";
+import { getCancelBookingEmailTemplate } from "../utils/emailTemplates.js";
+
 import {
   checkoutBooking,
   confirmQrPayment,
@@ -1118,6 +1121,48 @@ export const legacyCancelBooking = asyncHandler(async (req, res) => {
 
     return { updatedBooking, cancelReq, refundAmount };
   });
+
+  // Gửi email thông báo hủy vé không đồng bộ
+  (async () => {
+    try {
+      const fullBooking = await prisma.booking.findUnique({
+        where: { id: booking.id },
+        include: {
+          user: true,
+          schedule: {
+            include: {
+              train: true,
+            },
+          },
+          fromStation: true,
+          toStation: true,
+          passengers: true,
+        },
+      });
+
+      if (fullBooking) {
+        const toEmail =
+          fullBooking.confirmationEmail ||
+          fullBooking.user?.email ||
+          fullBooking.passengers.find((p) => p.email)?.email;
+
+        if (toEmail) {
+          await sendEmail({
+            to: toEmail,
+            subject: `[GoTrain VN] Hủy vé thành công - Mã đặt chỗ: ${fullBooking.bookingCode}`,
+            html: getCancelBookingEmailTemplate(
+              fullBooking,
+              result.refundAmount,
+              refundPercentage * 100,
+              refundMethod,
+            ),
+          });
+        }
+      }
+    } catch (err) {
+      console.error("❌ Gửi email thông báo hủy vé thất bại:", err.message);
+    }
+  })();
 
   res.json({
     message: "Hủy vé và hoàn tiền thành công!",

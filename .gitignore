@@ -11,7 +11,10 @@ coverage
 client/dist
 server/dist
 server/src/prisma/generated
+
 .tools/ngrok/
 .tools/ngrok.zip
 .tools/ngrok.yml
 .tools/ngrok.log
+sent_emails.json
+

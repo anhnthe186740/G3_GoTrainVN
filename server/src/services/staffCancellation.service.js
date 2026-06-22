@@ -171,6 +171,7 @@ export async function confirmStaffCancellation({
   refundMethod = "CASH",
   reason,
   staffId,
+  ipAddress,
 }) {
   const method = String(refundMethod || "").toUpperCase();
   if (!REFUND_METHODS.includes(method)) {
@@ -258,6 +259,23 @@ export async function confirmStaffCancellation({
         },
       });
     }
+
+    await tx.adminLog.create({
+      data: {
+        adminId: staffId,
+        action: "APPROVE",
+        entity: "Booking",
+        entityId: bookingId,
+        changes: JSON.stringify({
+          refundMethod: method,
+          refundAmount: totalRefundAmount,
+          cancelledPassengerIds: eligiblePassengerIds,
+          reason,
+        }),
+        description: `Nhân viên hủy vé cho booking ${quote.booking.bookingCode}. Hoàn trả ${totalRefundAmount.toLocaleString("vi-VN")} VND qua ${method}. Lý do: ${reason || "Không có"}`,
+        ipAddress: ipAddress || "",
+      },
+    });
 
     return updatedBooking;
   });
