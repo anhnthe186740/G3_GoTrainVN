@@ -19,10 +19,11 @@ function formatCurrency(amount) {
 }
 
 function toInputDate(date = new Date()) {
-  const d = new Date(date);
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${month}-${day}`;
+  // Dùng UTC+7 cố định để khớp với múi giờ Việt Nam dù browser ở đâu
+  const utc7 = new Date(new Date(date).getTime() + 7 * 60 * 60 * 1000);
+  const month = String(utc7.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(utc7.getUTCDate()).padStart(2, "0");
+  return `${utc7.getUTCFullYear()}-${month}-${day}`;
 }
 
 function formatDate(dateStr) {
@@ -52,7 +53,8 @@ function stationId(station) {
 }
 
 function minFare(schedule) {
-  return Math.min(...(schedule?.pricing || []).map((item) => item.price));
+  const prices = (schedule?.pricing || []).map((item) => item.price);
+  return prices.length > 0 ? Math.min(...prices) : 0;
 }
 
 function minutesToDuration(minutes) {
@@ -107,15 +109,11 @@ export function TicketExchange() {
   const newFare = selectedSchedule ? minFare(selectedSchedule) : 0;
   const fixedFee = selectedSchedule ? 20000 : 0;
   const percentFee = selectedSchedule ? Math.round(paidAmount * 0.1) : 0;
-  const fareDifference = selectedSchedule
-    ? Math.max(newFare - paidAmount, 0)
-    : 0;
-  const unusedOldTicketValue = selectedSchedule
-    ? Math.max(paidAmount - newFare, 0)
-    : 0;
-  const totalDue = selectedSchedule
-    ? fareDifference + fixedFee + percentFee
-    : 0;
+  const fareDifference = selectedSchedule ? newFare - paidAmount : 0; // signed
+  const totalFees = fixedFee + percentFee;
+  const netAmount = selectedSchedule ? totalFees + fareDifference : 0;
+  const amountDue = Math.max(netAmount, 0);
+  const refundSurplus = Math.max(-netAmount, 0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -555,25 +553,29 @@ export function TicketExchange() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="space-y-6 p-6 text-lg">
                 <div className="flex justify-between">
-                  <span className="text-slate-700">Giá vé mới</span>
+                  <span className="text-slate-700">Giá vé mới (ước tính)</span>
                   <strong>
                     {selectedSchedule ? formatCurrency(newFare) : "—"}
                   </strong>
                 </div>
-                <div className="flex justify-between text-emerald-700">
-                  <span>Giá trị vé cũ áp dụng</span>
+                <div className="flex justify-between">
+                  <span className="text-slate-700">Giá vé đã thanh toán</span>
                   <strong>{formatCurrency(paidAmount)}</strong>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-700">Chênh lệch giá vé</span>
-                  <strong>{formatCurrency(fareDifference)}</strong>
+                  <strong
+                    className={fareDifference < 0 ? "text-emerald-600" : ""}
+                  >
+                    {selectedSchedule
+                      ? fareDifference < 0
+                        ? `−${formatCurrency(-fareDifference)}`
+                        : fareDifference > 0
+                          ? `+${formatCurrency(fareDifference)}`
+                          : formatCurrency(0)
+                      : "—"}
+                  </strong>
                 </div>
-                {unusedOldTicketValue > 0 && (
-                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-700">
-                    Vé mới thấp hơn vé cũ {formatCurrency(unusedOldTicketValue)}
-                    . Phần này chưa được cộng vào tổng thanh toán.
-                  </p>
-                )}
                 <div className="border-t border-dashed border-slate-300" />
                 <div className="flex justify-between">
                   <span className="text-slate-700">Phí đổi vé (cố định)</span>
@@ -584,17 +586,31 @@ export function TicketExchange() {
                   <strong>{formatCurrency(percentFee)}</strong>
                 </div>
 
-                <div className="rounded-xl bg-sky-100 p-6 text-primary">
-                  <span className="text-lg font-extrabold">
-                    Tổng thanh toán
-                  </span>
-                  <strong className="ml-3 text-5xl font-black">
-                    {formatCurrency(totalDue)}
-                  </strong>
-                  <p className="mt-3 text-xs font-semibold">
-                    * Bao gồm tất cả thuế và phí dịch vụ
-                  </p>
-                </div>
+                {refundSurplus > 0 ? (
+                  <div className="rounded-xl bg-emerald-50 p-6 text-emerald-700">
+                    <span className="text-lg font-extrabold">
+                      Số tiền hoàn lại
+                    </span>
+                    <strong className="ml-3 text-5xl font-black">
+                      {formatCurrency(refundSurplus)}
+                    </strong>
+                    <p className="mt-3 text-xs font-semibold">
+                      * Hoàn vào ví GoTrainVN sau khi xác nhận đổi vé
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-sky-100 p-6 text-primary">
+                    <span className="text-lg font-extrabold">
+                      Tổng thanh toán
+                    </span>
+                    <strong className="ml-3 text-5xl font-black">
+                      {formatCurrency(amountDue)}
+                    </strong>
+                    <p className="mt-3 text-xs font-semibold">
+                      * Thanh toán qua ví GoTrainVN
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3 bg-slate-100 p-6">
@@ -621,12 +637,14 @@ export function TicketExchange() {
               Chính sách đổi vé
             </h3>
             <ul className="list-disc space-y-1 pl-8 text-sm leading-6 text-slate-700">
-              <li>Vé cá nhân: Phí đổi vé 20,000đ/vé.</li>
+              <li>Vé cá nhân: Phí đổi vé 20,000đ + 10% giá vé gốc.</li>
               <li>Chỉ đổi vé cho chuyến chưa khởi hành.</li>
-              <li>Giá vé và ghế trống được lấy từ lịch trình hiện có.</li>
               <li>
-                Xác nhận đổi vé cần backend xử lý thanh toán và cập nhật
-                booking.
+                Giá vé hiển thị là mức tối thiểu; giá thực tế theo ghế chọn.
+              </li>
+              <li>
+                Nếu vé mới rẻ hơn, chênh lệch sẽ được hoàn vào ví GoTrainVN sau
+                khi trừ phí.
               </li>
             </ul>
           </section>

@@ -779,12 +779,14 @@ export function PassengerDetailsPage({
     isExchangeMode && quote ? Math.round(exchangePaidAmount * 0.1) : 0;
   const exchangeFareDifference =
     isExchangeMode && quote
-      ? Math.max((quote.totalAmount || 0) - exchangePaidAmount, 0)
+      ? (quote.totalAmount || 0) - exchangePaidAmount // signed
       : 0;
-  const exchangeTotalDue =
-    exchangeFareDifference + exchangeFixedFee + exchangePercentFee;
+  const exchangeNetAmount =
+    exchangeFixedFee + exchangePercentFee + exchangeFareDifference;
+  const exchangeAmountDue = Math.max(exchangeNetAmount, 0);
+  const exchangeRefundSurplus = Math.max(-exchangeNetAmount, 0);
   const payableAmount = isExchangeMode
-    ? exchangeTotalDue
+    ? exchangeAmountDue
     : quote?.totalAmount || 0;
 
   const checkoutButtonLabel =
@@ -1926,13 +1928,21 @@ export function PassengerDetailsPage({
                       {quote ? money(quote.totalAmount) : "Chưa tính"}
                     </span>
                   </div>
-                  <div className="flex justify-between text-emerald-600">
-                    <span>Giá trị vé cũ áp dụng</span>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Giá vé đã thanh toán</span>
                     <span>{money(exchangePaidAmount)}</span>
                   </div>
-                  <div className="flex justify-between text-slate-500">
+                  <div
+                    className={`flex justify-between ${exchangeFareDifference < 0 ? "text-emerald-600" : "text-slate-500"}`}
+                  >
                     <span>Chênh lệch giá vé</span>
-                    <span>{money(exchangeFareDifference)}</span>
+                    <span>
+                      {exchangeFareDifference < 0
+                        ? `−${money(-exchangeFareDifference)}`
+                        : exchangeFareDifference > 0
+                          ? `+${money(exchangeFareDifference)}`
+                          : money(0)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>Phí đổi vé cố định</span>
@@ -1971,24 +1981,31 @@ export function PassengerDetailsPage({
                   )}
                 </>
               )}
-              {isExchangeMode &&
-                quote &&
-                exchangePaidAmount > (quote.totalAmount || 0) && (
-                  <div className="rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-700">
-                    Vé mới thấp hơn vé cũ{" "}
-                    {money(exchangePaidAmount - quote.totalAmount)}. Khoản này
-                    chưa được cộng vào tổng cần thanh toán.
-                  </div>
-                )}
+              {isExchangeMode && quote && exchangeRefundSurplus > 0 && (
+                <div className="rounded-xl bg-emerald-50 p-3 text-xs font-semibold leading-5 text-emerald-700">
+                  Vé mới rẻ hơn, sẽ hoàn {money(exchangeRefundSurplus)} vào ví
+                  sau khi xác nhận đổi vé.
+                </div>
+              )}
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
                 <span className="font-bold text-slate-800">
-                  {isExchangeMode ? "Tổng cần thanh toán" : "Tổng cộng"}
+                  {isExchangeMode && exchangeRefundSurplus > 0
+                    ? "Số tiền hoàn lại"
+                    : isExchangeMode
+                      ? "Tổng cần thanh toán"
+                      : "Tổng cộng"}
                 </span>
-                <span className="text-xl font-extrabold text-[#073b4c]">
+                <span
+                  className={`text-xl font-extrabold ${isExchangeMode && exchangeRefundSurplus > 0 ? "text-emerald-600" : "text-[#073b4c]"}`}
+                >
                   {quoteLoading
                     ? "..."
                     : quote
-                      ? money(payableAmount)
+                      ? money(
+                          isExchangeMode && exchangeRefundSurplus > 0
+                            ? exchangeRefundSurplus
+                            : payableAmount,
+                        )
                       : "Chưa tính"}
                 </span>
               </div>
@@ -1998,7 +2015,9 @@ export function PassengerDetailsPage({
               walletBalance != null &&
               walletBalance < payableAmount && (
                 <p className="rounded-xl bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-700">
-                  Số dư ví chưa đủ. Hãy chọn QR ngân hàng hoặc nạp thêm tiền.
+                  {isExchangeMode
+                    ? "Số dư ví chưa đủ để thanh toán phí đổi vé. Hãy nạp thêm tiền vào ví trước khi tiếp tục."
+                    : "Số dư ví chưa đủ. Hãy chọn QR ngân hàng hoặc nạp thêm tiền."}
                 </p>
               )}
 
