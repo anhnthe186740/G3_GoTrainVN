@@ -495,6 +495,7 @@ export function TicketLookup() {
     isVerifiedLookup &&
     activeJourneyState === "UPCOMING";
   const canExchangeTicket =
+    Boolean(user) &&
     activeTicket?.booking?.status === "CONFIRMED" &&
     activeJourneyState === "UPCOMING";
 

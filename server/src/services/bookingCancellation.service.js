@@ -269,7 +269,7 @@ export async function cancelBookingTickets({
     0,
   );
   const totalRefundAmount = Math.round(totalOriginalAmount * policy.rate);
-  if (totalRefundAmount <= 0) {
+  if (totalRefundAmount < 0) {
     throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
   }
 
@@ -294,9 +294,6 @@ export async function cancelBookingTickets({
   });
   if (existingRequest?.status === "PENDING") {
     throw httpError(409, "Yêu cầu hủy vé này đang chờ Admin duyệt.");
-  }
-  if (existingRequest?.status === "APPROVED") {
-    throw httpError(409, "Yêu cầu hủy vé này đã được duyệt.");
   }
 
   const requestData = {

@@ -772,8 +772,11 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
   );
   const fixedFee = 20000;
   const percentFee = Math.round(oldFare * 0.1);
-  const fareDifference = Math.max(newFare - oldFare, 0);
-  const totalDue = fixedFee + percentFee + fareDifference;
+  const fareDifference = newFare - oldFare; // signed: positive = cần bù thêm, negative = vé rẻ hơn
+  const totalFees = fixedFee + percentFee;
+  const netAmount = totalFees + fareDifference;
+  const amountDue = Math.max(netAmount, 0);
+  const refundSurplus = Math.max(-netAmount, 0);
 
   const result = await prisma.$transaction(async (tx) => {
     const claimedSession = await tx.seatHoldSession.updateMany({
@@ -792,26 +795,48 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
     }
 
     const wallet = await tx.wallet.findUnique({ where: { userId } });
-    if (!wallet || wallet.balance < totalDue) {
+    if (amountDue > 0 && (!wallet || wallet.balance < amountDue)) {
       throw Object.assign(
         new Error("Số dư ví không đủ để thanh toán phí đổi vé."),
-        {
-          statusCode: 422,
-        },
+        { statusCode: 422 },
       );
     }
 
-    if (totalDue > 0) {
+    if (amountDue > 0) {
       await tx.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { decrement: totalDue } },
+        data: { balance: { decrement: amountDue } },
       });
       await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
           type: "PAYMENT",
-          amount: totalDue,
+          amount: amountDue,
           description: `Phí đổi vé ${booking.bookingCode}`,
+          relatedBookingId: booking.id,
+          status: "COMPLETED",
+        },
+      });
+    }
+
+    if (refundSurplus > 0) {
+      const effectiveWallet =
+        wallet ??
+        (await tx.wallet.upsert({
+          where: { userId },
+          update: {},
+          create: { userId, balance: 0, currency: "VND" },
+        }));
+      await tx.wallet.update({
+        where: { id: effectiveWallet.id },
+        data: { balance: { increment: refundSurplus } },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: effectiveWallet.id,
+          type: "REFUND",
+          amount: refundSurplus,
+          description: `Hoàn chênh lệch đổi vé ${booking.bookingCode}`,
           relatedBookingId: booking.id,
           status: "COMPLETED",
         },
@@ -892,16 +917,30 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       }
     }
 
-    await tx.bookingPaymentHistory.create({
-      data: {
-        bookingId: booking.id,
-        paymentMethod: "WALLET",
-        amount: totalDue,
-        status: "SUCCESS",
-        transactionId: `EXCHANGE-${randomUUID()}`,
-        attemptNumber: 1,
-      },
-    });
+    if (amountDue > 0) {
+      await tx.bookingPaymentHistory.create({
+        data: {
+          bookingId: booking.id,
+          paymentMethod: "WALLET",
+          amount: amountDue,
+          status: "SUCCESS",
+          transactionId: `EXCHANGE-${randomUUID()}`,
+          attemptNumber: 1,
+        },
+      });
+    }
+    if (refundSurplus > 0) {
+      await tx.bookingPaymentHistory.create({
+        data: {
+          bookingId: booking.id,
+          paymentMethod: "REFUND_WALLET",
+          amount: refundSurplus,
+          status: "SUCCESS",
+          transactionId: `EXCHANGE-REFUND-${randomUUID()}`,
+          attemptNumber: 1,
+        },
+      });
+    }
 
     const updatedBooking = await tx.booking.update({
       where: { id: booking.id },
@@ -909,10 +948,6 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         scheduleId: session.outboundScheduleId,
         fromStationId: session.outboundFromStationId,
         toStationId: session.outboundToStationId,
-        returnScheduleId: null,
-        returnFromStationId: null,
-        returnToStationId: null,
-        bookingType: "ONE_WAY",
         subtotal: newFare,
         discountAmount: 0,
         taxAmount: 0,
@@ -931,7 +966,10 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         userId,
         type: "BOOKING_EXCHANGED",
         title: "Đổi vé thành công",
-        message: `Vé ${booking.bookingCode} đã được đổi. Phí đổi vé ${totalDue.toLocaleString("vi-VN")}đ.`,
+        message:
+          refundSurplus > 0
+            ? `Vé ${booking.bookingCode} đã được đổi. Hoàn chênh lệch ${refundSurplus.toLocaleString("vi-VN")}đ vào ví.`
+            : `Vé ${booking.bookingCode} đã được đổi. Phí đổi vé ${amountDue.toLocaleString("vi-VN")}đ.`,
         relatedBookingId: booking.id,
         relatedScheduleId: session.outboundScheduleId,
         deliveryMethod: ["IN_APP", "EMAIL"],
@@ -954,7 +992,8 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       fareDifference,
       fixedFee,
       percentFee,
-      totalDue,
+      amountDue,
+      refundSurplus,
     },
   });
 });
@@ -1218,18 +1257,94 @@ export const listAdminCancellationRequests = asyncHandler(async (req, res) => {
 });
 
 export const decideCancellationRequest = asyncHandler(async (req, res) => {
+  const action = String(req.body.action || "").toUpperCase();
   const result = await reviewCancellationRequest({
     requestId: req.params.requestId,
-    action: req.body.action,
+    action,
     rejectionReason: req.body.rejectionReason,
     adminId: req.user.id,
   });
 
   res.json({
     message:
-      String(req.body.action).toUpperCase() === "APPROVE"
+      action === "APPROVE"
         ? "Đã duyệt yêu cầu hủy vé và xử lý hoàn tiền."
         : "Đã từ chối yêu cầu hủy vé.",
     result,
   });
+
+  // Fire-and-forget: thông báo cho hành khách sau khi admin ra quyết định
+  const booking = result.booking ?? result.cancellationRequest?.booking;
+  if (!booking) return;
+  const userId = booking.userId;
+
+  if (action === "APPROVE") {
+    if (userId) {
+      const refundMethodLabel =
+        result.refundMethod === "WALLET"
+          ? "Ví GoTrainVN"
+          : "Chuyển khoản ngân hàng";
+      prisma.notification
+        .create({
+          data: {
+            userId,
+            type: "CANCELLATION_APPROVED",
+            title: "Yêu cầu hủy vé được duyệt",
+            message: `Yêu cầu hủy vé ${booking.bookingCode} đã được duyệt. Hoàn tiền ${Number(result.refundAmount || 0).toLocaleString("vi-VN")}đ qua ${refundMethodLabel}.`,
+            relatedBookingId: booking.id,
+            deliveryMethod: ["IN_APP"],
+            deliveryStatus: "PENDING",
+          },
+        })
+        .catch(() => {});
+    }
+
+    prisma.booking
+      .findUnique({
+        where: { id: booking.id },
+        include: {
+          user: { select: { email: true, fullName: true } },
+          schedule: {
+            include: { startStation: true, endStation: true, train: true },
+          },
+          fromStation: true,
+          toStation: true,
+          passengers: { include: { bookingDetails: true } },
+        },
+      })
+      .then((fullBooking) => {
+        if (!fullBooking?.user?.email) return;
+        const refundPct = fullBooking.totalAmount
+          ? Math.round((result.refundAmount / fullBooking.totalAmount) * 100)
+          : 0;
+        const html = getCancelBookingEmailTemplate(
+          fullBooking,
+          result.refundAmount,
+          refundPct,
+          result.refundMethod,
+        );
+        return sendEmail({
+          to: fullBooking.user.email,
+          subject: `[GoTrain VN] Yêu cầu hủy vé đã được duyệt - Mã đặt chỗ: ${booking.bookingCode}`,
+          html,
+        });
+      })
+      .catch(() => {});
+  } else {
+    if (userId) {
+      prisma.notification
+        .create({
+          data: {
+            userId,
+            type: "CANCELLATION_REJECTED",
+            title: "Yêu cầu hủy vé bị từ chối",
+            message: `Yêu cầu hủy vé ${booking.bookingCode} đã bị từ chối. Lý do: ${req.body.rejectionReason || "Không đủ điều kiện hủy vé"}.`,
+            relatedBookingId: booking.id,
+            deliveryMethod: ["IN_APP"],
+            deliveryStatus: "PENDING",
+          },
+        })
+        .catch(() => {});
+    }
+  }
 });
