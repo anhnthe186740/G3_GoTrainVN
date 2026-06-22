@@ -13,6 +13,55 @@ export const getPricingContext = asyncHandler(async (_req, res) => {
   res.json(context);
 });
 
+export const getPublicTicketTypes = asyncHandler(async (_req, res) => {
+  const ticketTypes = await pricingService.getPublicTicketTypes();
+  res.json({ ticketTypes });
+});
+
+export const getTicketTypes = asyncHandler(async (req, res) => {
+  const ticketTypes = await pricingService.getTicketTypes({
+    includeInactive: req.query.includeInactive === "true",
+  });
+  res.json({ ticketTypes });
+});
+
+export const createTicketType = asyncHandler(async (req, res) => {
+  const ticketType = await pricingService.createTicketType(
+    req.body,
+    adminContext(req),
+  );
+  res.status(201).json({
+    message: "Đã tạo loại vé.",
+    ticketType,
+  });
+});
+
+export const updateTicketType = asyncHandler(async (req, res) => {
+  const ticketType = await pricingService.updateTicketType(
+    req.params.id,
+    req.body,
+    adminContext(req),
+  );
+  res.json({
+    message: "Đã cập nhật loại vé.",
+    ticketType,
+  });
+});
+
+export const setTicketTypeActive = asyncHandler(async (req, res) => {
+  const ticketType = await pricingService.setTicketTypeActive(
+    req.params.id,
+    req.body.active,
+    adminContext(req),
+  );
+  res.json({
+    message: ticketType.active
+      ? "Đã kích hoạt loại vé."
+      : "Đã tạm dừng loại vé.",
+    ticketType,
+  });
+});
+
 export const getPricingConfiguration = asyncHandler(async (req, res) => {
   const configuration = await pricingService.getConfiguration({
     scopeType: req.query.scopeType || "SYSTEM",

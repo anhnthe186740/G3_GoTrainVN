@@ -334,6 +334,33 @@ model PricingPolicy {
   @@index([effectiveFrom])
 }
 
+model TicketType {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  code             String    @unique
+  name             String
+  shortLabel       String?
+  description      String?
+  discountType     String    @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT, FREE
+  discountValue    Float     @default(0) @db.Double
+  minAge           Int?
+  maxAgeExclusive  Int?
+  seatMode         String    @default("REQUIRED") // REQUIRED, NOT_ALLOWED, OPTIONAL
+  publicSelectable Boolean   @default(true)
+  autoApply        Boolean   @default(false)
+  requiresDocument Boolean   @default(true)
+  requiresStudent  Boolean   @default(false)
+  priority         Int       @default(100)
+  active           Boolean   @default(true)
+  effectiveFrom    DateTime  @default(now())
+  effectiveTo      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([active])
+  @@index([priority])
+  @@index([effectiveFrom])
+}
+
 model Voucher {
   id                String    @id @default(auto()) @map("_id") @db.ObjectId
   voucherCode       String    @unique
