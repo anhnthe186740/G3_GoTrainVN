@@ -10,6 +10,12 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
+  Compass,
+  Thermometer,
+  User,
+  Navigation,
+  Play,
+  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
@@ -30,6 +36,185 @@ export function StaffDelayReportPanel() {
   const [modalDelayMinutes, setModalDelayMinutes] = useState(0);
   const [modalNotes, setModalNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Tracking Modal State
+  const [selectedTrackingSchedule, setSelectedTrackingSchedule] =
+    useState(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackSpeed, setTrackSpeed] = useState(55);
+  const [trackTemp, setTrackTemp] = useState(25.0);
+  const [trackPassengers, setTrackPassengers] = useState(45);
+  const [trackLat, setTrackLat] = useState(21.0285);
+  const [trackLong, setTrackLong] = useState(105.8542);
+  const [trackStation, setTrackStation] = useState("");
+  const [trackStatus, setTrackStatus] = useState("ON_TIME");
+  const [updatingTracking, setUpdatingTracking] = useState(false);
+  const [, setSimulationForceUpdate] = useState(0); // Trigger re-render
+
+  const isSimulating = useCallback((scheduleId) => {
+    return !!window.gotrainSimulations?.[scheduleId];
+  }, []);
+
+  const handleOpenTrackingModal = async (sch) => {
+    setSelectedTrackingSchedule(sch);
+    setTrackingLoading(true);
+    try {
+      const res = await api.get(`/schedules/${sch.id}/live-tracking`);
+      const tr = res.data.tracking;
+      setTrackSpeed(
+        tr.speed !== undefined && tr.speed !== null ? tr.speed : 55,
+      );
+      setTrackTemp(tr.temperature || 25.0);
+      setTrackPassengers(tr.passengerCount || 45);
+      setTrackLat(tr.latitude || sch.route?.startStation?.latitude || 21.0245);
+      setTrackLong(
+        tr.longitude || sch.route?.startStation?.longitude || 105.8412,
+      );
+      setTrackStation(
+        tr.currentStation || sch.route?.startStation?.stationName || "",
+      );
+      setTrackStatus(tr.status || "ON_TIME");
+    } catch {
+      toast.error("Không thể tải dữ liệu điều vị hành trình.");
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  const handleCloseTrackingModal = () => {
+    setSelectedTrackingSchedule(null);
+  };
+
+  const handleSubmitTracking = async (e) => {
+    e.preventDefault();
+    if (!selectedTrackingSchedule) return;
+
+    setUpdatingTracking(true);
+    try {
+      const payload = {
+        speed: parseFloat(trackSpeed) || 0.0,
+        temperature: parseFloat(trackTemp) || 25.0,
+        passengerCount: parseInt(trackPassengers) || 0,
+        latitude: parseFloat(trackLat) || null,
+        longitude: parseFloat(trackLong) || null,
+        currentStation: trackStation.trim() || null,
+        status: trackStatus,
+      };
+
+      await api.put(
+        `/schedules/${selectedTrackingSchedule.id}/live-tracking`,
+        payload,
+      );
+      toast.success("Cập nhật dữ liệu định vị & cảm biến thành công!");
+      handleCloseTrackingModal();
+      loadData({ force: true });
+    } catch (err) {
+      toast.error("Không thể lưu cập nhật thông số.");
+    } finally {
+      setUpdatingTracking(false);
+    }
+  };
+
+  const toggleSimulation = (sch) => {
+    const scheduleId = sch.id;
+    window.gotrainSimulations = window.gotrainSimulations || {};
+
+    if (window.gotrainSimulations[scheduleId]) {
+      // Clear interval
+      clearInterval(window.gotrainSimulations[scheduleId].intervalId);
+      delete window.gotrainSimulations[scheduleId];
+      toast.success(
+        `Đã dừng mô phỏng hành trình tự động cho tàu ${sch.train?.trainCode}.`,
+      );
+    } else {
+      toast.success(
+        `Bắt đầu mô phỏng tự động 10s cho tàu ${sch.train?.trainCode}.`,
+      );
+
+      // Nodes tracing
+      const nodes = [];
+      nodes.push({
+        lat: sch.route?.startStation?.latitude || 21.0245,
+        lng: sch.route?.startStation?.longitude || 105.8412,
+        name: sch.route?.startStation?.stationName || "Ga xuất phát",
+      });
+
+      if (sch.scheduleStops && sch.scheduleStops.length > 0) {
+        const sortedStops = [...sch.scheduleStops].sort(
+          (a, b) => a.stopOrder - b.stopOrder,
+        );
+        for (const stop of sortedStops) {
+          nodes.push({
+            lat: stop.station?.latitude || 16.0,
+            lng: stop.station?.longitude || 108.0,
+            name: stop.station?.stationName || "Ga trung gian",
+          });
+        }
+      }
+
+      nodes.push({
+        lat: sch.route?.endStation?.latitude || 10.7769,
+        lng: sch.route?.endStation?.longitude || 106.6952,
+        name: sch.route?.endStation?.stationName || "Ga kết thúc",
+      });
+
+      let progressPct = 0;
+
+      const runStep = async () => {
+        progressPct += 5; // increment 5% every 10s
+        if (progressPct > 100) progressPct = 0;
+
+        const numSegments = nodes.length - 1;
+        const segmentLength = 100 / numSegments;
+        const currentSegmentIdx = Math.min(
+          Math.floor(progressPct / segmentLength),
+          numSegments - 1,
+        );
+
+        const startNode = nodes[currentSegmentIdx];
+        const endNode = nodes[currentSegmentIdx + 1];
+
+        const segmentProgress = (progressPct % segmentLength) / segmentLength;
+
+        // Lerp coordinates
+        const lat =
+          startNode.lat + (endNode.lat - startNode.lat) * segmentProgress;
+        const lng =
+          startNode.lng + (endNode.lng - startNode.lng) * segmentProgress;
+
+        const speed = 55.0; // Đi với vận tốc 55 km/h cố định
+        const temp = 22.5 + Math.random() * 2.5; // 22.5 - 25°C
+        const passengers = 60 + Math.floor(Math.random() * 30); // 60-90 passengers
+        const currentStationName =
+          segmentProgress < 0.5 ? startNode.name : endNode.name;
+
+        try {
+          await api.put(`/schedules/${scheduleId}/live-tracking`, {
+            speed,
+            temperature: temp,
+            passengerCount: passengers,
+            latitude: lat,
+            longitude: lng,
+            currentStation: currentStationName,
+            status: "ON_TIME",
+          });
+        } catch (e) {
+          console.error("[Sim] Failed auto update:", e);
+        }
+      };
+
+      // Run immediate step
+      runStep();
+
+      const intervalId = setInterval(runStep, 10000);
+      window.gotrainSimulations[scheduleId] = {
+        intervalId,
+        progressPct,
+      };
+    }
+
+    setSimulationForceUpdate((val) => val + 1);
+  };
 
   // Load schedules
   const loadData = useCallback(async ({ force = false } = {}) => {
@@ -530,13 +715,44 @@ export function StaffDelayReportPanel() {
                             Đã qua giờ chạy
                           </span>
                         ) : (
-                          <button
-                            onClick={() => handleOpenReportModal(sch)}
-                            className="inline-flex items-center gap-1 bg-[#fff6e6] hover:bg-[#ffecc7] text-amber-800 border border-amber-200/60 px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer"
-                          >
-                            <AlertCircle className="h-3.5 w-3.5" />
-                            Báo trễ / Sự cố
-                          </button>
+                          <div className="flex justify-end items-center gap-2">
+                            <button
+                              onClick={() => toggleSimulation(sch)}
+                              className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl font-bold transition-all border cursor-pointer ${
+                                isSimulating(sch.id)
+                                  ? "bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+                              }`}
+                              title={
+                                isSimulating(sch.id)
+                                  ? "Dừng mô phỏng"
+                                  : "Bật mô phỏng tự động 10s"
+                              }
+                            >
+                              {isSimulating(sch.id) ? (
+                                <Pause className="h-3.5 w-3.5" />
+                              ) : (
+                                <Play className="h-3.5 w-3.5" />
+                              )}
+                              {isSimulating(sch.id) ? "Dừng Sim" : "Bật Sim"}
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenTrackingModal(sch)}
+                              className="inline-flex items-center gap-1 bg-[#e0f2fe] hover:bg-[#bae6fd] text-[#0369a1] border border-[#bae6fd] px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer"
+                            >
+                              <Compass className="h-3.5 w-3.5" />
+                              Định vị
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenReportModal(sch)}
+                              className="inline-flex items-center gap-1 bg-[#fff6e6] hover:bg-[#ffecc7] text-amber-800 border border-amber-200/60 px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer"
+                            >
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Báo trễ
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -686,6 +902,190 @@ export function StaffDelayReportPanel() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Tracking / Telemetry Sensors */}
+      {selectedTrackingSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,0,0,0.15)] border border-[#bec7d4]/20 w-full max-w-md overflow-hidden transform transition-all scale-100">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-[#bec7d4]/20 bg-slate-50 flex justify-between items-center">
+              <h3 className="font-extrabold text-base text-slate-800 flex items-center gap-2">
+                <Compass className="h-5 w-5 text-[#00629d]" />
+                Điều Hành Telemetry Chuyến Tàu
+              </h3>
+              <button
+                onClick={handleCloseTrackingModal}
+                disabled={updatingTracking}
+                className="p-1 rounded-full hover:bg-slate-200 text-slate-500 transition-colors border-none bg-transparent cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            {trackingLoading ? (
+              <div className="p-12 text-center">
+                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#00629d]" />
+                <p className="mt-3 text-sm font-semibold text-slate-500">
+                  Đang tải định vị...
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitTracking} className="p-6 space-y-4">
+                {/* Train Info */}
+                <div className="bg-[#cfe5ff]/20 rounded-xl p-3 border border-[#cfe5ff] text-xs">
+                  <p className="font-extrabold text-slate-800">
+                    TÀU: {selectedTrackingSchedule.train?.trainCode} | TUYẾN:{" "}
+                    {selectedTrackingSchedule.route?.routeName}
+                  </p>
+                </div>
+
+                {/* GPS Coordinates */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                      <Navigation className="h-3.5 w-3.5 text-slate-400 rotate-45" />
+                      Vĩ độ (Latitude)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      required
+                      value={trackLat}
+                      onChange={(e) => setTrackLat(e.target.value)}
+                      className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                      <Navigation className="h-3.5 w-3.5 text-slate-400 rotate-45" />
+                      Kinh độ (Longitude)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      required
+                      value={trackLong}
+                      onChange={(e) => setTrackLong(e.target.value)}
+                      className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Current Station */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                    <Compass className="h-3.5 w-3.5 text-slate-400" />
+                    Ga hiện tại / Ga vừa đi qua
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={trackStation}
+                    onChange={(e) => setTrackStation(e.target.value)}
+                    placeholder="Ví dụ: Ga Hà Nội, Ga Vinh"
+                    className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                  />
+                </div>
+
+                {/* Sensors Speed & Temperature */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                      <Compass className="h-3.5 w-3.5 text-slate-400" />
+                      Tốc độ (km/h)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      required
+                      value={trackSpeed}
+                      onChange={(e) => setTrackSpeed(e.target.value)}
+                      className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                      <Thermometer className="h-3.5 w-3.5 text-slate-400" />
+                      Nhiệt độ toa (°C)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      required
+                      value={trackTemp}
+                      onChange={(e) => setTrackTemp(e.target.value)}
+                      className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Passenger Count */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1">
+                    <User className="h-3.5 w-3.5 text-slate-400" />
+                    Số lượng hành khách thực tế
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={trackPassengers}
+                    onChange={(e) => setTrackPassengers(e.target.value)}
+                    className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none transition"
+                  />
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                    Trạng thái vận hành
+                  </label>
+                  <select
+                    value={trackStatus}
+                    onChange={(e) => setTrackStatus(e.target.value)}
+                    className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-bold focus:border-[#00629d] outline-none bg-white cursor-pointer transition"
+                  >
+                    <option value="ON_TIME">ON_TIME - Đúng giờ</option>
+                    <option value="DELAYED">DELAYED - Trễ giờ</option>
+                    <option value="EARLY">EARLY - Chạy sớm</option>
+                    <option value="COMPLETED">COMPLETED - Đã ga cuối</option>
+                    <option value="CANCELLED">CANCELLED - Đã hủy chuyến</option>
+                  </select>
+                </div>
+
+                {/* Form Actions */}
+                <div className="flex gap-2 pt-3 border-t border-[#bec7d4]/10 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseTrackingModal}
+                    disabled={updatingTracking}
+                    className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all border-none cursor-pointer disabled:opacity-50"
+                  >
+                    Đóng lại
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingTracking}
+                    className="flex-1 py-3 rounded-xl bg-[#00629d] hover:bg-[#00527f] text-white text-xs font-bold transition-all border-none cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-55"
+                  >
+                    {updatingTracking ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-3.5 w-3.5" />
+                        Lưu cập nhật
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

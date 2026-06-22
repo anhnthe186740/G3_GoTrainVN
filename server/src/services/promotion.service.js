@@ -7,6 +7,27 @@ function httpError(statusCode, message) {
   return error;
 }
 
+function parseDateWithTimezone(dateStr, timePart = "00:00:00") {
+  if (!dateStr) return null;
+  const str = String(dateStr);
+  if (str.includes("T")) {
+    return new Date(str);
+  }
+  return new Date(`${str}T${timePart}+07:00`);
+}
+
+function getVNMonthAndDay(date) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "numeric",
+    month: "numeric",
+  });
+  const parts = formatter.formatToParts(date);
+  const day = parseInt(parts.find((p) => p.type === "day").value, 10);
+  const month = parseInt(parts.find((p) => p.type === "month").value, 10);
+  return { day, month };
+}
+
 /**
  * Validates a voucher code against constraints (active status, validity dates, budget limit, order min).
  */
@@ -86,14 +107,15 @@ export async function validateVoucher(voucherCode, subtotal, userId = null) {
  * Checks for automatic promotions matching the trainId or routeId of the schedules in a booking session.
  * Automatically picks the best promotion (largest discount) that has enough remaining budget.
  */
-export async function findBestPromotion(scheduleIds, subtotal) {
-  if (!scheduleIds || scheduleIds.length === 0) {
+export async function findBestPromotion(scheduleInputs, globalSubtotal) {
+  if (!scheduleInputs || scheduleInputs.length === 0) {
     return { promotion: null, discountAmount: 0 };
   }
 
   const now = new Date();
 
   // 1. Fetch matching schedules
+  const scheduleIds = scheduleInputs.map((s) => s.scheduleId);
   const schedules = await prisma.schedule.findMany({
     where: { id: { in: scheduleIds } },
     select: { id: true, routeId: true, trainId: true },
@@ -102,6 +124,8 @@ export async function findBestPromotion(scheduleIds, subtotal) {
   if (schedules.length === 0) {
     return { promotion: null, discountAmount: 0 };
   }
+
+  const scheduleDetailMap = new Map(schedules.map((s) => [s.id, s]));
 
   // 2. Fetch active promotions
   const activePromotions = await prisma.promotion.findMany({
@@ -126,25 +150,55 @@ export async function findBestPromotion(scheduleIds, subtotal) {
       continue;
     }
 
-    // Check if the promotion matches any of the schedules' routes or trains
-    const matches = schedules.some((schedule) => {
+    let promoDiscountForBooking = 0;
+    let hasMatch = false;
+
+    for (const input of scheduleInputs) {
+      const schedule = scheduleDetailMap.get(input.scheduleId);
+      if (!schedule) continue;
+
       const routeMatch =
         promo.routeIds.length === 0 ||
         promo.routeIds.includes(schedule.routeId);
       const trainMatch =
         promo.trainIds.length === 0 ||
         promo.trainIds.includes(schedule.trainId);
-      return routeMatch && trainMatch;
-    });
 
-    if (!matches) continue;
+      if (routeMatch && trainMatch) {
+        hasMatch = true;
+        if (promo.discountType === "PERCENTAGE") {
+          promoDiscountForBooking += (input.amount * promo.discountValue) / 100;
+        } else if (promo.discountType === "FREE_UPGRADE") {
+          promoDiscountForBooking += input.upgradeSavings || 0;
+        }
+      }
+    }
 
-    // Calculate discount amount
+    if (!hasMatch) continue;
+
     let discount = 0;
-    if (promo.discountType === "PERCENTAGE") {
-      discount = (subtotal * promo.discountValue) / 100;
+    if (
+      promo.discountType === "PERCENTAGE" ||
+      promo.discountType === "FREE_UPGRADE"
+    ) {
+      discount = promoDiscountForBooking;
     } else {
-      discount = promo.discountValue;
+      // FIXED_AMOUNT: apply once per booking, but capped at matching schedules amount sum
+      const matchingSubtotal = scheduleInputs
+        .filter((input) => {
+          const schedule = scheduleDetailMap.get(input.scheduleId);
+          if (!schedule) return false;
+          const routeMatch =
+            promo.routeIds.length === 0 ||
+            promo.routeIds.includes(schedule.routeId);
+          const trainMatch =
+            promo.trainIds.length === 0 ||
+            promo.trainIds.includes(schedule.trainId);
+          return routeMatch && trainMatch;
+        })
+        .reduce((sum, input) => sum + input.amount, 0);
+
+      discount = Math.min(promo.discountValue, matchingSubtotal);
     }
 
     // Check if the discount fits in remaining budget
@@ -153,7 +207,7 @@ export async function findBestPromotion(scheduleIds, subtotal) {
       discount = Math.min(discount, remainingBudget);
     }
 
-    discount = Math.round(Math.min(discount, subtotal));
+    discount = Math.round(Math.min(discount, globalSubtotal));
 
     if (discount > bestDiscount) {
       bestDiscount = discount;
@@ -269,8 +323,8 @@ export async function createVoucher(data, adminContext) {
       maxDiscountAmount: data.maxDiscountAmount
         ? Number(data.maxDiscountAmount)
         : null,
-      validFrom: new Date(data.validFrom),
-      validTo: new Date(data.validTo),
+      validFrom: parseDateWithTimezone(data.validFrom, "00:00:00"),
+      validTo: parseDateWithTimezone(data.validTo, "23:59:59"),
       active: data.active !== false,
       isPublic: data.isPublic !== false,
     },
@@ -332,8 +386,12 @@ export async function updateVoucher(id, data, adminContext) {
             ? Number(data.maxDiscountAmount)
             : null
           : existing.maxDiscountAmount,
-      validFrom: data.validFrom ? new Date(data.validFrom) : existing.validFrom,
-      validTo: data.validTo ? new Date(data.validTo) : existing.validTo,
+      validFrom: data.validFrom
+        ? parseDateWithTimezone(data.validFrom, "00:00:00")
+        : existing.validFrom,
+      validTo: data.validTo
+        ? parseDateWithTimezone(data.validTo, "23:59:59")
+        : existing.validTo,
       active:
         data.active !== undefined ? Boolean(data.active) : existing.active,
       isPublic:
@@ -394,8 +452,8 @@ export async function createPromotion(data, adminContext) {
       discountValue: Number(data.discountValue),
       routeIds: Array.isArray(data.routeIds) ? data.routeIds : [],
       trainIds: Array.isArray(data.trainIds) ? data.trainIds : [],
-      validFrom: new Date(data.validFrom),
-      validTo: new Date(data.validTo),
+      validFrom: parseDateWithTimezone(data.validFrom, "00:00:00"),
+      validTo: parseDateWithTimezone(data.validTo, "23:59:59"),
       maxBudget: data.maxBudget ? Number(data.maxBudget) : null,
       status: data.status || "ACTIVE",
     },
@@ -446,8 +504,12 @@ export async function updatePromotion(id, data, adminContext) {
       trainIds: Array.isArray(data.trainIds)
         ? data.trainIds
         : existing.trainIds,
-      validFrom: data.validFrom ? new Date(data.validFrom) : existing.validFrom,
-      validTo: data.validTo ? new Date(data.validTo) : existing.validTo,
+      validFrom: data.validFrom
+        ? parseDateWithTimezone(data.validFrom, "00:00:00")
+        : existing.validFrom,
+      validTo: data.validTo
+        ? parseDateWithTimezone(data.validTo, "23:59:59")
+        : existing.validTo,
       maxBudget:
         data.maxBudget !== undefined
           ? data.maxBudget
@@ -599,13 +661,13 @@ export async function triggerBirthdayVouchers() {
     },
   });
 
-  const today = new Date();
-  const todayDay = today.getDate();
-  const todayMonth = today.getMonth();
+  const todayParts = getVNMonthAndDay(new Date());
 
   const birthdayUsers = allUsers.filter((u) => {
-    const dob = new Date(u.dateOfBirth);
-    return dob.getDate() === todayDay && dob.getMonth() === todayMonth;
+    const dobParts = getVNMonthAndDay(new Date(u.dateOfBirth));
+    return (
+      dobParts.day === todayParts.day && dobParts.month === todayParts.month
+    );
   });
 
   const processed = [];

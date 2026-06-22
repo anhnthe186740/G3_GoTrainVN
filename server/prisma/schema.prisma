@@ -42,11 +42,11 @@ model User {
   seatHoldSessions      SeatHoldSession[]
   seatHolds             SeatHold[]
   approvedCancellations CancellationRequest[]
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  isActive              Boolean   @default(true)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  isActive              Boolean               @default(true)
   lockReason            String?
-  deletedAt             DateTime?  // Soft delete
+  deletedAt             DateTime? // Soft delete
   lastLogin             DateTime?
   resetPasswordToken    String?
   resetPasswordExpires  DateTime?
@@ -185,25 +185,25 @@ model Seat {
 // ============================================
 
 model Station {
-  id               String         @id @default(auto()) @map("_id") @db.ObjectId
-  stationCode      String         @unique // HAN, SGN, DN, etc.
-  stationName      String
-  city             String
-  province         String
-  country          String         @default("Vietnam")
-  latitude         Float?
-  longitude        Float?
-  isActive         Boolean        @default(true)
-  schedulesAsStart Schedule[]     @relation("startStation")
-  schedulesAsEnd   Schedule[]     @relation("endStation")
-  scheduleStops    ScheduleStop[]
-  routesAsStart    Route[]        @relation("routeStart")
-  routesAsEnd      Route[]        @relation("routeEnd")
-  bookingsFrom     Booking[]      @relation("BookingFromStation")
-  bookingsTo       Booking[]      @relation("BookingToStation")
-  bookingsReturnFrom Booking[]    @relation("BookingReturnFromStation")
-  bookingsReturnTo   Booking[]    @relation("BookingReturnToStation")
-  createdAt        DateTime       @default(now())
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  stationCode        String         @unique // HAN, SGN, DN, etc.
+  stationName        String
+  city               String
+  province           String
+  country            String         @default("Vietnam")
+  latitude           Float?
+  longitude          Float?
+  isActive           Boolean        @default(true)
+  schedulesAsStart   Schedule[]     @relation("startStation")
+  schedulesAsEnd     Schedule[]     @relation("endStation")
+  scheduleStops      ScheduleStop[]
+  routesAsStart      Route[]        @relation("routeStart")
+  routesAsEnd        Route[]        @relation("routeEnd")
+  bookingsFrom       Booking[]      @relation("BookingFromStation")
+  bookingsTo         Booking[]      @relation("BookingToStation")
+  bookingsReturnFrom Booking[]      @relation("BookingReturnFromStation")
+  bookingsReturnTo   Booking[]      @relation("BookingReturnToStation")
+  createdAt          DateTime       @default(now())
 
   @@index([city])
 }
@@ -296,7 +296,6 @@ model RouteTemplate {
   @@index([isActive])
 }
 
-
 // ============================================
 // 4. PRICING & DISCOUNT ENTITIES
 // ============================================
@@ -331,6 +330,33 @@ model PricingPolicy {
   @@index([routeId])
   @@index([scheduleId])
   @@index([active])
+  @@index([effectiveFrom])
+}
+
+model TicketType {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  code             String    @unique
+  name             String
+  shortLabel       String?
+  description      String?
+  discountType     String    @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT, FREE
+  discountValue    Float     @default(0) @db.Double
+  minAge           Int?
+  maxAgeExclusive  Int?
+  seatMode         String    @default("REQUIRED") // REQUIRED, NOT_ALLOWED, OPTIONAL
+  publicSelectable Boolean   @default(true)
+  autoApply        Boolean   @default(false)
+  requiresDocument Boolean   @default(true)
+  requiresStudent  Boolean   @default(false)
+  priority         Int       @default(100)
+  active           Boolean   @default(true)
+  effectiveFrom    DateTime  @default(now())
+  effectiveTo      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([active])
+  @@index([priority])
   @@index([effectiveFrom])
 }
 
@@ -382,28 +408,28 @@ model Promotion {
 // ============================================
 
 model Booking {
-  id               String          @id @default(auto()) @map("_id") @db.ObjectId
-  bookingCode      String          @unique
-  userId           String?         @db.ObjectId
-  user             User?           @relation(fields: [userId], references: [id])
-  guestToken       String?
-  scheduleId       String          @db.ObjectId
-  schedule         Schedule        @relation("BookingSchedule", fields: [scheduleId], references: [id])
-  fromStationId    String?         @db.ObjectId
-  fromStation      Station?        @relation("BookingFromStation", fields: [fromStationId], references: [id])
-  toStationId      String?         @db.ObjectId
-  toStation        Station?        @relation("BookingToStation", fields: [toStationId], references: [id])
-  passengers       Passenger[]
-  bookingDetails   BookingDetail[]
-  voucherId        String?         @db.ObjectId
-  voucher          Voucher?        @relation(fields: [voucherId], references: [id])
-  bookingType      String // ONE_WAY, ROUND_TRIP
-  returnScheduleId String?         @db.ObjectId
-  returnSchedule   Schedule?       @relation("BookingReturnSchedule", fields: [returnScheduleId], references: [id])
-  returnFromStationId String?       @db.ObjectId
-  returnFromStation   Station?      @relation("BookingReturnFromStation", fields: [returnFromStationId], references: [id])
-  returnToStationId   String?       @db.ObjectId
-  returnToStation     Station?      @relation("BookingReturnToStation", fields: [returnToStationId], references: [id])
+  id                  String          @id @default(auto()) @map("_id") @db.ObjectId
+  bookingCode         String          @unique
+  userId              String?         @db.ObjectId
+  user                User?           @relation(fields: [userId], references: [id])
+  guestToken          String?
+  scheduleId          String          @db.ObjectId
+  schedule            Schedule        @relation("BookingSchedule", fields: [scheduleId], references: [id])
+  fromStationId       String?         @db.ObjectId
+  fromStation         Station?        @relation("BookingFromStation", fields: [fromStationId], references: [id])
+  toStationId         String?         @db.ObjectId
+  toStation           Station?        @relation("BookingToStation", fields: [toStationId], references: [id])
+  passengers          Passenger[]
+  bookingDetails      BookingDetail[]
+  voucherId           String?         @db.ObjectId
+  voucher             Voucher?        @relation(fields: [voucherId], references: [id])
+  bookingType         String // ONE_WAY, ROUND_TRIP
+  returnScheduleId    String?         @db.ObjectId
+  returnSchedule      Schedule?       @relation("BookingReturnSchedule", fields: [returnScheduleId], references: [id])
+  returnFromStationId String?         @db.ObjectId
+  returnFromStation   Station?        @relation("BookingReturnFromStation", fields: [returnFromStationId], references: [id])
+  returnToStationId   String?         @db.ObjectId
+  returnToStation     Station?        @relation("BookingReturnToStation", fields: [returnToStationId], references: [id])
 
   // Pricing
   totalPassengers Int
@@ -413,16 +439,16 @@ model Booking {
   totalAmount     Float @db.Double
 
   // Payment
-  paymentMethod  String // WALLET, CARD, BANK_TRANSFER
-  paymentStatus  String                  @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
-  paymentId      String? // External payment gateway ID (encrypted)
-  payosOrderCode String?
+  paymentMethod      String // WALLET, CARD, BANK_TRANSFER
+  paymentStatus      String                  @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
+  paymentId          String? // External payment gateway ID (encrypted)
+  payosOrderCode     String?
   payosPaymentLinkId String?
-  payosCheckoutUrl String?
-  payosQrCode String?
-  payosReference String?
-  paidAt         DateTime?
-  paymentHistory BookingPaymentHistory[]
+  payosCheckoutUrl   String?
+  payosQrCode        String?
+  payosReference     String?
+  paidAt             DateTime?
+  paymentHistory     BookingPaymentHistory[]
 
   // Booking status
   status            String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED, REFUNDED, COMPLETED
@@ -560,13 +586,20 @@ model CancellationRequest {
   passengerId String    @unique @db.ObjectId
   passenger   Passenger @relation(fields: [passengerId], references: [id])
 
-  status          String        @default("PENDING") // PENDING, APPROVED, REJECTED
-  requestReason   String?
-  refundReason    RefundReason?
-  refundAmount    Float?        @db.Double
-  approvedBy      String?       @db.ObjectId
-  approvedByAdmin User?         @relation(fields: [approvedBy], references: [id]) // Admin who approved
-  approvedAt      DateTime?
+  status              String        @default("PENDING") // PENDING, APPROVED, REJECTED
+  requesterType       String? // REGISTERED, GUEST
+  requestReason       String?
+  passengerIds        String[]      @default([])
+  refundMethod        String?       @default("WALLET")
+  refundBankName      String?
+  refundBankAccount   String?
+  refundAccountHolder String?
+  rejectionReason     String?
+  refundReason        RefundReason?
+  refundAmount        Float?        @db.Double
+  approvedBy          String?       @db.ObjectId
+  approvedByAdmin     User?         @relation(fields: [approvedBy], references: [id]) // Admin who approved
+  approvedAt          DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

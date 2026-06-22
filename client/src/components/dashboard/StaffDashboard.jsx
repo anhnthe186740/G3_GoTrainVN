@@ -12,7 +12,7 @@ const SIDEBAR = [
   { label: "Đặt vé tại quầy", icon: "point_of_sale" },
   { label: "Soát vé & In vé", icon: "confirmation_number" },
   { label: "Soát vé (Quét QR)", icon: "qr_code_scanner" },
-  { label: "Báo trễ / Sự cố", icon: "warning" },
+  { label: "Điều hành chuyến", icon: "warning" },
   { label: "Tra cứu Booking", icon: "manage_search" },
 ];
 
@@ -151,7 +151,7 @@ export function StaffDashboard() {
     if (active === "Đặt vé tại quầy") return <StaffDirectBookingPanel />;
     if (active === "Soát vé & In vé") return <StaffTicketPrintPanel />;
     if (active === "Soát vé (Quét QR)") return <StaffTicketCheckInPanel />;
-    if (active === "Báo trễ / Sự cố") return <StaffDelayReportPanel />;
+    if (active === "Điều hành chuyến") return <StaffDelayReportPanel />;
     if (active === "Tra cứu Booking") return <StaffBookingLookup />;
     return (
       <StaffOverview

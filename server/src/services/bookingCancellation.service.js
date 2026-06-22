@@ -58,6 +58,42 @@ export function normalizeRefundMethod(refundMethod) {
   return method === "BANK" ? "BANK_TRANSFER" : method;
 }
 
+export function normalizeGuestBankInfo(bankInfo = {}) {
+  const normalized = {
+    bankName: String(bankInfo.bankName || "").trim(),
+    bankAccount: String(bankInfo.bankAccount || "").replace(/\s/g, ""),
+    accountHolder: String(bankInfo.accountHolder || "").trim(),
+  };
+  if (
+    !normalized.bankName ||
+    !normalized.bankAccount ||
+    !normalized.accountHolder
+  ) {
+    throw httpError(
+      400,
+      "Khách vãng lai phải cung cấp đầy đủ ngân hàng, số tài khoản và tên chủ tài khoản.",
+    );
+  }
+  if (!/^\d{6,20}$/.test(normalized.bankAccount)) {
+    throw httpError(400, "Số tài khoản nhận hoàn tiền không hợp lệ.");
+  }
+  return normalized;
+}
+
+export function cancellationRequesterType(request = {}) {
+  if (["REGISTERED", "GUEST"].includes(request.requesterType)) {
+    return request.requesterType;
+  }
+  if (
+    request.refundBankAccount ||
+    request.refundMethod === "BANK_TRANSFER" ||
+    !request.booking?.userId
+  ) {
+    return "GUEST";
+  }
+  return "REGISTERED";
+}
+
 function activeDetails(passenger) {
   return (passenger.bookingDetails || []).filter((detail) =>
     ACTIVE_BOOKING_DETAIL_STATUSES.includes(detail.status),
@@ -193,7 +229,7 @@ export async function cancelBookingTickets({
   verification,
   bankInfo,
 }) {
-  const method = normalizeRefundMethod(refundMethod);
+  let method = normalizeRefundMethod(refundMethod);
 
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
@@ -233,34 +269,209 @@ export async function cancelBookingTickets({
     0,
   );
   const totalRefundAmount = Math.round(totalOriginalAmount * policy.rate);
-  if (totalRefundAmount <= 0) {
+  if (totalRefundAmount < 0) {
     throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
   }
 
-  if (method === "WALLET" && !booking.userId) {
-    throw httpError(
-      400,
-      "Khách vãng lai không thể nhận hoàn tiền qua ví. Vui lòng chọn chuyển khoản ngân hàng hoặc liên hệ quầy vé.",
-    );
+  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
+  const isGuestRequest = requesterType === "GUEST";
+  const normalizedBankInfo = isGuestRequest
+    ? normalizeGuestBankInfo(bankInfo)
+    : {
+        bankName: bankInfo?.bankName?.trim() || null,
+        bankAccount:
+          String(bankInfo?.bankAccount || "").replace(/\s/g, "") || null,
+        accountHolder: bankInfo?.accountHolder?.trim() || null,
+      };
+  if (isGuestRequest) {
+    method = "BANK_TRANSFER";
   }
 
-  const now = new Date();
-  const refundStatus = method === "BANK_TRANSFER" ? "PENDING" : "COMPLETED";
-  const refundReason =
-    method === "BANK_TRANSFER"
-      ? [
-          reason || "Yêu cầu hủy vé trực tuyến",
-          bankInfo?.bankName ? `Ngân hàng: ${bankInfo.bankName}` : null,
-          bankInfo?.bankAccount ? `STK: ${bankInfo.bankAccount}` : null,
-        ]
-          .filter(Boolean)
-          .join(" | ")
-      : reason || "Yêu cầu hủy vé trực tuyến";
+  const requestReason = reason || "Yêu cầu hủy vé trực tuyến";
 
-  const result = await prisma.$transaction(async (tx) => {
+  const existingRequest = await prisma.cancellationRequest.findUnique({
+    where: { bookingId },
+  });
+  if (existingRequest?.status === "PENDING") {
+    throw httpError(409, "Yêu cầu hủy vé này đang chờ Admin duyệt.");
+  }
+
+  const requestData = {
+    passengerId: selectedPassengerIds[0],
+    passengerIds: selectedPassengerIds,
+    status: "PENDING",
+    requesterType,
+    requestReason,
+    refundAmount: totalRefundAmount,
+    refundMethod: method,
+    refundBankName: normalizedBankInfo.bankName,
+    refundBankAccount: normalizedBankInfo.bankAccount,
+    refundAccountHolder: normalizedBankInfo.accountHolder,
+    rejectionReason: null,
+    approvedBy: null,
+    approvedAt: null,
+  };
+  const request = existingRequest
+    ? await prisma.cancellationRequest.update({
+        where: { id: existingRequest.id },
+        data: requestData,
+      })
+    : await prisma.cancellationRequest.create({
+        data: { bookingId, ...requestData },
+      });
+
+  return {
+    booking,
+    cancellationRequest: request,
+    requestedPassengerIds: selectedPassengerIds,
+    refundMethod: method,
+    refundStatus: "PENDING_APPROVAL",
+    refundAmount: totalRefundAmount,
+    refundPercentage: Math.round(policy.rate * 100),
+    totalOriginalAmount,
+  };
+}
+
+export async function getAdminCancellationRequests({ status, audience } = {}) {
+  const allowedStatuses = ["PENDING", "APPROVED", "REJECTED"];
+  const normalizedStatus = String(status || "").toUpperCase();
+  const where = allowedStatuses.includes(normalizedStatus)
+    ? { status: normalizedStatus }
+    : {};
+
+  const requests = await prisma.cancellationRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: {
+      passenger: true,
+      approvedByAdmin: {
+        select: { id: true, fullName: true, email: true },
+      },
+      booking: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
+          schedule: {
+            include: { startStation: true, endStation: true, train: true },
+          },
+          fromStation: true,
+          toStation: true,
+          passengers: { include: { bookingDetails: true } },
+        },
+      },
+    },
+  });
+
+  const normalizedAudience = String(audience || "").toUpperCase();
+  if (normalizedAudience === "REGISTERED") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "REGISTERED",
+    );
+  }
+  if (normalizedAudience === "GUEST") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "GUEST",
+    );
+  }
+  return requests;
+}
+
+export async function reviewCancellationRequest({
+  requestId,
+  action,
+  adminId,
+  rejectionReason,
+}) {
+  const decision = String(action || "").toUpperCase();
+  if (!["APPROVE", "REJECT"].includes(decision)) {
+    throw httpError(400, "Quyết định duyệt không hợp lệ.");
+  }
+
+  const request = await prisma.cancellationRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      booking: {
+        include: {
+          schedule: true,
+          passengers: {
+            include: { bookingDetails: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+    },
+  });
+  if (!request) throw httpError(404, "Không tìm thấy yêu cầu hủy vé.");
+  if (request.status !== "PENDING") {
+    throw httpError(409, "Yêu cầu này đã được xử lý trước đó.");
+  }
+
+  if (decision === "REJECT") {
+    return prisma.cancellationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: "REJECTED",
+        rejectionReason: rejectionReason?.trim() || "Không đủ điều kiện hủy vé",
+      },
+      include: { booking: true },
+    });
+  }
+
+  const booking = request.booking;
+  if (!bookingIsPaidAndCancelable(booking)) {
+    throw httpError(409, "Đặt vé không còn ở trạng thái có thể hủy.");
+  }
+
+  const passengerIds =
+    request.passengerIds?.length > 0
+      ? request.passengerIds
+      : [request.passengerId];
+  const selectedPassengers = selectedPassengersForCancellation(
+    booking,
+    passengerIds,
+  );
+  const selectedPassengerIds = selectedPassengers.map(({ id }) => id);
+  const totalOriginalAmount = selectedPassengers.reduce(
+    (sum, passenger) => sum + ticketAmount(passenger),
+    0,
+  );
+  const policy = refundPolicy(
+    booking.schedule.departureTime,
+    request.createdAt,
+  );
+  if (!policy.allowed) throw httpError(409, policy.message);
+
+  const refundAmount =
+    Number(request.refundAmount) ||
+    Math.round(totalOriginalAmount * policy.rate);
+  const isGuestRequest = cancellationRequesterType(request) === "GUEST";
+  if (
+    isGuestRequest &&
+    (!request.refundBankName ||
+      !request.refundBankAccount ||
+      !request.refundAccountHolder)
+  ) {
+    throw httpError(
+      409,
+      "Yêu cầu của khách vãng lai chưa có đủ thông tin tài khoản hoàn tiền.",
+    );
+  }
+  const method = isGuestRequest
+    ? "BANK_TRANSFER"
+    : request.refundMethod || "WALLET";
+  const refundStatus = method === "WALLET" ? "COMPLETED" : "PENDING";
+  const now = new Date();
+
+  return prisma.$transaction(async (tx) => {
     await tx.bookingDetail.updateMany({
       where: {
-        bookingId,
+        bookingId: booking.id,
         passengerId: { in: selectedPassengerIds },
         status: { in: ACTIVE_BOOKING_DETAIL_STATUSES },
       },
@@ -269,31 +480,30 @@ export async function cancelBookingTickets({
 
     const remainingActiveDetails = await tx.bookingDetail.count({
       where: {
-        bookingId,
+        bookingId: booking.id,
         status: { in: ACTIVE_BOOKING_DETAIL_STATUSES },
       },
     });
-
     const fullyCancelled = remainingActiveDetails === 0;
     const updatedBooking = await tx.booking.update({
-      where: { id: bookingId },
+      where: { id: booking.id },
       data: {
         status: fullyCancelled ? "CANCELLED" : "CONFIRMED",
         paymentStatus:
           fullyCancelled && refundStatus === "COMPLETED"
             ? "REFUNDED"
             : booking.paymentStatus,
-        refundAmount: Number(booking.refundAmount || 0) + totalRefundAmount,
-        cancelReason: refundReason,
+        refundAmount: Number(booking.refundAmount || 0) + refundAmount,
+        cancelReason: request.requestReason,
         cancelledAt: fullyCancelled ? now : booking.cancelledAt,
       },
     });
 
     await tx.bookingPaymentHistory.create({
       data: {
-        bookingId,
+        bookingId: booking.id,
         paymentMethod: `REFUND_${method}`,
-        amount: totalRefundAmount,
+        amount: refundAmount,
         status: refundStatus === "COMPLETED" ? "SUCCESS" : "PENDING",
         transactionId:
           refundStatus === "COMPLETED"
@@ -302,22 +512,21 @@ export async function cancelBookingTickets({
         attemptNumber: 1,
       },
     });
-
     await tx.refund.upsert({
-      where: { bookingId },
+      where: { bookingId: booking.id },
       create: {
-        bookingId,
-        refundAmount: totalRefundAmount,
+        bookingId: booking.id,
+        refundAmount,
         refundMethod: method,
         status: refundStatus,
-        reason: refundReason,
+        reason: request.requestReason,
         processedAt: refundStatus === "COMPLETED" ? now : null,
       },
       update: {
-        refundAmount: { increment: totalRefundAmount },
+        refundAmount: { increment: refundAmount },
         refundMethod: method,
         status: refundStatus,
-        reason: refundReason,
+        reason: request.requestReason,
         processedAt: refundStatus === "COMPLETED" ? now : null,
       },
     });
@@ -330,15 +539,15 @@ export async function cancelBookingTickets({
       });
       await tx.wallet.update({
         where: { id: wallet.id },
-        data: { balance: { increment: totalRefundAmount } },
+        data: { balance: { increment: refundAmount } },
       });
       await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
           type: "REFUND",
-          amount: totalRefundAmount,
+          amount: refundAmount,
           description: `Hoàn tiền vé ${booking.bookingCode}`,
-          relatedBookingId: bookingId,
+          relatedBookingId: booking.id,
           status: "COMPLETED",
         },
       });
@@ -350,17 +559,18 @@ export async function cancelBookingTickets({
       totalOriginalAmount,
       booking.id,
     );
+    const updatedRequest = await tx.cancellationRequest.update({
+      where: { id: request.id },
+      data: { status: "APPROVED", approvedBy: adminId, approvedAt: now },
+    });
 
-    return updatedBooking;
+    return {
+      cancellationRequest: updatedRequest,
+      booking: updatedBooking,
+      refundAmount,
+      refundMethod: method,
+      refundStatus,
+      cancelledPassengerIds: selectedPassengerIds,
+    };
   });
-
-  return {
-    booking: result,
-    cancelledPassengerIds: selectedPassengerIds,
-    refundMethod: method,
-    refundStatus,
-    refundAmount: totalRefundAmount,
-    refundPercentage: Math.round(policy.rate * 100),
-    totalOriginalAmount,
-  };
 }

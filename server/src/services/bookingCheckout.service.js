@@ -1,6 +1,10 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
-import { calculateFare, getConfiguration } from "./pricing.service.js";
+import {
+  calculateFare,
+  getConfiguration,
+  getEffectiveTicketTypes,
+} from "./pricing.service.js";
 import { getJourney, getSession } from "./seatSelection.service.js";
 import {
   createPayosPaymentRequest,
@@ -16,13 +20,6 @@ import {
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
 const PAYMENT_METHODS = ["BANK_QR", "WALLET", "CASH"];
-const FARE_DISCOUNTS = {
-  ADULT: 0,
-  CHILD_6_UNDER_10: 25,
-  CHILD_UNDER_6: 100,
-  STUDENT: 10,
-  SENIOR: 15,
-};
 
 function httpError(statusCode, message, details = null) {
   const error = new Error(message);
@@ -67,6 +64,7 @@ export function calculatePassengerAge(dateOfBirth, today = new Date()) {
 }
 
 function passengerTypeForAge(age, requestedType, passenger = {}) {
+  if (age == null) return requestedType;
   if (age < 10) return "CHILD";
   if (age >= 60) return "SENIOR";
   if (
@@ -79,58 +77,141 @@ function passengerTypeForAge(age, requestedType, passenger = {}) {
   return "ADULT";
 }
 
-function fallbackDiscountForType(passengerType) {
-  if (passengerType === "CHILD") {
-    return {
-      discountPercentage: FARE_DISCOUNTS.CHILD_6_UNDER_10,
-      discountReason: "CHILD_6_UNDER_10",
-    };
-  }
-  if (passengerType === "SENIOR") {
-    return {
-      discountPercentage: FARE_DISCOUNTS.SENIOR,
-      discountReason: "SENIOR_60_PLUS",
-    };
-  }
-  if (passengerType === "STUDENT") {
-    return {
-      discountPercentage: FARE_DISCOUNTS.STUDENT,
-      discountReason: "STUDENT",
-    };
-  }
-  return { discountPercentage: FARE_DISCOUNTS.ADULT, discountReason: null };
+function fallbackTicketTypes() {
+  return [
+    {
+      code: "ADULT",
+      discountType: "PERCENTAGE",
+      discountValue: 0,
+      minAge: 10,
+      maxAgeExclusive: 60,
+      seatMode: "REQUIRED",
+      autoApply: false,
+      requiresDocument: true,
+      requiresStudent: false,
+    },
+    {
+      code: "CHILD_UNDER_6",
+      discountType: "FREE",
+      discountValue: 100,
+      minAge: 0,
+      maxAgeExclusive: 6,
+      seatMode: "NOT_ALLOWED",
+      autoApply: true,
+      requiresDocument: false,
+      requiresStudent: false,
+    },
+    {
+      code: "CHILD",
+      discountType: "PERCENTAGE",
+      discountValue: 25,
+      minAge: 6,
+      maxAgeExclusive: 10,
+      seatMode: "REQUIRED",
+      autoApply: true,
+      requiresDocument: false,
+      requiresStudent: false,
+    },
+    {
+      code: "SENIOR",
+      discountType: "PERCENTAGE",
+      discountValue: 15,
+      minAge: 60,
+      maxAgeExclusive: null,
+      seatMode: "REQUIRED",
+      autoApply: true,
+      requiresDocument: true,
+      requiresStudent: false,
+    },
+    {
+      code: "STUDENT",
+      discountType: "PERCENTAGE",
+      discountValue: 10,
+      minAge: 10,
+      maxAgeExclusive: null,
+      seatMode: "REQUIRED",
+      autoApply: false,
+      requiresDocument: true,
+      requiresStudent: true,
+    },
+  ];
 }
 
-export function passengerDiscountPolicy(age, passengerType) {
-  if (age != null && age < 6) {
-    return {
-      discountPercentage: FARE_DISCOUNTS.CHILD_UNDER_6,
-      discountReason: "CHILD_UNDER_6_FREE",
-      seatRequired: false,
-    };
+function ageMatchesTicketType(ticketType, age) {
+  if (age == null) return false;
+  if (ticketType.minAge != null && age < ticketType.minAge) return false;
+  if (ticketType.maxAgeExclusive != null && age >= ticketType.maxAgeExclusive) {
+    return false;
   }
-  if (age != null && age < 10) {
-    return {
-      discountPercentage: FARE_DISCOUNTS.CHILD_6_UNDER_10,
-      discountReason: "CHILD_6_UNDER_10",
-      seatRequired: true,
-    };
+  return true;
+}
+
+function discountPolicyFromTicketType(ticketType) {
+  const discountType = String(
+    ticketType.discountType || "PERCENTAGE",
+  ).toUpperCase();
+  const discountValue = Number(ticketType.discountValue || 0);
+  const discountPercentage =
+    discountType === "FREE"
+      ? 100
+      : discountType === "PERCENTAGE"
+        ? discountValue
+        : 0;
+  return {
+    discountType,
+    discountValue: discountType === "FREE" ? 100 : discountValue,
+    discountPercentage,
+    discountReason: ticketType.code,
+    seatRequired: ticketType.seatMode !== "NOT_ALLOWED",
+  };
+}
+
+function resolveTicketType(
+  age,
+  requestedType,
+  passenger = {},
+  ticketTypes = [],
+) {
+  const available = ticketTypes.length ? ticketTypes : fallbackTicketTypes();
+  const byCode = new Map(available.map((type) => [type.code, type]));
+  const requestedCode = String(requestedType || "ADULT").toUpperCase();
+  // Auto-apply theo tuổi chỉ khi đã biết tuổi hành khách
+  const autoMatch =
+    age != null &&
+    available.find((type) => type.autoApply && ageMatchesTicketType(type, age));
+  if (autoMatch) return autoMatch;
+
+  const requested = byCode.get(requestedCode);
+  if (
+    requested &&
+    (age == null ||
+      (requested.minAge == null && requested.maxAgeExclusive == null) ||
+      ageMatchesTicketType(requested, age))
+  ) {
+    if (
+      requested.requiresStudent &&
+      (String(passenger.studentLevel || "").toUpperCase() === "POSTGRADUATE" ||
+        passenger.isPostgraduate === true)
+    ) {
+      return byCode.get("ADULT") || fallbackTicketTypes()[0];
+    }
+    return requested;
   }
-  if (age != null && age >= 60) {
-    return {
-      discountPercentage: FARE_DISCOUNTS.SENIOR,
-      discountReason: "SENIOR_60_PLUS",
-      seatRequired: true,
-    };
+
+  if (PASSENGER_TYPES.includes(requestedCode)) {
+    const legacyType = passengerTypeForAge(age, requestedCode, passenger);
+    return (
+      byCode.get(legacyType) || byCode.get("ADULT") || fallbackTicketTypes()[0]
+    );
   }
-  return { ...fallbackDiscountForType(passengerType), seatRequired: true };
+  return byCode.get("ADULT") || fallbackTicketTypes()[0];
 }
 
 export function normalizePassenger(
   passenger,
   index,
   today = new Date(),
-  { requireEmail = true } = {},
+  { requireEmail = true, ticketTypes = [] } = {},
 ) {
   const label = `Hành khách ${index + 1}`;
   const fullName = String(passenger.fullName || "").trim();
@@ -146,19 +227,31 @@ export function normalizePassenger(
   if (age == null) {
     throw httpError(400, `${label}: ngày sinh chưa hợp lệ.`);
   }
-  if (requestedTypeValue && !PASSENGER_TYPES.includes(requestedTypeValue)) {
+  const knownTypes = new Set([
+    ...PASSENGER_TYPES,
+    ...ticketTypes.map((type) => type.code),
+  ]);
+  if (requestedTypeValue && !knownTypes.has(requestedTypeValue)) {
     throw httpError(400, `${label}: loại hành khách chưa hợp lệ.`);
   }
 
   const requestedType = requestedTypeValue || "ADULT";
-  const passengerType = passengerTypeForAge(age, requestedType, passenger);
-  const discountPolicy = passengerDiscountPolicy(age, passengerType);
+  const ticketType = resolveTicketType(
+    age,
+    requestedType,
+    passenger,
+    ticketTypes,
+  );
+  const passengerType = ticketType.code;
+  const discountPolicy = discountPolicyFromTicketType(ticketType);
   const seatRequired =
-    age < 6
-      ? !(passenger.seatRequired === false || passenger.sharingSeat === true)
-      : true;
-  if (passengerType === "CHILD") {
-    if (age < 6 && seatRequired) {
+    ticketType.seatMode === "NOT_ALLOWED"
+      ? false
+      : age < 6
+        ? !(passenger.seatRequired === false || passenger.sharingSeat === true)
+        : true;
+  if (!ticketType.requiresDocument) {
+    if (ticketType.seatMode === "NOT_ALLOWED" && seatRequired) {
       throw httpError(
         400,
         `${label}: trẻ dưới 6 tuổi được miễn phí khi ngồi chung ghế với người đi kèm, không đặt ghế riêng.`,
@@ -173,6 +266,9 @@ export function normalizePassenger(
       dateOfBirth,
       passengerType,
       seatRequired,
+      discountType: discountPolicy.discountType,
+      discountValue: discountPolicy.discountValue,
+      discountPercentage: discountPolicy.discountPercentage,
       discountReason: discountPolicy.discountReason,
       ageAtDeparture: age,
     };
@@ -212,6 +308,9 @@ export function normalizePassenger(
     dateOfBirth,
     passengerType,
     seatRequired: true,
+    discountType: discountPolicy.discountType,
+    discountValue: discountPolicy.discountValue,
+    discountPercentage: discountPolicy.discountPercentage,
     discountReason: discountPolicy.discountReason,
     ageAtDeparture: age,
   };
@@ -225,10 +324,13 @@ export function validatePassengerBusinessRules(passengers) {
     throw httpError(400, "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.");
   }
   const hasChild = passengers.some(
-    (passenger) => passenger.passengerType === "CHILD",
+    (passenger) =>
+      passenger.ageAtDeparture != null && passenger.ageAtDeparture < 10,
   );
-  const hasCompanion = passengers.some((passenger) =>
-    ["ADULT", "STUDENT", "SENIOR"].includes(passenger.passengerType),
+  const hasCompanion = passengers.some(
+    (passenger) =>
+      passenger.seatRequired !== false &&
+      !(passenger.ageAtDeparture != null && passenger.ageAtDeparture < 10),
   );
   if (hasChild && !hasCompanion) {
     throw httpError(
@@ -320,24 +422,33 @@ async function departureReferenceForSession(session) {
   return segment.departureTime;
 }
 
-export function normalizeQuotePassenger(passenger, index, referenceDate) {
+export function normalizeQuotePassenger(
+  passenger,
+  index,
+  referenceDate,
+  ticketTypes = [],
+) {
   const requestedTypeValue = String(
     passenger.passengerType || "ADULT",
   ).toUpperCase();
-  const requestedType = PASSENGER_TYPES.includes(requestedTypeValue)
+  const knownTypes = new Set([
+    ...PASSENGER_TYPES,
+    ...ticketTypes.map((type) => type.code),
+  ]);
+  const requestedType = knownTypes.has(requestedTypeValue)
     ? requestedTypeValue
     : "ADULT";
   const age = passenger.dateOfBirth
     ? calculatePassengerAge(passenger.dateOfBirth, referenceDate)
     : null;
-  const passengerType =
-    age == null
-      ? requestedType
-      : passengerTypeForAge(age, requestedType, passenger);
-  const policy =
-    age == null
-      ? { ...fallbackDiscountForType(passengerType), seatRequired: true }
-      : passengerDiscountPolicy(age, passengerType);
+  const ticketType = resolveTicketType(
+    age,
+    requestedType,
+    passenger,
+    ticketTypes,
+  );
+  const passengerType = ticketType.code;
+  const policy = discountPolicyFromTicketType(ticketType);
   const requestsSharedSeat =
     passenger.seatRequired === false || passenger.sharingSeat === true;
   if (requestsSharedSeat && (age == null || age >= 6)) {
@@ -348,7 +459,7 @@ export function normalizeQuotePassenger(passenger, index, referenceDate) {
   }
   const seatRequired = requestsSharedSeat
     ? false
-    : age != null && age < 6
+    : ticketType.seatMode === "NOT_ALLOWED"
       ? false
       : true;
 
@@ -357,27 +468,34 @@ export function normalizeQuotePassenger(passenger, index, referenceDate) {
     passengerType,
     ageAtDeparture: age,
     seatRequired,
+    discountType: policy.discountType,
+    discountValue: policy.discountValue,
     discountPercentage: policy.discountPercentage,
     discountReason: policy.discountReason,
   };
 }
 
-function quotePassengersFromPayload(payload, referenceDate) {
+function quotePassengersFromPayload(payload, referenceDate, ticketTypes = []) {
   if (Array.isArray(payload.passengers)) {
     return payload.passengers.map((passenger, index) =>
-      normalizeQuotePassenger(passenger, index, referenceDate),
+      normalizeQuotePassenger(passenger, index, referenceDate, ticketTypes),
     );
   }
 
   return (payload.passengerTypes || []).map((passengerType, index) => {
     const normalizedType = String(passengerType || "").toUpperCase();
-    if (!PASSENGER_TYPES.includes(normalizedType)) return null;
+    const ticketType = resolveTicketType(null, normalizedType, {}, ticketTypes);
+    if (!ticketType) return null;
+    const policy = discountPolicyFromTicketType(ticketType);
     return {
       passengerIndex: index,
-      passengerType: normalizedType,
+      passengerType: ticketType.code,
       ageAtDeparture: null,
       seatRequired: true,
-      ...fallbackDiscountForType(normalizedType),
+      discountType: policy.discountType,
+      discountValue: policy.discountValue,
+      discountPercentage: policy.discountPercentage,
+      discountReason: policy.discountReason,
     };
   });
 }
@@ -428,6 +546,13 @@ async function resolveVoucher(voucherCode, subtotal, identity) {
   };
 }
 
+function getDowngradedCarriageType(carriageType) {
+  if (carriageType === "AC_SEAT") return "NORMAL_SEAT";
+  if (carriageType === "SLEEPER_6") return "AC_SEAT";
+  if (carriageType === "SLEEPER_4") return "SLEEPER_6";
+  return carriageType;
+}
+
 export async function quoteBooking(
   identity,
   { sessionId, passengerTypes, passengers, voucherCode },
@@ -449,9 +574,11 @@ export async function quoteBooking(
       )
     : [];
   const departureReference = await departureReferenceForSession(session);
+  const ticketTypes = await getEffectiveTicketTypes(departureReference);
   const quotePassengers = quotePassengersFromPayload(
     { passengerTypes, passengers },
     departureReference,
+    ticketTypes,
   );
   const seatedPassengers = quotePassengers.filter(
     (passenger) => passenger && passenger.seatRequired !== false,
@@ -518,12 +645,51 @@ export async function quoteBooking(
         rule.taxPercentage,
       );
       const discountAmount = Math.round(
-        fare.boundedAmount * (passenger.discountPercentage / 100),
+        passenger.discountType === "FIXED_AMOUNT"
+          ? Math.min(fare.boundedAmount, Number(passenger.discountValue || 0))
+          : fare.boundedAmount * (passenger.discountPercentage / 100),
       );
       const afterDiscount = Math.max(0, fare.boundedAmount - discountAmount);
       const taxAmount = Math.round(
         afterDiscount * (Number(rule.taxPercentage || 0) / 100),
       );
+      const finalPrice = afterDiscount + taxAmount;
+
+      // Upgrade logic: calculate target carriage class price if upgraded
+      const downgradedType = getDowngradedCarriageType(hold.carriageType);
+      let upgradeSavings = 0;
+      if (downgradedType !== hold.carriageType) {
+        const upgradedRule =
+          pricing.rules.get(`ADULT:${downgradedType}`) ||
+          pricing.rules.get(`${passenger.passengerType}:${downgradedType}`);
+        if (upgradedRule) {
+          const upgradedFare = calculateFare(
+            { ...upgradedRule, discountPercentage: 0 },
+            pricing.distance,
+            upgradedRule.taxPercentage,
+          );
+          const upgradedDiscountAmount = Math.round(
+            passenger.discountType === "FIXED_AMOUNT"
+              ? Math.min(
+                  upgradedFare.boundedAmount,
+                  Number(passenger.discountValue || 0),
+                )
+              : upgradedFare.boundedAmount *
+                  (passenger.discountPercentage / 100),
+          );
+          const upgradedAfterDiscount = Math.max(
+            0,
+            upgradedFare.boundedAmount - upgradedDiscountAmount,
+          );
+          const upgradedTaxAmount = Math.round(
+            upgradedAfterDiscount *
+              (Number(upgradedRule.taxPercentage || 0) / 100),
+          );
+          const upgradedFinalPrice = upgradedAfterDiscount + upgradedTaxAmount;
+          upgradeSavings = Math.max(0, finalPrice - upgradedFinalPrice);
+        }
+      }
+
       return {
         leg,
         holdId: hold.id,
@@ -535,7 +701,8 @@ export async function quoteBooking(
         basePrice: fare.boundedAmount,
         discountAmount,
         taxAmount,
-        finalPrice: afterDiscount + taxAmount,
+        finalPrice,
+        upgradeSavings,
       };
     });
     return {
@@ -566,14 +733,32 @@ export async function quoteBooking(
   );
   const beforeVoucher = items.reduce((sum, item) => sum + item.total, 0);
 
-  const scheduleIds = [
-    ...new Set(session.holds.map((hold) => hold.scheduleId)),
-  ];
+  // Group inputs by schedule for automatic promotion search
+  const scheduleAmounts = new Map();
+  for (const item of items) {
+    for (const leg of item.legs) {
+      const current = scheduleAmounts.get(leg.scheduleId) || {
+        amount: 0,
+        upgradeSavings: 0,
+      };
+      current.amount += leg.finalPrice;
+      current.upgradeSavings += leg.upgradeSavings || 0;
+      scheduleAmounts.set(leg.scheduleId, current);
+    }
+  }
+  const scheduleInputs = Array.from(scheduleAmounts.entries()).map(
+    ([scheduleId, data]) => ({
+      scheduleId,
+      amount: data.amount,
+      upgradeSavings: data.upgradeSavings,
+    }),
+  );
+
   const { findBestPromotion, validateVoucher } =
     await import("./promotion.service.js");
 
   const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
-    await findBestPromotion(scheduleIds, beforeVoucher);
+    await findBestPromotion(scheduleInputs, beforeVoucher);
 
   const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
 
@@ -622,7 +807,7 @@ async function payosOrderCode() {
     });
     if (!existing) return candidate;
   }
-  throw httpError(500, "Khong the tao ma thanh toan PayOS duy nhat.");
+  throw httpError(500, "Không thể tạo mã thanh toán PayOS duy nhất.");
 }
 
 function payosDescription(orderCode) {
@@ -748,9 +933,11 @@ export async function checkoutBooking(identity, payload) {
     );
   }
   const departureReference = await departureReferenceForSession(session);
+  const ticketTypes = await getEffectiveTicketTypes(departureReference);
   const passengers = payload.passengers.map((passenger, index) =>
     normalizePassenger(passenger, index, departureReference, {
       requireEmail: !isStaffCounter,
+      ticketTypes,
     }),
   );
   validatePassengerBusinessRules(passengers);
@@ -899,8 +1086,13 @@ export async function checkoutBooking(identity, payload) {
     const createdPassengers = [];
     for (const [index, passenger] of passengers.entries()) {
       const primaryLeg = quote.items[index].legs[0];
-      const { seatRequired, ageAtDeparture, discountReason, ...passengerData } =
-        passenger;
+      const { discountReason } = passenger;
+      const passengerData = { ...passenger };
+      delete passengerData.seatRequired;
+      delete passengerData.ageAtDeparture;
+      delete passengerData.discountReason;
+      delete passengerData.discountType;
+      delete passengerData.discountValue;
       const created = await tx.passenger.create({
         data: {
           bookingId: booking.id,

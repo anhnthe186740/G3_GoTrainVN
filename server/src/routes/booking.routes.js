@@ -12,6 +12,8 @@ import {
   getAdminBookings,
   getAdminBookingStats,
   exchangeBooking,
+  listAdminCancellationRequests,
+  decideCancellationRequest,
 } from "../controllers/booking.controller.js";
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -35,6 +37,18 @@ bookingRoutes.get(
   getAdminBookingStats,
 );
 bookingRoutes.get("/admin", authMiddleware, adminOnly, getAdminBookings);
+bookingRoutes.get(
+  "/admin/cancellations",
+  authMiddleware,
+  adminOnly,
+  listAdminCancellationRequests,
+);
+bookingRoutes.patch(
+  "/admin/cancellations/:requestId",
+  authMiddleware,
+  adminOnly,
+  decideCancellationRequest,
+);
 
 bookingRoutes.post("/quote", bookingIdentity, getBookingQuote);
 bookingRoutes.post(

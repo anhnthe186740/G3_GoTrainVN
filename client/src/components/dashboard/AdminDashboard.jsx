@@ -11,7 +11,9 @@ import { AdminPricingPanel } from "./AdminPricingPanel.jsx";
 import { AdminBookingPanel } from "./AdminBookingPanel.jsx";
 import { AdminReportsPanel } from "./AdminReportsPanel.jsx";
 import { AdminPromotionPanel } from "./AdminPromotionPanel.jsx";
+import { AdminCancellationPanel } from "./AdminCancellationPanel.jsx";
 import { AdminAuditLogsPanel } from "./AdminAuditLogsPanel.jsx";
+import { AdminLiveTrackingPanel } from "./AdminLiveTrackingPanel.jsx";
 
 export function AdminDashboard() {
   const { user, clearAuth } = useAuth();
@@ -28,10 +30,12 @@ export function AdminDashboard() {
     { label: "Tổng Quan", icon: "dashboard" },
     { label: "Quản Lý Tuyến", icon: "route" },
     { label: "Lịch Trình", icon: "calendar_month" },
+    { label: "Điều Hành Tàu", icon: "explore" },
     { label: "Quản Lý Tàu", icon: "train" },
     { label: "Giá Vé", icon: "payments" },
     { label: "Khuyến Mãi", icon: "local_offer" },
     { label: "Đặt Vé", icon: "confirmation_number" },
+    { label: "Duyệt Hủy Vé", icon: "approval" },
     { label: "Người Dùng", icon: "group" },
     { label: "Quản Lý Ví", icon: "account_balance_wallet" },
     { label: "Báo Cáo", icon: "analytics" },
@@ -306,16 +310,20 @@ export function AdminDashboard() {
             {activeSidebar === "Giá Vé" && <AdminPricingPanel />}
             {activeSidebar === "Khuyến Mãi" && <AdminPromotionPanel />}
             {activeSidebar === "Đặt Vé" && <AdminBookingPanel />}
+            {activeSidebar === "Duyệt Hủy Vé" && <AdminCancellationPanel />}
             {activeSidebar === "Báo Cáo" && <AdminReportsPanel />}
             {activeSidebar === "Lịch Sử Hệ Thống" && <AdminAuditLogsPanel />}
+            {activeSidebar === "Điều Hành Tàu" && <AdminLiveTrackingPanel />}
 
             {activeSidebar !== "Quản Lý Tuyến" &&
               activeSidebar !== "Lịch Trình" &&
+              activeSidebar !== "Điều Hành Tàu" &&
               activeSidebar !== "Quản Lý Ví" &&
               activeSidebar !== "Quản Lý Tàu" &&
               activeSidebar !== "Giá Vé" &&
               activeSidebar !== "Khuyến Mãi" &&
               activeSidebar !== "Đặt Vé" &&
+              activeSidebar !== "Duyệt Hủy Vé" &&
               activeSidebar !== "Báo Cáo" &&
               activeSidebar !== "Người Dùng" &&
               activeSidebar !== "Lịch Sử Hệ Thống" && (
