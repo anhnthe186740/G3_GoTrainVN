@@ -729,7 +729,8 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
 // ============================================================
 export const updateRouteTemplate = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { departureTimes, bufferMinutes, isActive } = req.body;
+  const { routeId, trainId, departureTimes, bufferMinutes, isActive } =
+    req.body;
 
   const updateData = {};
   if (departureTimes !== undefined && Array.isArray(departureTimes)) {
@@ -740,6 +741,35 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
   }
   if (isActive !== undefined) {
     updateData.isActive = isActive;
+  }
+
+  // Handle routeId or trainId updates with unique constraint verification
+  if (routeId || trainId) {
+    const current = await prisma.routeTemplate.findUnique({
+      where: { id },
+    });
+    if (!current) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy mẫu lịch chạy cần cập nhật." });
+    }
+    const nextRouteId = routeId || current.routeId;
+    const nextTrainId = trainId || current.trainId;
+
+    if (nextRouteId !== current.routeId || nextTrainId !== current.trainId) {
+      const existing = await prisma.routeTemplate.findUnique({
+        where: {
+          routeId_trainId: { routeId: nextRouteId, trainId: nextTrainId },
+        },
+      });
+      if (existing && existing.id !== id) {
+        return res.status(400).json({
+          message: "Mẫu lịch chạy cho Tuyến đường và Tàu này đã tồn tại.",
+        });
+      }
+    }
+    if (routeId) updateData.routeId = routeId;
+    if (trainId) updateData.trainId = trainId;
   }
 
   const template = await prisma.routeTemplate.update({
