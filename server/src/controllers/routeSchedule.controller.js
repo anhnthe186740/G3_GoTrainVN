@@ -34,6 +34,7 @@ export const getTrains = asyncHandler(async (_req, res) => {
       operatingCompany: true,
       totalCarriages: true,
       totalCapacity: true,
+      status: true,
       createdAt: true,
       updatedAt: true,
       maintenance: {
@@ -99,6 +100,7 @@ export const getRoutes = asyncHandler(async (_req, res) => {
     include: {
       startStation: { select: { stationName: true, city: true } },
       endStation: { select: { stationName: true, city: true } },
+      stations: true,
       _count: { select: { schedules: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -387,8 +389,12 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     });
   }
 
-  const durationMs = route.estimatedDuration * 60 * 1000;
-  const bufferMs = parseInt(bufferMinutes) * 60 * 1000;
+  const bufferMins = parseInt(bufferMinutes) || 60;
+  const numStops = route.stations ? route.stations.length : 0;
+  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+
+  const durationMs = totalDurationMins * 60 * 1000;
+  const bufferMs = bufferMins * 60 * 1000;
 
   // 2. Generate all proposed (departure, arrival) pairs for each day in range
   const proposed = [];
@@ -476,33 +482,43 @@ export const generateSchedules = asyncHandler(async (req, res) => {
             departureTime: trip.departure,
             arrivalTime: trip.arrival,
             distance: routeWithStations.distance,
-            duration: routeWithStations.estimatedDuration,
+            duration: totalDurationMins,
             status: "ACTIVE",
           },
         });
 
         if (routeWithStations.stations.length > 0) {
-          const tripDurationMs =
-            trip.arrival.getTime() - trip.departure.getTime();
+          const sortedStations = [...routeWithStations.stations].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
           await tx.scheduleStop.createMany({
-            data: routeWithStations.stations.map((stop) => {
-              const progress = Math.min(
-                1,
-                Math.max(
-                  0,
-                  stop.distanceFromStart / routeWithStations.distance,
-                ),
+            data: sortedStations.map((stop, index) => {
+              const progress =
+                routeWithStations.distance > 0
+                  ? Math.min(
+                      1,
+                      Math.max(
+                        0,
+                        stop.distanceFromStart / routeWithStations.distance,
+                      ),
+                    )
+                  : 0;
+              const movingTimeMs =
+                routeWithStations.estimatedDuration * progress * 60 * 1000;
+              const restingTimeMs = index * bufferMins * 60 * 1000;
+              const stopArrivalTime = new Date(
+                trip.departure.getTime() + movingTimeMs + restingTimeMs,
               );
-              const stopTime = new Date(
-                trip.departure.getTime() + tripDurationMs * progress,
+              const stopDepartureTime = new Date(
+                stopArrivalTime.getTime() + bufferMins * 60 * 1000,
               );
 
               return {
                 scheduleId: schedule.id,
                 stationId: stop.stationId,
                 stopOrder: stop.stopOrder,
-                arrivalTime: stopTime,
-                departureTime: stopTime,
+                arrivalTime: stopArrivalTime,
+                departureTime: stopDepartureTime,
               };
             }),
           });
@@ -535,6 +551,15 @@ export const deleteRoute = asyncHandler(async (req, res) => {
   const { id } = req.params;
   await prisma.route.update({ where: { id }, data: { isActive: false } });
   res.json({ message: "Tuyến đường đã được vô hiệu hóa." });
+});
+
+// ============================================================
+// PUT /api/v1/routes/:id/activate
+// ============================================================
+export const activateRoute = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await prisma.route.update({ where: { id }, data: { isActive: true } });
+  res.json({ message: "Tuyến đường đã được kích hoạt lại." });
 });
 
 // ============================================================
@@ -617,9 +642,17 @@ export const deleteTrain = asyncHandler(async (req, res) => {
 // POST /api/v1/schedules/trigger-auto-generate - Kích hoạt thủ công tạo lịch trình ngày thứ 30
 // ============================================================
 export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
-  const result = await generateSchedulesForDay30();
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 30);
+
+  const result = await generateSchedulesForRange(
+    startDate.toISOString().split("T")[0],
+    endDate.toISOString().split("T")[0],
+  );
+
   res.json({
-    message: result.message,
+    message: `Kích hoạt tự động tạo lịch trình thành công! ${result.message}`,
     created: result.created,
     skipped: result.skipped,
   });
@@ -705,7 +738,8 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
 // ============================================================
 export const updateRouteTemplate = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { departureTimes, bufferMinutes, isActive } = req.body;
+  const { routeId, trainId, departureTimes, bufferMinutes, isActive } =
+    req.body;
 
   const updateData = {};
   if (departureTimes !== undefined && Array.isArray(departureTimes)) {
@@ -716,6 +750,35 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
   }
   if (isActive !== undefined) {
     updateData.isActive = isActive;
+  }
+
+  // Handle routeId or trainId updates with unique constraint verification
+  if (routeId || trainId) {
+    const current = await prisma.routeTemplate.findUnique({
+      where: { id },
+    });
+    if (!current) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy mẫu lịch chạy cần cập nhật." });
+    }
+    const nextRouteId = routeId || current.routeId;
+    const nextTrainId = trainId || current.trainId;
+
+    if (nextRouteId !== current.routeId || nextTrainId !== current.trainId) {
+      const existing = await prisma.routeTemplate.findUnique({
+        where: {
+          routeId_trainId: { routeId: nextRouteId, trainId: nextTrainId },
+        },
+      });
+      if (existing && existing.id !== id) {
+        return res.status(400).json({
+          message: "Mẫu lịch chạy cho Tuyến đường và Tàu này đã tồn tại.",
+        });
+      }
+    }
+    if (routeId) updateData.routeId = routeId;
+    if (trainId) updateData.trainId = trainId;
   }
 
   const template = await prisma.routeTemplate.update({
@@ -928,4 +991,305 @@ export const getScheduleTimeline = asyncHandler(async (req, res) => {
     },
     timeline,
   });
+});
+
+// Can thiệp trạng thái vận hành của tàu trực tiếp
+export const updateTrainStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!["ACTIVE", "INACTIVE", "MAINTENANCE"].includes(status)) {
+    return res
+      .status(400)
+      .json({ message: "Trạng thái vận hành không hợp lệ." });
+  }
+
+  const now = new Date();
+
+  // Ràng buộc an toàn BR-30: Tàu không được ở trạng thái đang chạy trên đường ray
+  const runningSchedule = await prisma.schedule.findFirst({
+    where: {
+      trainId: id,
+      status: { in: ["ACTIVE", "DELAYED"] },
+      departureTime: { lte: now },
+      arrivalTime: { gte: now },
+    },
+  });
+
+  if (runningSchedule) {
+    return res.status(422).json({
+      message:
+        "Ràng buộc an toàn (BR-30): Không thể thay đổi trạng thái của tàu đang chạy trên đường ray. Hãy đợi tàu cập ga.",
+    });
+  }
+
+  const updatedTrain = await prisma.$transaction(async (tx) => {
+    const t = await tx.train.update({
+      where: { id },
+      data: { status },
+    });
+
+    // BR-29: Khi tàu ngừng kích hoạt (INACTIVE/MAINTENANCE), tự động từ chối (Decline) các vé pending của các chuyến tàu tương lai
+    if (status === "INACTIVE" || status === "MAINTENANCE") {
+      const schedules = await tx.schedule.findMany({
+        where: {
+          trainId: id,
+          departureTime: { gte: now },
+        },
+        select: { id: true },
+      });
+      const scheduleIds = schedules.map((s) => s.id);
+
+      if (scheduleIds.length > 0) {
+        const bookings = await tx.booking.findMany({
+          where: {
+            scheduleId: { in: scheduleIds },
+            status: "PENDING",
+          },
+        });
+
+        if (bookings.length > 0) {
+          await tx.booking.updateMany({
+            where: { id: { in: bookings.map((b) => b.id) } },
+            data: {
+              status: "CANCELLED",
+              cancelReason: "Dịch vụ hiện không khả dụng",
+            },
+          });
+
+          for (const booking of bookings) {
+            await tx.bookingPaymentHistory.create({
+              data: {
+                bookingId: booking.id,
+                paymentMethod: booking.paymentMethod || "UNKNOWN",
+                amount: booking.totalAmount,
+                status: "FAILED",
+                failureReason:
+                  "Dịch vụ hiện không khả dụng (Ngừng kích hoạt tàu)",
+                attemptNumber: 1,
+              },
+            });
+
+            if (booking.userId) {
+              await tx.notification.create({
+                data: {
+                  userId: booking.userId,
+                  type: "BOOKING_CANCELLED",
+                  title: "Đơn đặt vé bị hủy bỏ",
+                  message: `Rất tiếc, đơn đặt vé ${booking.bookingCode} của bạn đã bị hủy tự động vì tàu tạm dừng vận hành. Lý do: Dịch vụ hiện không khả dụng.`,
+                  relatedBookingId: booking.id,
+                  deliveryMethod: ["IN_APP"],
+                  deliveryStatus: "SENT",
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return t;
+  });
+
+  res.json({
+    message: `Cập nhật trạng thái vận hành của tàu thành ${status} thành công.`,
+    train: updatedTrain,
+  });
+});
+
+// Cập nhật trễ chuyến tàu & Tự động tính toán lại lịch ga tiếp theo
+export const updateScheduleDelay = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { delayMinutes } = req.body;
+
+  const delayMins = parseInt(delayMinutes);
+  if (isNaN(delayMins) || delayMins < 0) {
+    return res
+      .status(400)
+      .json({ message: "Số phút trễ phải là số nguyên dương." });
+  }
+
+  const schedule = await prisma.schedule.findUnique({
+    where: { id },
+    include: {
+      train: { select: { trainCode: true } },
+      route: { select: { routeName: true } },
+      scheduleStops: true,
+    },
+  });
+
+  if (!schedule) {
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  }
+
+  const deltaMs = delayMins * 60 * 1000;
+  const newDeparture = new Date(
+    new Date(schedule.departureTime).getTime() + deltaMs,
+  );
+  const newArrival = new Date(
+    new Date(schedule.arrivalTime).getTime() + deltaMs,
+  );
+
+  const updatedSchedule = await prisma.$transaction(async (tx) => {
+    // 1. Cập nhật lịch trình chính
+    const s = await tx.schedule.update({
+      where: { id },
+      data: {
+        delayMinutes: delayMins,
+        departureTime: newDeparture,
+        arrivalTime: newArrival,
+        status: delayMins > 0 ? "DELAYED" : "ACTIVE",
+      },
+    });
+
+    // 2. Tự động tính toán lại giờ đến/đi của các ga tiếp theo (ScheduleStop)
+    for (const stop of schedule.scheduleStops) {
+      const stopArr = new Date(new Date(stop.arrivalTime).getTime() + deltaMs);
+      const stopDep = stop.departureTime
+        ? new Date(new Date(stop.departureTime).getTime() + deltaMs)
+        : null;
+
+      await tx.scheduleStop.update({
+        where: { id: stop.id },
+        data: {
+          arrivalTime: stopArr,
+          departureTime: stopDep,
+        },
+      });
+    }
+
+    // 3. Cảnh báo tự động BR-32: Gửi thông báo cảnh báo trễ quá 10 phút cho Admin
+    if (delayMins > 10) {
+      const admins = await tx.user.findMany({
+        where: { userType: "ADMIN" },
+        select: { id: true },
+      });
+
+      for (const admin of admins) {
+        await tx.notification.create({
+          data: {
+            userId: admin.id,
+            type: "DELAY_WARNING",
+            title: "Cảnh báo trễ chuyến tàu",
+            message: `Chú ý: Tàu ${schedule.train.trainCode} (Tuyến ${schedule.route.routeName}) đang bị trễ ${delayMins} phút so với lịch trình gốc.`,
+            relatedScheduleId: id,
+            deliveryMethod: ["IN_APP"],
+            deliveryStatus: "SENT",
+          },
+        });
+      }
+    }
+
+    return s;
+  });
+
+  res.json({
+    message: `Cập nhật thời gian trễ ${delayMins} phút thành công. Đã tính toán lại toàn bộ lịch trình các ga sau.`,
+    schedule: updatedSchedule,
+  });
+});
+
+// Cập nhật thông số live-tracking thời gian thực
+export const updateScheduleLiveTracking = asyncHandler(async (req, res) => {
+  const { id } = req.params; // scheduleId
+  const {
+    speed,
+    temperature,
+    passengerCount,
+    latitude,
+    longitude,
+    currentStation,
+    status,
+  } = req.body;
+
+  const schedule = await prisma.schedule.findUnique({
+    where: { id },
+    select: { trainId: true },
+  });
+
+  if (!schedule) {
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  }
+
+  const existing = await prisma.liveTracking.findFirst({
+    where: { scheduleId: id },
+  });
+
+  let tracking;
+
+  if (existing) {
+    tracking = await prisma.liveTracking.update({
+      where: { id: existing.id },
+      data: {
+        speed: speed !== undefined ? parseFloat(speed) : existing.speed,
+        temperature:
+          temperature !== undefined
+            ? parseFloat(temperature)
+            : existing.temperature,
+        passengerCount:
+          passengerCount !== undefined
+            ? parseInt(passengerCount)
+            : existing.passengerCount,
+        latitude:
+          latitude !== undefined ? parseFloat(latitude) : existing.latitude,
+        longitude:
+          longitude !== undefined ? parseFloat(longitude) : existing.longitude,
+        currentStation:
+          currentStation !== undefined
+            ? currentStation
+            : existing.currentStation,
+        status: status || existing.status,
+        lastUpdated: new Date(),
+      },
+    });
+  } else {
+    tracking = await prisma.liveTracking.create({
+      data: {
+        scheduleId: id,
+        trainId: schedule.trainId,
+        speed: parseFloat(speed) || 0.0,
+        temperature: parseFloat(temperature) || 25.0,
+        passengerCount: parseInt(passengerCount) || 0,
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
+        currentStation: currentStation || null,
+        status: status || "ON_TIME",
+      },
+    });
+  }
+
+  res.json({
+    message: "Cập nhật dữ liệu điều hành hành trình thời gian thực thành công.",
+    tracking,
+  });
+});
+
+// Lấy thông số live-tracking thời gian thực
+export const getScheduleLiveTracking = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  let tracking = await prisma.liveTracking.findFirst({
+    where: { scheduleId: id },
+  });
+
+  if (!tracking) {
+    const schedule = await prisma.schedule.findUnique({
+      where: { id },
+      select: { trainId: true },
+    });
+    // Trả về dữ liệu mô phỏng mặc định
+    tracking = {
+      scheduleId: id,
+      trainId: schedule?.trainId || "",
+      speed: 0.0,
+      temperature: 25.0,
+      passengerCount: 45,
+      latitude: 21.0285,
+      longitude: 105.8542,
+      currentStation: "Ga Hà Nội",
+      status: "ON_TIME",
+    };
+  }
+
+  res.json({ tracking });
 });

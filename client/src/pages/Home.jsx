@@ -309,33 +309,28 @@ export function Home() {
   return (
     <div className="text-on-surface bg-[#f7f9fb] min-h-screen pb-16 md:pb-0 pt-16">
       {/* 1. Hero Section */}
-      <section className="relative min-h-[680px] flex items-center overflow-hidden">
+      <section className="relative min-h-[680px] flex items-center">
         <div className="absolute inset-0 z-0">
           <img
             className="w-full h-full object-cover"
             alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning."
             data-alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning. The visual style is premium and minimalist, with a high-key lighting that emphasizes a clean and airy atmosphere."
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAiYOE4xZ1rXlui1yAL0kL5_fTQ5bavpG-CRTAn8v9i5l1pDWxd8TWP7hPmf-bMRWaGNqVLoREfl3h_ironj-UeZeoWitlNnWcu2X-BD4UkmtwiBtrR71ofm12azr8auyNb8Y7O-7sAEXRZp3sKzkji-2TerV9Ps0z9yBwpReSW0lH9ADmL8LkxcQOYJinqGvR4BJGzOeiCgArzVfpkOr4L8uYZd5YmepxmcyaIFDyzy0Icm3CpjIf4QiYsRL0x3aleFv13tgtQW6M0"
+            src="/assets/hero-bg.jpg"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-transparent"></div>
+          <div className="absolute inset-0 bg-white/20"></div>
         </div>
 
-        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full pt-16 pb-28 md:pb-36">
-          <div className="text-left w-full">
-            <div className="max-w-2xl mb-lg">
-              <h1 className="font-display-lg text-display-lg md:text-[56px] text-primary mb-md leading-tight">
-                Hành Trình Mới,
-                <br />
-                Trải Nghiệm Mới
+        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full pt-16 pb-28 md:pb-36 flex flex-col items-center">
+          <div className="text-center w-full flex flex-col items-center">
+            <div className="mb-10">
+              <h1 className="text-[40px] md:text-[56px] font-semibold mb-sm leading-tight tracking-tight drop-shadow-md text-slate-900">
+                Hành trình mới,{" "}
+                <span className="text-[#007aff]">trải nghiệm vượt trội</span>
               </h1>
-              <p className="font-body-lg text-body-lg text-secondary">
-                Đặt vé tàu nhanh chóng, an toàn và tiện lợi cùng GoTrain VN.
-                Khám phá vẻ đẹp Việt Nam qua từng ô cửa sổ.
-              </p>
             </div>
 
             {/* Search Card */}
-            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,163,255,0.12)] border border-surface-container max-w-5xl w-full">
+            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,0,0,0.1)] w-full">
               <form onSubmit={handleSearch}>
                 <div
                   className={`grid grid-cols-1 gap-md items-end ${tripType === "round-trip" ? "md:grid-cols-5" : "md:grid-cols-4"}`}
@@ -344,7 +339,7 @@ export function Home() {
                   <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-md relative">
                     {/* Ga Đi */}
                     <div
-                      className="flex flex-col gap-xs relative text-left"
+                      className={`flex flex-col gap-xs relative text-left ${showFromSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <label className="font-label-md text-label-md text-secondary">
@@ -419,7 +414,7 @@ export function Home() {
 
                     {/* Ga Đến */}
                     <div
-                      className="flex flex-col gap-xs relative text-left"
+                      className={`flex flex-col gap-xs relative text-left ${showToSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <label className="font-label-md text-label-md text-secondary">
@@ -446,7 +441,7 @@ export function Home() {
                       {/* Suggestions Dropdown */}
                       {showToSuggestions &&
                         filteredToSuggestions.length > 0 && (
-                          <div className="absolute right-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
+                          <div className="absolute left-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
                             {filteredToSuggestions.map((s) => (
                               <button
                                 key={s.id}
@@ -590,52 +585,16 @@ export function Home() {
         </div>
       </section>
 
-      {/* 2. Live Tracking Preview */}
-      <div className="max-w-[1200px] mx-auto px-container-margin -mt-8 relative z-20">
-        <div className="bg-white/90 backdrop-blur-md border border-white/50 p-md rounded-2xl shadow-lg flex items-center gap-lg">
-          <div className="flex flex-col text-left shrink-0">
-            <span className="text-[10px] uppercase tracking-widest text-secondary font-bold">
-              Trạng thái trực tiếp
-            </span>
-            <span className="font-label-md text-primary font-bold">
-              Tàu SE1 - Đang đến ga Huế
-            </span>
-          </div>
-
-          <div className="flex-grow h-[4px] bg-secondary-fixed rounded-full relative overflow-visible">
-            <div
-              className="absolute h-full bg-primary-container rounded-full transition-all duration-1000"
-              style={{ width: `${progress}%` }}
-            ></div>
-            <div
-              className="absolute -top-2 transition-all duration-1000"
-              style={{ left: `${progress}%`, transform: "translateX(-50%)" }}
-            >
-              <div className="flex h-[20px] w-[20px] items-center justify-center rounded-full bg-white shadow-sm border border-primary-container/20">
-                <Train className="h-[12px] w-[12px] text-primary-container" />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right shrink-0">
-            <span className="font-label-sm text-secondary block text-xs">
-              Dự kiến
-            </span>
-            <span className="font-semibold text-xl text-on-surface">14:30</span>
-          </div>
-        </div>
-      </div>
-
       {/* 3. Popular Routes ("Điểm Đến Phổ Biến") */}
       <section className="py-xl max-w-[1200px] mx-auto px-container-margin">
         <div className="flex justify-between items-end mb-lg text-left">
           <div>
-            <h2 className="font-headline-lg text-headline-lg text-primary">
-              Điểm Đến Phổ Biến
+            <span className="text-[12px] uppercase tracking-wider text-[#007aff] font-bold mb-1 block">
+              Khám phá
+            </span>
+            <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800">
+              Điểm đến phổ biến
             </h2>
-            <p className="text-secondary font-body-md mt-2">
-              Gợi ý những hành trình tuyệt vời nhất dành cho bạn
-            </p>
           </div>
           <button
             onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
@@ -645,129 +604,79 @@ export function Home() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-lg">
-          {/* Card 1 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
-              <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="A beautiful wide shot of the Ho Chi Minh City skyline at sunset."
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAweNCnj57N4GRaZWAQ0l2ZLaML4vybSWJHAwBLCjB7TAhnZrSjBBWVLVvOkTOegNRIRDzcuqVT6nFlgOhQwJeOEc9aV5rTWmQWpFoDvSApZlyNr-g40TjtApnq-abzCK2PQAkwPZgIA4QN21lTpEdwZdKt6EflqO8ZXED7W4_G5Vu0lYJF4IxJl-We8d_ve_PyisrUyxLu4a1rd4Ymssw22XqmaENtsgWs_lPINAF4Uq9hI7euGEimxV5guLmzvOc0ZqlH7gqft8YA"
-              />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 750k
-                </span>
-              </div>
-            </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                Hà Nội - TP. Hồ Chí Minh
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Hành trình xuyên Việt lý tưởng
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1 - Hà Nội (Large) */}
+          <div
+            className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[300px] md:h-auto"
+            onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
+          >
+            <img
+              className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+              alt="Hà Nội"
+              src="/assets/hero-bg.jpg"
+            />
+            <div className="absolute bottom-0 left-0 p-6 text-left">
+              <h3 className="font-bold text-2xl text-white mb-1">Hà Nội</h3>
+              <p className="text-white/80 font-medium text-sm">
+                Giá vé chỉ từ{" "}
+                <span className="font-bold text-white">450.000đ</span>
               </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    HN
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    SG
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    +12
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
+          {/* Right Side Cards */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* TP.HCM */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Sài Gòn", "Hà Nội")}
+            >
               <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="The iconic Dragon Bridge in Da Nang, Vietnam, captured at night."
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXu7f-cze-QF82_JvN-Oa2CdGsppGAx6-X1sBMEaYbg77NcLfFgCRti6BhSUyt-HNUo7Y2nSrK9rHyDweCWUN0KU_5GdJP1O-AuaxD9UUa6gKd20_8_Ciu4pA6TMsjqqqdrmX15YTaqloFxxqq1Ma1trLmrIG40nALnbVHrMkSzZ7w1pAn-nIuSESK3FyAEdl8uMZ4Bhwa9YbPMHSd9U-pRJ96z3NXXEao13fwKUTZdpuCnCq9-LU3nb_C4xiICMm-OnpfX4y97_N4UQ"
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="TP HCM"
+                src="/assets/hcmc.jpg"
               />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 350k
-                </span>
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">TP.HCM</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">520k</span>
+                </p>
               </div>
             </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                Đà Nẵng - Huế
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Ngắm nhìn đèo Hải Vân hùng vĩ
-              </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    DN
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    H
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Đà Nẵng", "Huế")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Card 3 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
+            {/* Đà Nẵng */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Đà Nẵng", "Huế")}
+            >
               <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="A peaceful coastal scene in Nha Trang, Vietnam."
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="Đà Nẵng"
+                src="/assets/danang.jpg"
+              />
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">Đà Nẵng</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">350k</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Huế */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer col-span-2 h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Huế", "Đà Nẵng")}
+            >
+              <img
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="Huế"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQ5Xajf7mAtz_KfO6j1nNYU6Gl2Ny9UHhksIUer32EoNV1qzgM2acR7OEP0_kY6Cc6PrObB4TX0XxzDiMlOdRMFu8JCnqcymHMAR23ph0FbYkpOUVAZtiQJlASOaO5FxY7XoJsHnOGMTZ12aI_ra4iVxJKlXfYbbCBK6iEoVggaPh5YjxE7dN_nK8F4L2-SsIHKYiSgOWhqhAZ4f-hA00jGPe3D0SqY3jvxGiQN-CWWjFzfRVKDopprohqOGCVMq78EiVhNDfqskkX"
               />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 420k
-                </span>
-              </div>
-            </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                TP. HCM - Nha Trang
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Chuyến đi biển cuối tuần thú vị
-              </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    SG
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    NT
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    +5
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Sài Gòn", "Nha Trang")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">Huế</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">280k</span>
+                </p>
               </div>
             </div>
           </div>
@@ -775,10 +684,10 @@ export function Home() {
       </section>
 
       {/* 4. Promotions Section */}
-      <section className="bg-primary-fixed/30 py-xl">
-        <div className="max-w-[1200px] mx-auto px-container-margin text-left">
-          <h2 className="font-headline-lg text-headline-lg text-primary mb-lg">
-            Khuyến Mãi Hấp Dẫn
+      <section className="bg-[#f7f9fb] py-xl">
+        <div className="max-w-[1200px] mx-auto px-container-margin text-center">
+          <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800 mb-lg">
+            Ưu đãi hấp dẫn
           </h2>
 
           <div className="flex overflow-x-auto gap-md pb-md scrollbar-none w-full">
@@ -861,37 +770,51 @@ export function Home() {
       </section>
 
       {/* 5. System Advantages */}
-      <section className="py-xl max-w-[1200px] mx-auto px-container-margin">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-xl">
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Zap className="h-8 w-8 text-primary" />
-            </div>
-            <h3 className="font-bold text-lg mb-sm">Thanh toán nhanh</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Hỗ trợ đa dạng phương thức thanh toán an toàn, bảo mật tuyệt đối.
+      <section className="bg-white py-xl">
+        <div className="max-w-[1200px] mx-auto px-container-margin">
+          <div className="text-center mb-12">
+            <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800 mb-4">
+              Tại sao chọn GoTrain?
+            </h2>
+            <p className="text-slate-500 max-w-2xl mx-auto">
+              Chúng tôi mang đến giải pháp đặt vé tàu hiện đại, nhanh chóng và
+              an toàn nhất cho mọi hành trình của bạn.
             </p>
           </div>
 
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Headphones className="h-8 w-8 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Zap className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Thanh toán tức thì</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Xác nhận vé ngay lập tức sau khi thanh toán thành công qua nhiều
+                phương thức linh hoạt.
+              </p>
             </div>
-            <h3 className="font-bold text-lg mb-sm">Hỗ trợ 24/7</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Đội ngũ chăm sóc khách hàng tận tâm, sẵn sàng giải đáp mọi thắc
-              mắc.
-            </p>
-          </div>
 
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Tag className="h-8 w-8 text-primary" />
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Headphones className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Hỗ trợ tận tâm</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Đội ngũ chăm sóc khách hàng 24/7 luôn sẵn sàng giải quyết mọi
+                thắc mắc và sự cố của bạn.
+              </p>
             </div>
-            <h3 className="font-bold text-lg mb-sm">Giá tốt nhất</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Cam kết giá vé minh bạch, nhiều chương trình ưu đãi độc quyền.
-            </p>
+
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Tag className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Giá tốt nhất</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Cam kết giá vé minh bạch, không phí ẩn và luôn có các chương
+                trình ưu đãi độc quyền.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -979,83 +902,178 @@ export function Home() {
         </div>
       </section>
 
+      {/* 6. Testimonials Section */}
+      <section className="py-xl bg-[#f7f9fb]">
+        <div className="max-w-[1200px] mx-auto px-container-margin">
+          <div className="text-center mb-12">
+            <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800">
+              Khách hàng nói gì về GoTrain
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Testimonial 1 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "Ứng dụng tuyệt vời, giao diện rất dễ sử dụng và đặt vé chỉ
+                  mất chưa đầy 3 phút. Tôi rất hài lòng với dịch vụ chăm sóc
+                  khách hàng."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=1"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Nguyễn Minh Anh
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Nhân viên văn phòng
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 2 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "GoTrain giúp việc đi du lịch bằng tàu hỏa trở nên sang trọng
+                  và tiện lợi hơn bao giờ hết. Lịch trình rõ ràng, thanh toán an
+                  toàn."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=11"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Trần Hoàng Nam
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Nhiếp ảnh gia tự do
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 3 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "Rất ấn tượng với tính năng hoàn tiền qua ví điện tử. Tiết
+                  kiệm được một khoản kha khá cho các chuyến đi thường xuyên."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=5"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Lê Thu Trang
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Sinh viên đại học
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 7. Footer */}
-      <footer className="w-full rounded-t-xl bg-surface-container-high py-xl text-left">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-md px-container-margin py-xl max-w-[1200px] mx-auto">
-          <div className="flex flex-col gap-md">
-            <div className="font-headline-md text-headline-md text-primary font-bold text-xl">
+      <footer className="w-full bg-[#f7f9fb] py-16 text-left border-t border-slate-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 px-container-margin max-w-[1200px] mx-auto">
+          <div className="flex flex-col gap-4 col-span-2">
+            <div className="flex items-center gap-2 text-[#007aff] font-bold text-xl">
+              <Train className="h-6 w-6" />
               GoTrain VN
             </div>
-            <p className="font-body-sm text-body-sm text-on-surface-variant text-sm">
-              Kiến tạo những hành trình tàu hỏa hiện đại, kết nối mọi miền đất
-              nước bằng công nghệ và sự tận tâm.
+            <p className="text-slate-500 text-sm max-w-sm mt-2">
+              © 2024 GoTrain VN. Hành trình bình yên, kết nối mọi miền.
+              <br />
+              Ứng dụng đặt vé tàu hỏa hàng đầu Việt Nam.
             </p>
-          </div>
-
-          <div className="flex flex-col gap-sm">
-            <h4 className="font-bold text-primary text-sm">Khám phá</h4>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Về Chúng Tôi
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Chính Sách
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Hỗ Trợ
-            </a>
-          </div>
-
-          <div className="flex flex-col gap-sm">
-            <h4 className="font-bold text-primary text-sm">Pháp lý</h4>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Điều Khoản
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Bảo mật
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Liên Hệ
-            </a>
-          </div>
-
-          <div className="flex flex-col gap-md">
-            <h4 className="font-bold text-primary text-sm">Theo dõi</h4>
-            <div className="flex gap-md">
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+            <div className="flex gap-4 mt-2">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">FB</span>
               </button>
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">YT</span>
               </button>
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">IN</span>
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="max-w-[1200px] mx-auto px-container-margin pt-lg border-t border-surface-container-highest text-center">
-          <p className="font-label-sm text-label-sm text-on-surface-variant opacity-80 text-xs">
-            © 2024 GoTrain VN. Tất cả quyền được bảo lưu.
-          </p>
+          <div className="flex flex-col gap-3">
+            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
+              Khám phá
+            </h4>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Chính sách bảo mật
+            </a>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Điều khoản sử dụng
+            </a>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
+              Hỗ trợ
+            </h4>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Thông tin liên hệ
+            </a>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Hướng dẫn đặt vé
+            </a>
+          </div>
         </div>
       </footer>
 

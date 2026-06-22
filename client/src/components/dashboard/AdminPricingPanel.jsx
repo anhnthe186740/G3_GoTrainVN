@@ -84,8 +84,7 @@ function createRules(source = []) {
             classSurcharge:
               inherited?.classSurcharge ??
               DEFAULTS[carriage.value].classSurcharge,
-            discountPercentage:
-              inherited?.discountPercentage ?? DISCOUNTS[passenger.value],
+            discountPercentage: DISCOUNTS[passenger.value],
             minPrice: inherited?.minPrice ?? "",
             maxPrice: inherited?.maxPrice ?? "",
             inherited: Boolean(inherited?.inherited),
@@ -121,13 +120,12 @@ function calculate(rule, distance, taxPercentage) {
     rule.minPrice === "" ? base : Math.max(base, Number(rule.minPrice));
   const bounded =
     rule.maxPrice === "" ? floor : Math.min(floor, Number(rule.maxPrice));
-  const afterDiscount =
-    bounded * (1 - Number(rule.discountPercentage || 0) / 100);
+  const afterDiscount = bounded;
   const final = afterDiscount * (1 + Number(taxPercentage || 0) / 100);
   return {
     base,
     bounded,
-    discount: bounded - afterDiscount,
+    discount: 0,
     tax: final - afterDiscount,
     final: Math.max(0, Math.round(final)),
   };
@@ -297,7 +295,7 @@ export function AdminPricingPanel() {
             basePrice: Number(rule.basePrice),
             pricePerKm: Number(rule.pricePerKm),
             classSurcharge: Number(rule.classSurcharge),
-            discountPercentage: Number(rule.discountPercentage),
+            discountPercentage: 0,
             minPrice: rule.minPrice === "" ? null : Number(rule.minPrice),
             maxPrice: rule.maxPrice === "" ? null : Number(rule.maxPrice),
           }),
@@ -610,10 +608,7 @@ export function AdminPricingPanel() {
                         <div>
                           <p className="text-xs font-bold">{passenger.label}</p>
                           <p className="mt-0.5 text-[10px] text-slate-400">
-                            Giảm{" "}
-                            {rules[`${passenger.value}:NORMAL_SEAT`]
-                              ?.discountPercentage ?? 0}
-                            % theo chính sách
+                            BR-08 áp dụng khi đặt vé
                           </p>
                         </div>
                       </div>
@@ -649,7 +644,7 @@ export function AdminPricingPanel() {
                             </div>
                             <div className="mt-3 flex items-center justify-between text-[10px] font-semibold text-slate-400">
                               <span>{compactMoney(rule.pricePerKm)} / km</span>
-                              <span>-{rule.discountPercentage}%</span>
+                              <span>BR-08</span>
                             </div>
                             {selected && (
                               <span className="absolute bottom-0 left-1/2 h-1 w-10 -translate-x-1/2 rounded-t-full bg-[#00629d]" />
@@ -711,16 +706,15 @@ export function AdminPricingPanel() {
                     value={selectedRule.classSurcharge}
                     onChange={(value) => updateRule("classSurcharge", value)}
                   />
-                  <Field
-                    label="Mức giảm"
-                    suffix="%"
-                    max={100}
-                    step={1}
-                    value={selectedRule.discountPercentage}
-                    onChange={(value) =>
-                      updateRule("discountPercentage", value)
-                    }
-                  />
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-emerald-700">
+                      Ưu đãi BR-08
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-emerald-800">
+                      Tự động áp dụng khi đặt vé: dưới 6 miễn phí, 6-10 giảm
+                      25%, từ 60 tuổi giảm 15%, học sinh/sinh viên giảm 10%.
+                    </p>
+                  </div>
                   <Field
                     label="Giá sàn"
                     suffix="đ"

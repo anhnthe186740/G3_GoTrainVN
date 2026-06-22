@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
 import { toast } from "sonner";
@@ -21,10 +22,12 @@ import {
   TrendingUp,
   AlertTriangle,
   HelpCircle,
+  Repeat2,
 } from "lucide-react";
 
 export function TicketLookup() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Search state
   const [ticketCode, setTicketCode] = useState("");
@@ -119,6 +122,13 @@ export function TicketLookup() {
 
     if (!searchCode && !searchContact) {
       setError("Vui lòng nhập Mã vé hoặc Email/Số điện thoại để tìm kiếm.");
+      return;
+    }
+
+    if (!user && (!searchCode || !searchContact)) {
+      setError(
+        "Khách vãng lai cần nhập cả mã vé và Email/Số điện thoại liên hệ.",
+      );
       return;
     }
 
@@ -443,13 +453,30 @@ export function TicketLookup() {
     activeTicket?.booking,
     activeTripStations,
   );
+  const isVerifiedLookup = Boolean(user) || result?.isMasked !== true;
   const canRequestRefund =
     ["CONFIRMED", "COMPLETED"].includes(activeTicket?.booking?.status) &&
+    activeTicket?.booking?.paymentStatus === "COMPLETED" &&
+    isVerifiedLookup &&
+    activeJourneyState === "UPCOMING";
+  const canExchangeTicket =
+    activeTicket?.booking?.status === "CONFIRMED" &&
     activeJourneyState === "UPCOMING";
 
   // Print ticket boarding pass handler
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExchangeTicket = () => {
+    if (!activeTicket?.booking) return;
+
+    navigate(
+      `/doi-ve?bookingCode=${encodeURIComponent(
+        activeTicket.booking.bookingCode || activeTicket.ticketCode || "",
+      )}`,
+      { state: { ticket: activeTicket } },
+    );
   };
 
   // Refund submission
@@ -462,8 +489,16 @@ export function TicketLookup() {
       const response = await api.post(
         `/bookings/${activeTicket.booking.id}/cancel`,
         {
+          passengerIds: [activeTicket.id],
+          ticketCode:
+            activeTicket.ticketCode ||
+            activeTicket.booking.bookingCode ||
+            ticketCode,
+          contactInfo,
           reason: refundReason,
           refundMethod: refundMethod,
+          bankName: refundMethod === "BANK" ? bankName : undefined,
+          bankAccount: refundMethod === "BANK" ? bankAccount : undefined,
         },
       );
       toast.success(
@@ -970,6 +1005,16 @@ export function TicketLookup() {
                   >
                     <AlertTriangle className="h-4.5 w-4.5" />
                     <span>Yêu cầu hoàn vé & Hủy</span>
+                  </button>
+                )}
+
+                {canExchangeTicket && (
+                  <button
+                    onClick={handleExchangeTicket}
+                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm"
+                  >
+                    <Repeat2 className="h-4.5 w-4.5" />
+                    <span>Đổi vé</span>
                   </button>
                 )}
               </div>

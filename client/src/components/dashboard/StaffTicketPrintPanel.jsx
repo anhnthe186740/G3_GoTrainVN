@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
-import { api } from "../../services/api";
+import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
+import { staffSearchApi } from "../../services/staffSearchApi";
 
 function formatDate(dateStr) {
   if (!dateStr) return "—";
@@ -65,6 +65,30 @@ const STATUS_LABEL = {
   COMPLETED: "Hoàn thành",
   PENDING: "Chờ xử lý",
 };
+
+function ticketsFromStaffSearch(data) {
+  const tickets = [];
+  const seen = new Set();
+
+  (data.tickets || []).forEach((ticket) => {
+    if (!ticket?.id || seen.has(ticket.id)) return;
+    seen.add(ticket.id);
+    tickets.push(ticket);
+  });
+
+  (data.bookings || []).forEach((booking) => {
+    (booking.passengers || []).forEach((passenger) => {
+      if (!passenger?.id || seen.has(passenger.id)) return;
+      seen.add(passenger.id);
+      tickets.push({
+        ...passenger,
+        booking,
+      });
+    });
+  });
+
+  return tickets;
+}
 
 /* ─── Boarding Pass component (dùng để in) ─────────────── */
 function BoardingPass({ ticket, booking }) {
@@ -199,14 +223,15 @@ function BoardingPass({ ticket, booking }) {
 }
 
 /* ─── Main Staff Ticket Print Panel ───────────────────────── */
-export function StaffTicketPrintPanel() {
-  const [query, setQuery] = useState("");
+export function StaffTicketPrintPanel({ initialQuery = "" }) {
+  const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { type, ticket?, tickets? }
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const printRef = useRef(null);
   const inputRef = useRef(null);
+  const autoSearchRef = useRef("");
 
   const handleSearch = async (e) => {
     e?.preventDefault();
@@ -219,38 +244,46 @@ export function StaffTicketPrintPanel() {
     setSelectedBooking(null);
 
     try {
-      let url = "/bookings/lookup";
-      // Detect if it's a ticket code or contact info
-      if (
-        /^[A-Z0-9]{6,12}$/i.test(q) &&
-        !q.includes("@") &&
-        !q.startsWith("0")
-      ) {
-        url += `?ticketCode=${encodeURIComponent(q.toUpperCase())}`;
+      const { data } = await staffSearchApi.globalSearch(q);
+      const tickets = ticketsFromStaffSearch(data);
+      const nextResult = {
+        ...data,
+        type: tickets.length === 1 ? "single" : "list",
+        ticket: tickets[0] || null,
+        tickets,
+      };
+      setResult(nextResult);
+
+      if (tickets.length > 0) {
+        setSelectedTicket(tickets[0]);
+        setSelectedBooking(tickets[0]?.booking);
+        toast.success("Tim thay thong tin ve.");
       } else {
-        url += `?contactInfo=${encodeURIComponent(q)}`;
+        toast.info("Khong tim thay ve phu hop.");
       }
-
-      const { data } = await api.get(url);
-      setResult(data);
-
-      if (data.type === "single") {
-        setSelectedTicket(data.ticket);
-        setSelectedBooking(data.ticket?.booking);
-      } else if (data.type === "list" && data.tickets?.length > 0) {
-        setSelectedTicket(data.tickets[0]);
-        setSelectedBooking(data.tickets[0]?.booking);
-      }
-      toast.success("Tìm thấy thông tin vé!");
     } catch (err) {
       const msg =
         err.response?.data?.message ||
-        "Không tìm thấy vé. Kiểm tra lại mã vé hoặc thông tin liên hệ.";
+        "Khong tim thay ve. Kiem tra lai ma ve hoac thong tin lien he.";
       toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialQuery) return;
+    setQuery(initialQuery);
+  }, [initialQuery]);
+
+  useEffect(() => {
+    if (!initialQuery || query !== initialQuery) return;
+    if (autoSearchRef.current === initialQuery) return;
+    autoSearchRef.current = initialQuery;
+    handleSearch();
+    // Run once per completed booking code; handleSearch reads the query state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery, query]);
 
   const handlePrint = () => {
     if (!selectedTicket) {

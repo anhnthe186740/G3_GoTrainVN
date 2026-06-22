@@ -4,20 +4,24 @@ import {
   cancelBooking,
   getBookingQuote,
   createBookingCheckout,
+  createStaffBookingCheckout,
   confirmBookingQrPayment,
   getBookingPaymentState,
   receivePayosWebhook,
   getMyBookings,
   getAdminBookings,
   getAdminBookingStats,
+  exchangeBooking,
 } from "../controllers/booking.controller.js";
 import { bookingIdentity } from "../middlewares/bookingIdentity.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
+import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
 export const bookingRoutes = Router();
 
-bookingRoutes.get("/lookup", lookupBooking);
+bookingRoutes.get("/staff/lookup", authMiddleware, staffOrAdmin, lookupBooking);
+bookingRoutes.get("/lookup", bookingIdentity, lookupBooking);
 bookingRoutes.post("/payos/webhook", receivePayosWebhook);
 
 // Customer: view own bookings
@@ -33,6 +37,12 @@ bookingRoutes.get(
 bookingRoutes.get("/admin", authMiddleware, adminOnly, getAdminBookings);
 
 bookingRoutes.post("/quote", bookingIdentity, getBookingQuote);
+bookingRoutes.post(
+  "/staff/checkout",
+  authMiddleware,
+  staffOrAdmin,
+  createStaffBookingCheckout,
+);
 bookingRoutes.post("/checkout", bookingIdentity, createBookingCheckout);
 bookingRoutes.get(
   "/:id/payment-status",
@@ -44,4 +54,5 @@ bookingRoutes.post(
   bookingIdentity,
   confirmBookingQrPayment,
 );
-bookingRoutes.post("/:id/cancel", cancelBooking);
+bookingRoutes.post("/:id/exchange", authMiddleware, exchangeBooking);
+bookingRoutes.post("/:id/cancel", bookingIdentity, cancelBooking);

@@ -164,9 +164,7 @@ function validateRules(rules) {
       basePrice,
       pricePerKm,
       classSurcharge,
-      discountPercentage: finiteNumber(rule.discountPercentage, "Chiết khấu", {
-        max: 100,
-      }),
+      discountPercentage: 0,
       minPrice,
       maxPrice,
     };

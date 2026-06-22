@@ -220,6 +220,13 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     isActive: isActive !== undefined ? isActive : user.isActive,
   };
 
+  // Ngăn Admin tự khóa chính mình
+  if (isActive === false && id === req.user.id) {
+    return res
+      .status(400)
+      .json({ message: "Bạn không thể tự khóa tài khoản của chính mình." });
+  }
+
   // Check if locking the account (changing isActive from true to false)
   if (isActive === false && user.isActive === true) {
     data.lockReason = lockReason || "Vi phạm điều khoản dịch vụ";
@@ -228,6 +235,12 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
   }
 
   if (password) {
+    if (user.userType !== "STAFF") {
+      return res.status(400).json({
+        message:
+          "Quản trị viên chỉ được phép đặt lại mật khẩu cho tài khoản Nhân viên.",
+      });
+    }
     data.password = await bcrypt.hash(password, 10);
   }
 
