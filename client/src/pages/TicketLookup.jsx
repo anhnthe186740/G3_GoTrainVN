@@ -24,6 +24,7 @@ import {
   HelpCircle,
   Repeat2,
 } from "lucide-react";
+import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 
 export function TicketLookup() {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ export function TicketLookup() {
 
   // Refund Modal state
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState(
     "Thay đổi lịch trình cá nhân",
   );
@@ -992,7 +994,7 @@ export function TicketLookup() {
                   <button
                     onClick={() => {
                       if (refundInfo.allowed) {
-                        setIsRefundModalOpen(true);
+                        setIsPolicyModalOpen(true);
                       } else {
                         toast.error(refundInfo.message);
                       }
@@ -1258,6 +1260,16 @@ export function TicketLookup() {
       {/* ============================================================== */}
       {/* REFUND REQUEST MODAL                                           */}
       {/* ============================================================== */}
+      <CancellationPolicyModal
+        open={isPolicyModalOpen}
+        audience={user ? "registered" : "guest"}
+        onClose={() => setIsPolicyModalOpen(false)}
+        onAccept={() => {
+          setIsPolicyModalOpen(false);
+          setIsRefundModalOpen(true);
+        }}
+      />
+
       {isRefundModalOpen && activeTicket && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 no-print animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-[500px] p-6 shadow-2xl relative border border-slate-100 flex flex-col gap-6">

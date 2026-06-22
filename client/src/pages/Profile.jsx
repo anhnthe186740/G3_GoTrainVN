@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
 import { toast } from "sonner";
+import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 import {
   User as UserIcon,
   Mail,
@@ -54,6 +55,7 @@ export function Profile() {
 
   // Cancel Booking modal state
   const [selectedCancelBooking, setSelectedCancelBooking] = useState(null);
+  const [policyBooking, setPolicyBooking] = useState(null);
   const [cancelReason, setCancelReason] = useState(
     "Thay đổi lịch trình cá nhân",
   );
@@ -839,7 +841,8 @@ export function Profile() {
                 const isUpcoming = depDate && new Date(depDate) > new Date();
                 const canCancel =
                   isUpcoming &&
-                  ["CONFIRMED", "COMPLETED"].includes(booking.status);
+                  ["CONFIRMED", "COMPLETED"].includes(booking.status) &&
+                  booking.cancellationRequest?.status !== "PENDING";
 
                 return (
                   <div
@@ -973,15 +976,19 @@ export function Profile() {
                         </span>
                       </div>
 
-                      {canCancel && (
+                      {booking.cancellationRequest?.status === "PENDING" ? (
+                        <span className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700">
+                          Yêu cầu hủy đang chờ Admin duyệt
+                        </span>
+                      ) : canCancel ? (
                         <button
-                          onClick={() => setSelectedCancelBooking(booking)}
+                          onClick={() => setPolicyBooking(booking)}
                           className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer hover:-translate-y-0.5 active:scale-95"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           Hủy vé & Hoàn tiền
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -992,6 +999,16 @@ export function Profile() {
       )}
 
       {/* CANCELLATION MODAL */}
+      <CancellationPolicyModal
+        open={Boolean(policyBooking)}
+        audience="registered"
+        onClose={() => setPolicyBooking(null)}
+        onAccept={() => {
+          setSelectedCancelBooking(policyBooking);
+          setPolicyBooking(null);
+        }}
+      />
+
       {selectedCancelBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden border border-slate-100 shadow-2xl animate-fade-in text-left">

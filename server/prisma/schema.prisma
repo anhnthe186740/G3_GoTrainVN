@@ -561,6 +561,9 @@ model CancellationRequest {
 
   status          String        @default("PENDING") // PENDING, APPROVED, REJECTED
   requestReason   String?
+  passengerIds    String[]      @default([])
+  refundMethod    String?       @default("WALLET")
+  rejectionReason String?
   refundReason    RefundReason?
   refundAmount    Float?        @db.Double
   approvedBy      String?       @db.ObjectId

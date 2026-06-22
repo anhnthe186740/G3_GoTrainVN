@@ -5,6 +5,7 @@ import { AdminDashboard } from "../components/dashboard/AdminDashboard";
 import { StaffDashboard } from "../components/dashboard/StaffDashboard";
 import { api } from "../services/api";
 import { toast } from "sonner";
+import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("vi-VN", {
@@ -79,6 +80,7 @@ function CustomerDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [wallet, setWallet] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
+  const [policyBooking, setPolicyBooking] = useState(null);
   const [tab, setTab] = useState("upcoming");
   const [page, setPage] = useState(1);
   const LIMIT = 5;
@@ -135,13 +137,7 @@ function CustomerDashboard({ user }) {
     .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
 
   const handleCancel = async (booking) => {
-    const bookingCode = booking.bookingCode;
-    if (
-      !window.confirm(
-        `Bạn có chắc chắn muốn hủy đặt vé ${bookingCode}? Tiền sẽ được hoàn vào ví.`,
-      )
-    )
-      return;
+    setPolicyBooking(null);
     setCancellingId(booking.id);
     try {
       const { data } = await api.post(`/bookings/${booking.id}/cancel`, {
@@ -149,9 +145,7 @@ function CustomerDashboard({ user }) {
         reason: "Khách hàng tự hủy",
         refundMethod: "WALLET",
       });
-      toast.success(
-        `Hủy thành công! Hoàn tiền ${formatCurrency(data.refundAmount)} vào ví.`,
-      );
+      toast.success(data.message);
       fetchData();
     } catch (err) {
       toast.error(
@@ -342,10 +336,15 @@ function CustomerDashboard({ user }) {
                         </span>
                         Xem vé
                       </Link>
-                      {next.status !== "CANCELLED" &&
+                      {next.cancellationRequest?.status === "PENDING" ? (
+                        <span className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs font-bold text-amber-700">
+                          Chờ Admin duyệt hủy
+                        </span>
+                      ) : (
+                        next.status !== "CANCELLED" &&
                         next.status !== "REFUNDED" && (
                           <button
-                            onClick={() => handleCancel(next)}
+                            onClick={() => setPolicyBooking(next)}
                             disabled={cancellingId === next.id}
                             className="flex items-center gap-2 border border-red-200 hover:bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
                           >
@@ -358,7 +357,8 @@ function CustomerDashboard({ user }) {
                             )}
                             Hủy vé
                           </button>
-                        )}
+                        )
+                      )}
                     </div>
                   </div>
                 );
@@ -502,11 +502,20 @@ function CustomerDashboard({ user }) {
                                 qr_code_2
                               </span>
                             </Link>
-                            {booking.status !== "CANCELLED" &&
+                            {booking.cancellationRequest?.status ===
+                            "PENDING" ? (
+                              <span
+                                className="material-symbols-outlined p-1.5 text-amber-600"
+                                title="Yêu cầu hủy đang chờ Admin duyệt"
+                              >
+                                pending_actions
+                              </span>
+                            ) : (
+                              booking.status !== "CANCELLED" &&
                               booking.status !== "REFUNDED" &&
                               diffMs > 0 && (
                                 <button
-                                  onClick={() => handleCancel(booking)}
+                                  onClick={() => setPolicyBooking(booking)}
                                   disabled={cancellingId === booking.id}
                                   className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
                                   title="Hủy vé"
@@ -519,7 +528,8 @@ function CustomerDashboard({ user }) {
                                     </span>
                                   )}
                                 </button>
-                              )}
+                              )
+                            )}
                           </div>
                         </div>
                       </div>
@@ -626,6 +636,12 @@ function CustomerDashboard({ user }) {
           </Link>
         </div>
       </div>
+      <CancellationPolicyModal
+        open={Boolean(policyBooking)}
+        audience="registered"
+        onClose={() => setPolicyBooking(null)}
+        onAccept={() => policyBooking && handleCancel(policyBooking)}
+      />
     </div>
   );
 }
