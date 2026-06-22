@@ -48,17 +48,19 @@ export function Home() {
   };
 
   // Search parameters
-  const [fromStation, setFromStation] = useState(DEFAULT_FROM_STATION);
+  const [fromStation, setFromStation] = useState("");
   const [fromStationId, setFromStationId] = useState("");
-  const [toStation, setToStation] = useState(DEFAULT_TO_STATION);
+  const [toStation, setToStation] = useState("");
   const [toStationId, setToStationId] = useState("");
-  const [departureDate, setDepartureDate] = useState(getTodayDateStr());
+  const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
   const [tripType, setTripType] = useState("one-way"); // 'one-way' or 'round-trip'
 
   const [stations, setStations] = useState([]);
   const [showFromSuggestions, setShowFromSuggestions] = useState(false);
   const [showToSuggestions, setShowToSuggestions] = useState(false);
+  const [fromSearch, setFromSearch] = useState("");
+  const [toSearch, setToSearch] = useState("");
 
   // Live tracking progress bar logic
   const [progress, setProgress] = useState(66.05);
@@ -83,14 +85,7 @@ export function Home() {
             city: s.city,
           }));
           setStations(formatted);
-          setFromStationId(
-            formatted.find((station) => station.name === DEFAULT_FROM_STATION)
-              ?.id || "",
-          );
-          setToStationId(
-            formatted.find((station) => station.name === DEFAULT_TO_STATION)
-              ?.id || "",
-          );
+          // Start with empty selections
         }
       })
       .catch((err) => {
@@ -120,7 +115,7 @@ export function Home() {
   };
 
   const filteredFromSuggestions = useMemo(() => {
-    const query = fromStation.trim().toLowerCase();
+    const query = fromSearch.trim().toLowerCase();
     if (!query) return stations;
     return stations.filter(
       (s) =>
@@ -128,10 +123,10 @@ export function Home() {
         s.city.toLowerCase().includes(query) ||
         s.code.toLowerCase().includes(query),
     );
-  }, [fromStation, stations]);
+  }, [fromSearch, stations]);
 
   const filteredToSuggestions = useMemo(() => {
-    const query = toStation.trim().toLowerCase();
+    const query = toSearch.trim().toLowerCase();
     if (!query) return stations;
     return stations.filter(
       (s) =>
@@ -139,7 +134,7 @@ export function Home() {
         s.city.toLowerCase().includes(query) ||
         s.code.toLowerCase().includes(query),
     );
-  }, [toStation, stations]);
+  }, [toSearch, stations]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -270,7 +265,7 @@ export function Home() {
             </div>
 
             {/* Search Card */}
-            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,0,0,0.1)] w-full">
+            <div className="bg-slate-300/75 backdrop-blur-xl border border-white/20 p-6 md:p-8 rounded-[28px] shadow-[0_24px_50px_rgba(0,0,0,0.12)] w-full transition-all duration-300">
               <form onSubmit={handleSearch}>
                 <div
                   className={`grid grid-cols-1 gap-md items-end ${tripType === "round-trip" ? "md:grid-cols-5" : "md:grid-cols-4"}`}
@@ -282,71 +277,126 @@ export function Home() {
                       className={`flex flex-col gap-xs relative text-left ${showFromSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <label className="font-label-md text-label-md text-secondary">
+                      <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                         Ga Đi
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                        <MapPin className="h-5 w-5 text-primary shrink-0" />
-                        <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                          placeholder="Hà Nội"
-                          type="text"
-                          value={fromStation}
-                          onChange={(e) => {
-                            setFromStation(e.target.value);
-                            setFromStationId("");
-                            setShowFromSuggestions(true);
-                          }}
-                          onFocus={() => {
-                            setShowFromSuggestions(true);
-                            setShowToSuggestions(false);
-                          }}
-                        />
+                      <div
+                        className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowFromSuggestions(!showFromSuggestions);
+                          setShowToSuggestions(false);
+                          setFromSearch(""); // Reset search query on open
+                        }}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <MapPin className="h-5 w-5 text-[#007aff] shrink-0" />
+                          <span
+                            className={`text-sm truncate ${fromStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
+                          >
+                            {fromStation ? `Ga ${fromStation}` : "Chọn ga đi"}
+                          </span>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
+                          keyboard_arrow_down
+                        </span>
                       </div>
+
                       {/* Suggestions Dropdown */}
-                      {showFromSuggestions &&
-                        filteredFromSuggestions.length > 0 && (
-                          <div className="absolute left-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
-                            {filteredFromSuggestions.map((s) => (
+                      {showFromSuggestions && (
+                        <div className="absolute left-0 top-[105%] w-full md:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] z-30 p-3 flex flex-col gap-2">
+                          <div className="flex items-center gap-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all h-[36px]">
+                            <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                              search
+                            </span>
+                            <input
+                              type="text"
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
+                              placeholder="Tìm ga đi..."
+                              value={fromSearch}
+                              onChange={(e) => setFromSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {fromSearch && (
                               <button
-                                key={s.id}
                                 type="button"
-                                onClick={() => {
-                                  setFromStation(s.name);
-                                  setFromStationId(s.id);
-                                  setShowFromSuggestions(false);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFromSearch("");
                                 }}
-                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer"
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
-                                    <MapPin className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-slate-800">
-                                      {s.name.toLowerCase().startsWith("ga")
-                                        ? s.name
-                                        : `Ga ${s.name}`}
-                                    </p>
-                                    <p className="text-xs text-slate-400 font-semibold">
-                                      {s.city}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
-                                  {s.code}
-                                </span>
+                                <X className="h-4 w-4" />
                               </button>
-                            ))}
+                            )}
                           </div>
-                        )}
+
+                          <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-50 scrollbar-thin">
+                            {filteredFromSuggestions.length > 0 ? (
+                              filteredFromSuggestions.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFromStation(s.name);
+                                    setFromStationId(s.id);
+                                    setShowFromSuggestions(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 rounded-lg cursor-pointer group ${
+                                    fromStationId === s.id
+                                      ? "border-primary bg-blue-50/30 font-bold"
+                                      : "border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`p-1.5 rounded-lg transition-colors ${
+                                        fromStationId === s.id
+                                          ? "bg-blue-100 text-primary"
+                                          : "bg-slate-50 text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary"
+                                      }`}
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                      <p
+                                        className={`text-xs ${fromStationId === s.id ? "text-primary font-bold" : "text-slate-800 font-semibold"}`}
+                                      >
+                                        {s.name.toLowerCase().startsWith("ga")
+                                          ? s.name
+                                          : `Ga ${s.name}`}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-semibold">
+                                        {s.city}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border transition-colors ${
+                                      fromStationId === s.id
+                                        ? "bg-blue-100 text-primary border-blue-200"
+                                        : "bg-slate-50 text-slate-500 border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200"
+                                    }`}
+                                  >
+                                    {s.code}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-4 text-center text-xs text-slate-400 font-semibold">
+                                Không tìm thấy ga phù hợp
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Swap Button */}
                     <button
                       type="button"
                       onClick={handleSwapStations}
-                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[20%] z-10 bg-white border border-outline-variant rounded-full p-2 text-primary hover:rotate-180 transition-transform duration-500 shadow-sm hidden md:flex items-center justify-center cursor-pointer"
+                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-white border border-slate-200 rounded-full p-2.5 text-[#007aff] hover:text-[#005bb5] hover:rotate-180 hover:shadow-md transition-all duration-500 hidden md:flex items-center justify-center cursor-pointer"
                       title="Đảo chiều ga"
                     >
                       <RotateCw className="h-5 w-5" />
@@ -357,64 +407,119 @@ export function Home() {
                       className={`flex flex-col gap-xs relative text-left ${showToSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <label className="font-label-md text-label-md text-secondary">
+                      <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                         Ga Đến
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                        <Navigation className="h-5 w-5 text-primary rotate-45 shrink-0" />
-                        <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                          placeholder="Đà Nẵng"
-                          type="text"
-                          value={toStation}
-                          onChange={(e) => {
-                            setToStation(e.target.value);
-                            setToStationId("");
-                            setShowToSuggestions(true);
-                          }}
-                          onFocus={() => {
-                            setShowToSuggestions(true);
-                            setShowFromSuggestions(false);
-                          }}
-                        />
+                      <div
+                        className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowToSuggestions(!showToSuggestions);
+                          setShowFromSuggestions(false);
+                          setToSearch(""); // Reset search query on open
+                        }}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <Navigation className="h-5 w-5 text-[#007aff] rotate-45 shrink-0" />
+                          <span
+                            className={`text-sm truncate ${toStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
+                          >
+                            {toStation ? `Ga ${toStation}` : "Chọn ga đến"}
+                          </span>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
+                          keyboard_arrow_down
+                        </span>
                       </div>
+
                       {/* Suggestions Dropdown */}
-                      {showToSuggestions &&
-                        filteredToSuggestions.length > 0 && (
-                          <div className="absolute left-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
-                            {filteredToSuggestions.map((s) => (
+                      {showToSuggestions && (
+                        <div className="absolute left-0 top-[105%] w-full md:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] z-30 p-3 flex flex-col gap-2">
+                          <div className="flex items-center gap-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all h-[36px]">
+                            <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                              search
+                            </span>
+                            <input
+                              type="text"
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
+                              placeholder="Tìm ga đến..."
+                              value={toSearch}
+                              onChange={(e) => setToSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {toSearch && (
                               <button
-                                key={s.id}
                                 type="button"
-                                onClick={() => {
-                                  setToStation(s.name);
-                                  setToStationId(s.id);
-                                  setShowToSuggestions(false);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setToSearch("");
                                 }}
-                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer"
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
-                                    <MapPin className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-slate-800">
-                                      {s.name.toLowerCase().startsWith("ga")
-                                        ? s.name
-                                        : `Ga ${s.name}`}
-                                    </p>
-                                    <p className="text-xs text-slate-400 font-semibold">
-                                      {s.city}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
-                                  {s.code}
-                                </span>
+                                <X className="h-4 w-4" />
                               </button>
-                            ))}
+                            )}
                           </div>
-                        )}
+
+                          <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-50 scrollbar-thin">
+                            {filteredToSuggestions.length > 0 ? (
+                              filteredToSuggestions.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setToStation(s.name);
+                                    setToStationId(s.id);
+                                    setShowToSuggestions(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 rounded-lg cursor-pointer group ${
+                                    toStationId === s.id
+                                      ? "border-primary bg-blue-50/30 font-bold"
+                                      : "border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`p-1.5 rounded-lg transition-colors ${
+                                        toStationId === s.id
+                                          ? "bg-blue-100 text-primary"
+                                          : "bg-slate-50 text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary"
+                                      }`}
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                      <p
+                                        className={`text-xs ${toStationId === s.id ? "text-primary font-bold" : "text-slate-800 font-semibold"}`}
+                                      >
+                                        {s.name.toLowerCase().startsWith("ga")
+                                          ? s.name
+                                          : `Ga ${s.name}`}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-semibold">
+                                        {s.city}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border transition-colors ${
+                                      toStationId === s.id
+                                        ? "bg-blue-100 text-primary border-blue-200"
+                                        : "bg-slate-50 text-slate-500 border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200"
+                                    }`}
+                                  >
+                                    {s.code}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-4 text-center text-xs text-slate-400 font-semibold">
+                                Không tìm thấy ga phù hợp
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -425,7 +530,7 @@ export function Home() {
                     {tripType === "one-way" ? (
                       <div className="flex flex-col gap-xs text-left w-full">
                         <div className="flex justify-between items-center">
-                          <label className="font-label-md text-label-md text-secondary">
+                          <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                             Ngày Đi
                           </label>
                           <button
@@ -434,17 +539,17 @@ export function Home() {
                               setTripType("round-trip");
                               setReturnDate(getNextDay(departureDate));
                             }}
-                            className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary-container cursor-pointer transition-colors"
+                            className="flex items-center gap-1 text-[11px] font-bold text-[#007aff] hover:text-[#005bb5] cursor-pointer transition-colors"
                             title="Chọn vé khứ hồi"
                           >
                             <ArrowLeftRight className="h-3.5 w-3.5" />
                             <span>Khứ hồi?</span>
                           </button>
                         </div>
-                        <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                          <Calendar className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                          <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                           <input
-                            className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                            className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                             type="date"
                             min={getTodayDateStr()}
                             value={departureDate}
@@ -461,13 +566,13 @@ export function Home() {
                       <div className="grid grid-cols-2 gap-md w-full">
                         {/* Ngày Đi */}
                         <div className="col-span-1 flex flex-col gap-xs text-left">
-                          <label className="font-label-md text-label-md text-secondary">
+                          <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                             Ngày Đi
                           </label>
-                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                          <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                            <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                             <input
-                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                               type="date"
                               min={getTodayDateStr()}
                               value={departureDate}
@@ -484,22 +589,22 @@ export function Home() {
                         {/* Ngày Về */}
                         <div className="col-span-1 flex flex-col gap-xs text-left relative">
                           <div className="flex justify-between items-center">
-                            <label className="font-label-md text-label-md text-secondary">
+                            <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                               Ngày Về
                             </label>
                             <button
                               type="button"
                               onClick={() => setTripType("one-way")}
-                              className="text-slate-400 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
+                              className="text-slate-500 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
                               title="Hủy khứ hồi"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                          <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                            <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                             <input
-                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                               type="date"
                               min={departureDate || getTodayDateStr()}
                               value={returnDate}
@@ -514,7 +619,7 @@ export function Home() {
                   {/* Submit Button */}
                   <button
                     type="submit"
-                    className="bg-primary-container text-white h-[48px] rounded-xl font-label-md text-label-md font-bold shadow-[0px_8px_24px_rgba(0,163,255,0.3)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
+                    className="bg-[#007aff] text-white h-[52px] rounded-xl text-sm font-bold shadow-[0_8px_24px_rgba(0,122,255,0.25)] hover:bg-[#0062cc] hover:shadow-[0_8px_28px_rgba(0,122,255,0.35)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
                   >
                     Tìm Chuyến Tàu
                   </button>
