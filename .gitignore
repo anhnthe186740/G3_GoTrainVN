@@ -11,3 +11,4 @@ coverage
 client/dist
 server/dist
 server/src/prisma/generated
+sent_emails.json

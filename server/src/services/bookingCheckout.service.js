@@ -7,6 +7,11 @@ import {
   verifyPayosSignature,
 } from "./payos.service.js";
 import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
+import { sendEmail } from "./email.service.js";
+import {
+  getBookingPendingEmailTemplate,
+  getPaymentSuccessEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
@@ -1048,6 +1053,13 @@ export async function checkoutBooking(identity, payload) {
     return { booking, passengers: createdPassengers };
   });
 
+  // Gửi email không đồng bộ (asynchronously) tùy theo trạng thái thanh toán
+  if (immediatePayment) {
+    sendBookingEmail(result.booking.id, "SUCCESS");
+  } else {
+    sendBookingEmail(result.booking.id, "PENDING");
+  }
+
   return {
     ...result,
     qrPayload: paymentMethod === "BANK_QR" ? payosPayment?.qrCode : null,
@@ -1094,7 +1106,7 @@ export async function confirmQrPayment(identity, bookingId) {
     throw httpError(409, "Thời gian thanh toán đã kết thúc.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const completed = await tx.booking.update({
       where: { id: booking.id },
       data: {
@@ -1148,6 +1160,11 @@ export async function confirmQrPayment(identity, bookingId) {
     }
     return completed;
   });
+
+  // Gửi email vé điện tử thành công
+  sendBookingEmail(result.id, "SUCCESS");
+
+  return result;
 }
 
 export async function getBookingPaymentStatus(identity, bookingId) {
@@ -1301,5 +1318,72 @@ export async function handlePayosWebhook(payload) {
   const completed = await prisma.$transaction((tx) =>
     completePayosBooking(tx, booking, data),
   );
+
+  // Chỉ gửi email nếu trước đó trạng thái là PENDING và hiện tại đã hoàn thành thanh toán
+  if (
+    booking.paymentStatus === "PENDING" &&
+    completed?.paymentStatus === "COMPLETED"
+  ) {
+    sendBookingEmail(completed.id, "SUCCESS");
+  }
+
   return { ignored: false, booking: completed };
+}
+
+/**
+ * Helper function to send booking notifications via email
+ */
+async function sendBookingEmail(bookingId, type) {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: true,
+        schedule: {
+          include: {
+            train: true,
+          },
+        },
+        fromStation: true,
+        toStation: true,
+        passengers: {
+          include: {
+            seat: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      console.error(`❌ Không tìm thấy booking ${bookingId} để gửi email.`);
+      return;
+    }
+
+    const toEmail =
+      booking.confirmationEmail ||
+      booking.user?.email ||
+      booking.passengers.find((p) => p.email)?.email;
+
+    if (!toEmail) {
+      console.warn(
+        `⚠️ Không tìm thấy địa chỉ email nhận cho booking ${booking.bookingCode}.`,
+      );
+      return;
+    }
+
+    let subject = "";
+    let html = "";
+
+    if (type === "PENDING") {
+      subject = `[GoTrain VN] Đặt chỗ thành công - Mã đặt chỗ: ${booking.bookingCode}`;
+      html = getBookingPendingEmailTemplate(booking);
+    } else if (type === "SUCCESS") {
+      subject = `[GoTrain VN] Xác nhận thanh toán & Vé điện tử - Mã đặt chỗ: ${booking.bookingCode}`;
+      html = getPaymentSuccessEmailTemplate(booking);
+    }
+
+    await sendEmail({ to: toEmail, subject, html });
+  } catch (err) {
+    console.error(`❌ Gửi email booking (${type}) thất bại:`, err.message);
+  }
 }

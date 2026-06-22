@@ -134,16 +134,18 @@ function CustomerDashboard({ user }) {
     .filter((b) => b.status === "CONFIRMED" || b.status === "COMPLETED")
     .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
 
-  const handleCancel = async (bookingId, bookingCode) => {
+  const handleCancel = async (booking) => {
+    const bookingCode = booking.bookingCode;
     if (
       !window.confirm(
         `Bạn có chắc chắn muốn hủy đặt vé ${bookingCode}? Tiền sẽ được hoàn vào ví.`,
       )
     )
       return;
-    setCancellingId(bookingId);
+    setCancellingId(booking.id);
     try {
-      const { data } = await api.post(`/bookings/${bookingId}/cancel`, {
+      const { data } = await api.post(`/bookings/${booking.id}/cancel`, {
+        passengerIds: booking.passengers?.map((passenger) => passenger.id),
         reason: "Khách hàng tự hủy",
         refundMethod: "WALLET",
       });
@@ -343,9 +345,7 @@ function CustomerDashboard({ user }) {
                       {next.status !== "CANCELLED" &&
                         next.status !== "REFUNDED" && (
                           <button
-                            onClick={() =>
-                              handleCancel(next.id, next.bookingCode)
-                            }
+                            onClick={() => handleCancel(next)}
                             disabled={cancellingId === next.id}
                             className="flex items-center gap-2 border border-red-200 hover:bg-red-50 text-red-600 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
                           >
@@ -506,12 +506,7 @@ function CustomerDashboard({ user }) {
                               booking.status !== "REFUNDED" &&
                               diffMs > 0 && (
                                 <button
-                                  onClick={() =>
-                                    handleCancel(
-                                      booking.id,
-                                      booking.bookingCode,
-                                    )
-                                  }
+                                  onClick={() => handleCancel(booking)}
                                   disabled={cancellingId === booking.id}
                                   className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
                                   title="Hủy vé"
