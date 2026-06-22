@@ -554,6 +554,15 @@ export const deleteRoute = asyncHandler(async (req, res) => {
 });
 
 // ============================================================
+// PUT /api/v1/routes/:id/activate
+// ============================================================
+export const activateRoute = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await prisma.route.update({ where: { id }, data: { isActive: true } });
+  res.json({ message: "Tuyến đường đã được kích hoạt lại." });
+});
+
+// ============================================================
 // POST /api/v1/trains - Tạo tàu và sinh ghế
 // ============================================================
 export const createTrain = asyncHandler(async (req, res) => {
