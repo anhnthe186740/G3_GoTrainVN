@@ -7,6 +7,11 @@ import {
   verifyPayosSignature,
 } from "./payos.service.js";
 import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
+import { sendEmail } from "./email.service.js";
+import {
+  getBookingPendingEmailTemplate,
+  getPaymentSuccessEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 const PASSENGER_TYPES = ["ADULT", "CHILD", "STUDENT", "SENIOR"];
 const DOCUMENT_TYPES = ["CCCD", "HCDC"];
@@ -423,6 +428,13 @@ async function resolveVoucher(voucherCode, subtotal, identity) {
   };
 }
 
+function getDowngradedCarriageType(carriageType) {
+  if (carriageType === "AC_SEAT") return "NORMAL_SEAT";
+  if (carriageType === "SLEEPER_6") return "AC_SEAT";
+  if (carriageType === "SLEEPER_4") return "SLEEPER_6";
+  return carriageType;
+}
+
 export async function quoteBooking(
   identity,
   { sessionId, passengerTypes, passengers, voucherCode },
@@ -519,6 +531,37 @@ export async function quoteBooking(
       const taxAmount = Math.round(
         afterDiscount * (Number(rule.taxPercentage || 0) / 100),
       );
+      const finalPrice = afterDiscount + taxAmount;
+
+      // Upgrade logic: calculate target carriage class price if upgraded
+      const downgradedType = getDowngradedCarriageType(hold.carriageType);
+      let upgradeSavings = 0;
+      if (downgradedType !== hold.carriageType) {
+        const upgradedRule =
+          pricing.rules.get(`ADULT:${downgradedType}`) ||
+          pricing.rules.get(`${passenger.passengerType}:${downgradedType}`);
+        if (upgradedRule) {
+          const upgradedFare = calculateFare(
+            { ...upgradedRule, discountPercentage: 0 },
+            pricing.distance,
+            upgradedRule.taxPercentage,
+          );
+          const upgradedDiscountAmount = Math.round(
+            upgradedFare.boundedAmount * (passenger.discountPercentage / 100),
+          );
+          const upgradedAfterDiscount = Math.max(
+            0,
+            upgradedFare.boundedAmount - upgradedDiscountAmount,
+          );
+          const upgradedTaxAmount = Math.round(
+            upgradedAfterDiscount *
+              (Number(upgradedRule.taxPercentage || 0) / 100),
+          );
+          const upgradedFinalPrice = upgradedAfterDiscount + upgradedTaxAmount;
+          upgradeSavings = Math.max(0, finalPrice - upgradedFinalPrice);
+        }
+      }
+
       return {
         leg,
         holdId: hold.id,
@@ -530,7 +573,8 @@ export async function quoteBooking(
         basePrice: fare.boundedAmount,
         discountAmount,
         taxAmount,
-        finalPrice: afterDiscount + taxAmount,
+        finalPrice,
+        upgradeSavings,
       };
     });
     return {
@@ -561,14 +605,32 @@ export async function quoteBooking(
   );
   const beforeVoucher = items.reduce((sum, item) => sum + item.total, 0);
 
-  const scheduleIds = [
-    ...new Set(session.holds.map((hold) => hold.scheduleId)),
-  ];
+  // Group inputs by schedule for automatic promotion search
+  const scheduleAmounts = new Map();
+  for (const item of items) {
+    for (const leg of item.legs) {
+      const current = scheduleAmounts.get(leg.scheduleId) || {
+        amount: 0,
+        upgradeSavings: 0,
+      };
+      current.amount += leg.finalPrice;
+      current.upgradeSavings += leg.upgradeSavings || 0;
+      scheduleAmounts.set(leg.scheduleId, current);
+    }
+  }
+  const scheduleInputs = Array.from(scheduleAmounts.entries()).map(
+    ([scheduleId, data]) => ({
+      scheduleId,
+      amount: data.amount,
+      upgradeSavings: data.upgradeSavings,
+    }),
+  );
+
   const { findBestPromotion, validateVoucher } =
     await import("./promotion.service.js");
 
   const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
-    await findBestPromotion(scheduleIds, beforeVoucher);
+    await findBestPromotion(scheduleInputs, beforeVoucher);
 
   const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
 
@@ -1048,6 +1110,13 @@ export async function checkoutBooking(identity, payload) {
     return { booking, passengers: createdPassengers };
   });
 
+  // Gửi email không đồng bộ (asynchronously) tùy theo trạng thái thanh toán
+  if (immediatePayment) {
+    sendBookingEmail(result.booking.id, "SUCCESS");
+  } else {
+    sendBookingEmail(result.booking.id, "PENDING");
+  }
+
   return {
     ...result,
     qrPayload: paymentMethod === "BANK_QR" ? payosPayment?.qrCode : null,
@@ -1094,7 +1163,7 @@ export async function confirmQrPayment(identity, bookingId) {
     throw httpError(409, "Thời gian thanh toán đã kết thúc.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const completed = await tx.booking.update({
       where: { id: booking.id },
       data: {
@@ -1148,6 +1217,11 @@ export async function confirmQrPayment(identity, bookingId) {
     }
     return completed;
   });
+
+  // Gửi email vé điện tử thành công
+  sendBookingEmail(result.id, "SUCCESS");
+
+  return result;
 }
 
 export async function getBookingPaymentStatus(identity, bookingId) {
@@ -1301,5 +1375,72 @@ export async function handlePayosWebhook(payload) {
   const completed = await prisma.$transaction((tx) =>
     completePayosBooking(tx, booking, data),
   );
+
+  // Chỉ gửi email nếu trước đó trạng thái là PENDING và hiện tại đã hoàn thành thanh toán
+  if (
+    booking.paymentStatus === "PENDING" &&
+    completed?.paymentStatus === "COMPLETED"
+  ) {
+    sendBookingEmail(completed.id, "SUCCESS");
+  }
+
   return { ignored: false, booking: completed };
+}
+
+/**
+ * Helper function to send booking notifications via email
+ */
+async function sendBookingEmail(bookingId, type) {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: true,
+        schedule: {
+          include: {
+            train: true,
+          },
+        },
+        fromStation: true,
+        toStation: true,
+        passengers: {
+          include: {
+            seat: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      console.error(`❌ Không tìm thấy booking ${bookingId} để gửi email.`);
+      return;
+    }
+
+    const toEmail =
+      booking.confirmationEmail ||
+      booking.user?.email ||
+      booking.passengers.find((p) => p.email)?.email;
+
+    if (!toEmail) {
+      console.warn(
+        `⚠️ Không tìm thấy địa chỉ email nhận cho booking ${booking.bookingCode}.`,
+      );
+      return;
+    }
+
+    let subject = "";
+    let html = "";
+
+    if (type === "PENDING") {
+      subject = `[GoTrain VN] Đặt chỗ thành công - Mã đặt chỗ: ${booking.bookingCode}`;
+      html = getBookingPendingEmailTemplate(booking);
+    } else if (type === "SUCCESS") {
+      subject = `[GoTrain VN] Xác nhận thanh toán & Vé điện tử - Mã đặt chỗ: ${booking.bookingCode}`;
+      html = getPaymentSuccessEmailTemplate(booking);
+    }
+
+    await sendEmail({ to: toEmail, subject, html });
+  } catch (err) {
+    console.error(`❌ Gửi email booking (${type}) thất bại:`, err.message);
+  }
 }

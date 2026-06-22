@@ -344,6 +344,23 @@ function FakeQr({ payload }) {
 }
 
 function CompletionView({ result }) {
+  const lookupPassenger =
+    result.passengers?.find(
+      (passenger) =>
+        passenger.ticketCode && (passenger.email || passenger.phoneNumber),
+    ) || result.passengers?.find((passenger) => passenger.ticketCode);
+  const lookupContact =
+    lookupPassenger?.email ||
+    lookupPassenger?.phoneNumber ||
+    result.booking.confirmationEmail ||
+    "";
+  const lookupParams = new URLSearchParams();
+  lookupParams.set(
+    "ticketCode",
+    lookupPassenger?.ticketCode || result.booking.bookingCode,
+  );
+  if (lookupContact) lookupParams.set("contactInfo", lookupContact);
+
   return (
     <div className="mx-auto max-w-3xl overflow-hidden rounded-[30px] border border-emerald-200 bg-white shadow-[0_24px_80px_rgba(15,118,110,0.12)]">
       <div className="bg-[#073b4c] px-6 py-10 text-center text-white sm:px-10">
@@ -395,7 +412,7 @@ function CompletionView({ result }) {
 
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
           <Link
-            to="/tra-cuu-ve"
+            to={`/tra-cuu-ve?${lookupParams.toString()}`}
             className="flex items-center justify-center gap-2 rounded-xl bg-[#087a91] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#066478] focus:outline-none focus:ring-4 focus:ring-cyan-100"
           >
             Tra cứu vé điện tử
@@ -1788,7 +1805,9 @@ export function PassengerDetailsPage({
                   )}
                   {quote?.promotionDiscount > 0 && (
                     <div className="flex justify-between text-emerald-600">
-                      <span>Khuyến mãi</span>
+                      <span>
+                        {quote.promotion?.title || "Khuyến mãi tự động"}
+                      </span>
                       <span>-{money(quote.promotionDiscount)}</span>
                     </div>
                   )}
