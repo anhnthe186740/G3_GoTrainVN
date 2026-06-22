@@ -1788,7 +1788,9 @@ export function PassengerDetailsPage({
                   )}
                   {quote?.promotionDiscount > 0 && (
                     <div className="flex justify-between text-emerald-600">
-                      <span>Khuyến mãi</span>
+                      <span>
+                        {quote.promotion?.title || "Khuyến mãi tự động"}
+                      </span>
                       <span>-{money(quote.promotionDiscount)}</span>
                     </div>
                   )}

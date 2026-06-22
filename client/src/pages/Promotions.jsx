@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../services/api";
+import { useAuthStore } from "../store/authStore";
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
@@ -13,6 +14,7 @@ function formatDate(dateStr) {
 }
 
 export function Promotions() {
+  const { user } = useAuthStore();
   const [promotionsList, setPromotionsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(null);
@@ -292,25 +294,39 @@ export function Promotions() {
         {/* CTA Section */}
         <div className="mt-12 bg-gradient-to-r from-[#00629d] to-[#00a3ff] rounded-3xl p-8 text-white text-center">
           <h2 className="text-2xl font-extrabold mb-2">
-            Nhận ưu đãi độc quyền
+            {user
+              ? `Chào mừng, ${user.fullName || user.email}!`
+              : "Nhận ưu đãi độc quyền"}
           </h2>
           <p className="text-[#b3d4f0] mb-6">
-            Đăng ký thành viên và nhận ngay mã giảm giá cho chuyến đi đầu tiên
-            của bạn!
+            {user
+              ? "Cảm ơn bạn đã đồng hành cùng GoTrain VN. Khám phá các ưu đãi và lên kế hoạch cho chuyến đi tiếp theo!"
+              : "Đăng ký thành viên và nhận ngay mã giảm giá cho chuyến đi đầu tiên của bạn!"}
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Link
-              to="/register"
-              className="bg-white text-[#00629d] font-bold px-8 py-3 rounded-xl hover:bg-[#f7f9fb] transition-all shadow-lg"
-            >
-              Đăng ký miễn phí
-            </Link>
-            <Link
-              to="/"
-              className="bg-white/15 border border-white/30 text-white font-bold px-8 py-3 rounded-xl hover:bg-white/25 transition-all"
-            >
-              Đặt vé ngay
-            </Link>
+            {user ? (
+              <Link
+                to="/"
+                className="bg-white text-[#00629d] font-bold px-8 py-3 rounded-xl hover:bg-[#f7f9fb] transition-all shadow-lg"
+              >
+                Đặt vé ngay
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/register"
+                  className="bg-white text-[#00629d] font-bold px-8 py-3 rounded-xl hover:bg-[#f7f9fb] transition-all shadow-lg"
+                >
+                  Đăng ký miễn phí
+                </Link>
+                <Link
+                  to="/"
+                  className="bg-white/15 border border-white/30 text-white font-bold px-8 py-3 rounded-xl hover:bg-white/25 transition-all"
+                >
+                  Đặt vé ngay
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>
