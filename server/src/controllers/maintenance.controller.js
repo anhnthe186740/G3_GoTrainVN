@@ -248,12 +248,10 @@ export const blockSeat = asyncHandler(async (req, res) => {
   const { status, blockReason, blockUntil } = req.body;
 
   if (!["BLOCKED", "AVAILABLE"].includes(status)) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "Trạng thái ghế không hợp lệ. Chỉ chấp nhận BLOCKED hoặc AVAILABLE.",
-      });
+    return res.status(400).json({
+      message:
+        "Trạng thái ghế không hợp lệ. Chỉ chấp nhận BLOCKED hoặc AVAILABLE.",
+    });
   }
 
   const targetSeat = await prisma.seat.findUnique({

@@ -4,11 +4,13 @@ import { toast } from "sonner";
 import { useAuth } from "../../hooks/useAuth";
 import { StaffDirectBookingPanel } from "./StaffDirectBookingPanel.jsx";
 import { StaffTicketPrintPanel } from "./StaffTicketPrintPanel.jsx";
+import { StaffDelayReportPanel } from "./StaffDelayReportPanel.jsx";
 
 const SIDEBAR = [
   { label: "Tổng quan", icon: "dashboard" },
   { label: "Đặt vé tại quầy", icon: "point_of_sale" },
   { label: "Soát vé & In vé", icon: "confirmation_number" },
+  { label: "Báo trễ / Sự cố", icon: "warning" },
   { label: "Tra cứu Booking", icon: "manage_search" },
 ];
 
@@ -146,6 +148,7 @@ export function StaffDashboard() {
   const renderPanel = () => {
     if (active === "Đặt vé tại quầy") return <StaffDirectBookingPanel />;
     if (active === "Soát vé & In vé") return <StaffTicketPrintPanel />;
+    if (active === "Báo trễ / Sự cố") return <StaffDelayReportPanel />;
     if (active === "Tra cứu Booking") return <StaffBookingLookup />;
     return (
       <StaffOverview

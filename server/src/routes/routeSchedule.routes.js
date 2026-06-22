@@ -26,6 +26,7 @@ import {
 } from "../controllers/routeSchedule.controller.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
+import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
 export const routeScheduleRoutes = Router();
 
@@ -107,7 +108,8 @@ routeScheduleRoutes.put(
 );
 routeScheduleRoutes.put(
   "/schedules/:id/delay",
-  ...adminOnlyRoute,
+  authMiddleware,
+  staffOrAdmin,
   updateScheduleDelay,
 );
 routeScheduleRoutes.put(
