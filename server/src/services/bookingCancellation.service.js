@@ -58,6 +58,42 @@ export function normalizeRefundMethod(refundMethod) {
   return method === "BANK" ? "BANK_TRANSFER" : method;
 }
 
+export function normalizeGuestBankInfo(bankInfo = {}) {
+  const normalized = {
+    bankName: String(bankInfo.bankName || "").trim(),
+    bankAccount: String(bankInfo.bankAccount || "").replace(/\s/g, ""),
+    accountHolder: String(bankInfo.accountHolder || "").trim(),
+  };
+  if (
+    !normalized.bankName ||
+    !normalized.bankAccount ||
+    !normalized.accountHolder
+  ) {
+    throw httpError(
+      400,
+      "Khách vãng lai phải cung cấp đầy đủ ngân hàng, số tài khoản và tên chủ tài khoản.",
+    );
+  }
+  if (!/^\d{6,20}$/.test(normalized.bankAccount)) {
+    throw httpError(400, "Số tài khoản nhận hoàn tiền không hợp lệ.");
+  }
+  return normalized;
+}
+
+export function cancellationRequesterType(request = {}) {
+  if (["REGISTERED", "GUEST"].includes(request.requesterType)) {
+    return request.requesterType;
+  }
+  if (
+    request.refundBankAccount ||
+    request.refundMethod === "BANK_TRANSFER" ||
+    !request.booking?.userId
+  ) {
+    return "GUEST";
+  }
+  return "REGISTERED";
+}
+
 function activeDetails(passenger) {
   return (passenger.bookingDetails || []).filter((detail) =>
     ACTIVE_BOOKING_DETAIL_STATUSES.includes(detail.status),
@@ -237,17 +273,21 @@ export async function cancelBookingTickets({
     throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
   }
 
-  if (method === "WALLET" && !booking.userId) {
-    method = "CASH";
+  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
+  const isGuestRequest = requesterType === "GUEST";
+  const normalizedBankInfo = isGuestRequest
+    ? normalizeGuestBankInfo(bankInfo)
+    : {
+        bankName: bankInfo?.bankName?.trim() || null,
+        bankAccount:
+          String(bankInfo?.bankAccount || "").replace(/\s/g, "") || null,
+        accountHolder: bankInfo?.accountHolder?.trim() || null,
+      };
+  if (isGuestRequest) {
+    method = "BANK_TRANSFER";
   }
 
-  const requestReason = [
-    reason || "Yêu cầu hủy vé trực tuyến",
-    bankInfo?.bankName ? `Ngân hàng: ${bankInfo.bankName}` : null,
-    bankInfo?.bankAccount ? `STK: ${bankInfo.bankAccount}` : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+  const requestReason = reason || "Yêu cầu hủy vé trực tuyến";
 
   const existingRequest = await prisma.cancellationRequest.findUnique({
     where: { bookingId },
@@ -263,9 +303,13 @@ export async function cancelBookingTickets({
     passengerId: selectedPassengerIds[0],
     passengerIds: selectedPassengerIds,
     status: "PENDING",
+    requesterType,
     requestReason,
     refundAmount: totalRefundAmount,
     refundMethod: method,
+    refundBankName: normalizedBankInfo.bankName,
+    refundBankAccount: normalizedBankInfo.bankAccount,
+    refundAccountHolder: normalizedBankInfo.accountHolder,
     rejectionReason: null,
     approvedBy: null,
     approvedAt: null,
@@ -291,14 +335,14 @@ export async function cancelBookingTickets({
   };
 }
 
-export async function getAdminCancellationRequests({ status } = {}) {
+export async function getAdminCancellationRequests({ status, audience } = {}) {
   const allowedStatuses = ["PENDING", "APPROVED", "REJECTED"];
   const normalizedStatus = String(status || "").toUpperCase();
   const where = allowedStatuses.includes(normalizedStatus)
     ? { status: normalizedStatus }
     : {};
 
-  return prisma.cancellationRequest.findMany({
+  const requests = await prisma.cancellationRequest.findMany({
     where,
     orderBy: { createdAt: "desc" },
     include: {
@@ -319,11 +363,26 @@ export async function getAdminCancellationRequests({ status } = {}) {
           schedule: {
             include: { startStation: true, endStation: true, train: true },
           },
+          fromStation: true,
+          toStation: true,
           passengers: { include: { bookingDetails: true } },
         },
       },
     },
   });
+
+  const normalizedAudience = String(audience || "").toUpperCase();
+  if (normalizedAudience === "REGISTERED") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "REGISTERED",
+    );
+  }
+  if (normalizedAudience === "GUEST") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "GUEST",
+    );
+  }
+  return requests;
 }
 
 export async function reviewCancellationRequest({
@@ -394,7 +453,21 @@ export async function reviewCancellationRequest({
   const refundAmount =
     Number(request.refundAmount) ||
     Math.round(totalOriginalAmount * policy.rate);
-  const method = booking.userId ? request.refundMethod || "WALLET" : "CASH";
+  const isGuestRequest = cancellationRequesterType(request) === "GUEST";
+  if (
+    isGuestRequest &&
+    (!request.refundBankName ||
+      !request.refundBankAccount ||
+      !request.refundAccountHolder)
+  ) {
+    throw httpError(
+      409,
+      "Yêu cầu của khách vãng lai chưa có đủ thông tin tài khoản hoàn tiền.",
+    );
+  }
+  const method = isGuestRequest
+    ? "BANK_TRANSFER"
+    : request.refundMethod || "WALLET";
   const refundStatus = method === "WALLET" ? "COMPLETED" : "PENDING";
   const now = new Date();
 

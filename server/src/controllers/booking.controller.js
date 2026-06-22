@@ -107,6 +107,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       // Actual boarding / alighting stations saved at checkout time
       fromStation: stationSelect,
       toStation: stationSelect,
+      cancellationRequest: true,
     },
   };
 
@@ -1190,6 +1191,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
     bankInfo: {
       bankName: req.body.bankName,
       bankAccount: req.body.bankAccount,
+      accountHolder: req.body.accountHolder,
     },
   });
 
@@ -1210,6 +1212,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
 export const listAdminCancellationRequests = asyncHandler(async (req, res) => {
   const requests = await getAdminCancellationRequests({
     status: req.query.status,
+    audience: req.query.audience,
   });
   res.json({ requests });
 });

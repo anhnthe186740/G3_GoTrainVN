@@ -75,9 +75,9 @@ export function CancellationPolicyModal({
             </div>
             {isGuest ? (
               <p className="leading-relaxed">
-                Khách vãng lai không được hoàn tiền tự động. Sau khi gửi yêu
-                cầu, bạn cần mang CCCD/Hộ chiếu đến quầy ga để nhân viên đối
-                soát và nhận tiền mặt.
+                Khách vãng lai cần cung cấp thông tin tài khoản ngân hàng nhận
+                tiền. Sau khi Admin duyệt, hệ thống sẽ xử lý chuyển khoản theo
+                thông tin đã khai báo.
               </p>
             ) : (
               <p className="leading-relaxed">
