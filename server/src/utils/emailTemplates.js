@@ -305,3 +305,111 @@ export function getCancelBookingEmailTemplate(
     </div>
   `;
 }
+
+/**
+ * Template 5: Train Delay Notification (Thông báo trễ chuyến)
+ */
+export function getScheduleDelayEmailTemplate(
+  booking,
+  delayMinutes,
+  originalTime,
+  newTime,
+  notes,
+) {
+  const schedule = booking.schedule;
+  const trainName = schedule?.train?.trainName || "Tàu hỏa";
+  const trainCode = schedule?.train?.trainCode || "";
+  const startStation = booking.fromStation?.stationName || "Ga đi";
+  const endStation = booking.toStation?.stationName || "Ga đến";
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fcd34d; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #fef3c7; color: #d97706; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Cập nhật lịch trình</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Mã đặt chỗ: <strong style="color: #00629d; font-size: 16px;">${booking.bookingCode}</strong></p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Thông báo hoãn chuyến tàu</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào quý khách. GoTrain VN xin thông báo hành trình chuyến tàu <strong>${trainCode}</strong> (${trainName}) của quý khách có sự thay đổi về thời gian khởi hành do sự cố kỹ thuật hoặc điều kiện vận hành.
+        </p>
+      </div>
+
+      <!-- Delay Details -->
+      <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #b45309; text-transform: uppercase;">Chi tiết thay đổi</h3>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Hành trình:</strong> ${startStation} &rarr; ${endStation}</p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Thời gian hoãn:</strong> <span style="color: #b91c1c; font-weight: bold;">+${delayMinutes} phút</span></p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Giờ khởi hành gốc:</strong> ${formatDate(originalTime)}</p>
+        <p style="margin: 5px 0; font-size: 14px; color: #b45309;"><strong>Giờ khởi hành dự kiến mới:</strong> <strong>${formatDate(newTime)}</strong></p>
+        ${notes ? `<p style="margin: 5px 0; font-size: 14px;"><strong>Lý do:</strong> ${notes}</p>` : ""}
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
+        Chúng tôi vô cùng xin lỗi vì sự bất tiện này gây ra cho hành trình của quý khách. Quý khách vui lòng lưu ý thời gian mới để sắp xếp thời gian có mặt tại ga hợp lý.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 6: Train Cancellation Notification (Thông báo hủy chuyến do sự cố/bảo trì)
+ */
+export function getScheduleCancelledEmailTemplate(booking, notes) {
+  const schedule = booking.schedule;
+  const trainName = schedule?.train?.trainName || "Tàu hỏa";
+  const trainCode = schedule?.train?.trainCode || "";
+  const startStation = booking.fromStation?.stationName || "Ga đi";
+  const endStation = booking.toStation?.stationName || "Ga đến";
+  const departureTime = schedule?.departureTime;
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fca5a5; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #fee2e2; color: #b91c1c; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Hủy chuyến tàu</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Mã đặt chỗ bị hủy: <strong style="color: #b91c1c; font-size: 16px;">${booking.bookingCode}</strong></p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Thông báo hủy chuyến tàu khẩn cấp</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào quý khách. GoTrain VN vô cùng thương tiếc thông báo chuyến tàu <strong>${trainCode}</strong> (${trainName}) dự kiến khởi hành lúc <strong>${formatDate(departureTime)}</strong> đã bị hủy vì lý do bảo trì đột xuất hoặc sự cố kỹ thuật trên tuyến đường.
+        </p>
+      </div>
+
+      <!-- Cancel Details -->
+      <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #991b1b; text-transform: uppercase;">Thông tin chuyến bị ảnh hưởng</h3>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Hành trình:</strong> ${startStation} &rarr; ${endStation}</p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Giờ xuất phát dự kiến:</strong> ${formatDate(departureTime)}</p>
+        ${notes ? `<p style="margin: 5px 0; font-size: 14px; color: #991b1b;"><strong>Lý do hủy:</strong> ${notes}</p>` : ""}
+      </div>
+
+      <h3 style="color: #0f172a; font-size: 15px; font-weight: 700; margin: 0 0 10px 0;">Chính sách hỗ trợ hoàn trả</h3>
+      <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
+        Đơn vé của quý khách đã tự động được chuyển sang trạng thái <strong>ĐÃ HỦY</strong>. Hệ thống của chúng tôi đang tiến hành thủ tục hoàn trả 100% tiền vé vào Ví điện tử của tài khoản đặt vé (hoặc quý khách có thể liên hệ trực tiếp quầy vé ga gần nhất để đổi hành trình mới miễn phí).
+      </p>
+
+      <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569; font-weight: bold;">
+        Chúng tôi vô cùng xin lỗi vì sự bất tiện này và rất mong nhận được sự thông cảm từ quý khách.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}

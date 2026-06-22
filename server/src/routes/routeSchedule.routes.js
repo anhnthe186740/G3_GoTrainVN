@@ -23,6 +23,7 @@ import {
   updateScheduleDelay,
   updateScheduleLiveTracking,
   getScheduleLiveTracking,
+  getActiveSchedulesTracking,
 } from "../controllers/routeSchedule.controller.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
@@ -78,6 +79,12 @@ routeScheduleRoutes.delete(
 // Schedules
 routeScheduleRoutes.get("/schedules/search", searchSchedules);
 routeScheduleRoutes.get("/schedules", getSchedules);
+routeScheduleRoutes.get(
+  "/schedules/active-tracking",
+  authMiddleware,
+  staffOrAdmin,
+  getActiveSchedulesTracking,
+);
 routeScheduleRoutes.get("/schedules/:id/timeline", getScheduleTimeline);
 routeScheduleRoutes.get(
   "/schedules/:id/live-tracking",

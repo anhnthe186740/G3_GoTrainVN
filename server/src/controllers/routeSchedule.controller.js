@@ -1,6 +1,8 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { searchJourneys } from "../services/scheduleSearch.service.js";
+import { notifyScheduleChange } from "../services/scheduleNotification.service.js";
+import { emitLiveTrackingUpdate } from "../realtime/seatRealtime.js";
 import {
   buildCarriageConfigs,
   createTrainInventory,
@@ -131,8 +133,12 @@ export const getSchedules = asyncHandler(async (_req, res) => {
         select: {
           routeName: true,
           stations: true,
-          startStation: { select: { stationName: true } },
-          endStation: { select: { stationName: true } },
+          startStation: {
+            select: { stationName: true, latitude: true, longitude: true },
+          },
+          endStation: {
+            select: { stationName: true, latitude: true, longitude: true },
+          },
         },
       },
       train: { select: { trainName: true, trainCode: true } },
@@ -1337,6 +1343,16 @@ export const updateScheduleDelay = asyncHandler(async (req, res) => {
     return s;
   });
 
+  // 5. Gửi email thông báo cho hành khách nếu trễ giờ
+  if (delayMins > 0) {
+    notifyScheduleChange(id, "DELAYED", {
+      delayMinutes: delayMins,
+      originalDepartureTime: schedule.departureTime,
+      newDepartureTime: newDeparture,
+      notes: notes,
+    });
+  }
+
   res.json({
     success: true,
     message: `Cập nhật thời gian trễ ${delayMins} phút thành công. Đã tính toán lại toàn bộ lịch trình các ga sau.`,
@@ -1413,6 +1429,9 @@ export const updateScheduleLiveTracking = asyncHandler(async (req, res) => {
     });
   }
 
+  // Phát tín hiệu websocket đồng bộ realtime định vị tàu
+  emitLiveTrackingUpdate(id, tracking);
+
   res.json({
     message: "Cập nhật dữ liệu điều hành hành trình thời gian thực thành công.",
     tracking,
@@ -1436,7 +1455,7 @@ export const getScheduleLiveTracking = asyncHandler(async (req, res) => {
     tracking = {
       scheduleId: id,
       trainId: schedule?.trainId || "",
-      speed: 0.0,
+      speed: 55.0,
       temperature: 25.0,
       passengerCount: 45,
       latitude: 21.0285,
@@ -1447,4 +1466,116 @@ export const getScheduleLiveTracking = asyncHandler(async (req, res) => {
   }
 
   res.json({ tracking });
+});
+
+// ============================================================
+// GET /api/v1/schedules/active-tracking - Lấy tất cả tracking tàu đang chạy hôm nay
+// ============================================================
+export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
+  const today = new Date();
+  const startOfDay = new Date(today);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(today);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Lấy tất cả lịch trình có giờ chạy trong ngày hôm nay
+  const schedules = await prisma.schedule.findMany({
+    where: {
+      departureTime: {
+        gte: startOfDay,
+        lte: endOfDay,
+      },
+      status: {
+        in: ["ACTIVE", "DELAYED"],
+      },
+    },
+    include: {
+      train: { select: { trainName: true, trainCode: true } },
+      route: {
+        include: {
+          startStation: {
+            select: {
+              id: true,
+              stationName: true,
+              latitude: true,
+              longitude: true,
+              city: true,
+            },
+          },
+          endStation: {
+            select: {
+              id: true,
+              stationName: true,
+              latitude: true,
+              longitude: true,
+              city: true,
+            },
+          },
+        },
+      },
+      scheduleStops: {
+        include: {
+          station: {
+            select: {
+              id: true,
+              stationName: true,
+              latitude: true,
+              longitude: true,
+              city: true,
+            },
+          },
+        },
+        orderBy: { stopOrder: "asc" },
+      },
+    },
+  });
+
+  // Tìm các bản ghi live tracking tương ứng
+  const scheduleIds = schedules.map((s) => s.id);
+  const trackings = await prisma.liveTracking.findMany({
+    where: {
+      scheduleId: { in: scheduleIds },
+    },
+  });
+
+  const trackingMap = {};
+  trackings.forEach((t) => {
+    trackingMap[t.scheduleId] = t;
+  });
+
+  const results = schedules.map((s) => {
+    const defaultLat = s.route.startStation.latitude || 21.0285;
+    const defaultLong = s.route.startStation.longitude || 105.8542;
+    const defaultStation = s.route.startStation.stationName || "Ga xuất phát";
+
+    return {
+      schedule: {
+        id: s.id,
+        trainId: s.trainId,
+        routeId: s.routeId,
+        departureTime: s.departureTime,
+        arrivalTime: s.arrivalTime,
+        status: s.status,
+        delayMinutes: s.delayMinutes,
+        notes: s.notes,
+        train: s.train,
+        route: s.route,
+        scheduleStops: s.scheduleStops,
+      },
+      tracking: trackingMap[s.id] || {
+        scheduleId: s.id,
+        trainId: s.trainId,
+        speed: 55.0,
+        temperature: 24.5,
+        passengerCount: 50,
+        latitude: defaultLat,
+        longitude: defaultLong,
+        currentStation: defaultStation,
+        status: s.status === "DELAYED" ? "DELAYED" : "ON_TIME",
+        lastUpdated: new Date(),
+      },
+    };
+  });
+
+  res.json({ activeTrackings: results });
 });
