@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
 import { toast } from "sonner";
@@ -28,6 +28,12 @@ import {
 export function TicketLookup() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTicketCode = searchParams.get("ticketCode") || "";
+  const initialContactInfo = searchParams.get("contactInfo") || "";
+  const hasInitialLookup = Boolean(initialTicketCode || initialContactInfo);
+  const autoLookupKey = `${initialTicketCode}|${initialContactInfo}`;
+  const autoLookupRef = useRef("");
 
   // Search state
   const [ticketCode, setTicketCode] = useState("");
@@ -60,12 +66,12 @@ export function TicketLookup() {
     }
 
     // Pre-fill email/phone if user is logged in
-    if (user) {
+    if (user && !hasInitialLookup) {
       setContactInfo(user.email || user.phoneNumber || "");
       // Auto-load user's tickets on page mount
       autoLoadUserTickets(user.email || user.phoneNumber);
     }
-  }, [user]);
+  }, [hasInitialLookup, user]);
 
   const autoLoadUserTickets = async (contact) => {
     if (!contact) return;
@@ -111,14 +117,14 @@ export function TicketLookup() {
   };
 
   // Perform search
-  const handleSearch = async (e, forcedCode = null) => {
+  const handleSearch = async (e, forcedCode = null, forcedContact = null) => {
     if (e) e.preventDefault();
     setError("");
     setResult(null);
     setActiveTicket(null);
 
-    const searchCode = forcedCode || ticketCode;
-    const searchContact = contactInfo;
+    const searchCode = forcedCode ?? ticketCode;
+    const searchContact = forcedContact ?? contactInfo;
 
     if (!searchCode && !searchContact) {
       setError("Vui lòng nhập Mã vé hoặc Email/Số điện thoại để tìm kiếm.");
@@ -175,6 +181,15 @@ export function TicketLookup() {
     setTicketCode(code);
     handleSearch(null, code);
   };
+
+  useEffect(() => {
+    if (!hasInitialLookup || autoLookupRef.current === autoLookupKey) return;
+    autoLookupRef.current = autoLookupKey;
+    setTicketCode(initialTicketCode);
+    setContactInfo(initialContactInfo);
+    handleSearch(null, initialTicketCode, initialContactInfo);
+    // Run only when the lookup URL changes; handleSearch reads the forced values above.
+  }, [autoLookupKey, hasInitialLookup, initialContactInfo, initialTicketCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Format date helper
   const formatDate = (dateStr) => {
