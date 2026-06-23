@@ -213,7 +213,7 @@ async function adjustLoyaltyPoints(tx, userId, amount, bookingId) {
     data: {
       userId,
       points: deductPoints,
-      type: "REDEEMED",
+      type: "CANCELLED",
       source: "BOOKING",
       relatedBookingId: bookingId,
     },

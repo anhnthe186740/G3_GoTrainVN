@@ -1217,26 +1217,6 @@ export async function checkoutBooking(identity, payload) {
           deliveryStatus: "PENDING",
         },
       });
-
-      // Award loyalty points for immediate wallet payment
-      if (immediatePayment) {
-        const earnedPoints = Math.floor(quote.totalAmount / 10000);
-        if (earnedPoints > 0) {
-          await tx.user.update({
-            where: { id: booking.userId },
-            data: { loyaltyPoints: { increment: earnedPoints } },
-          });
-          await tx.loyaltyPoint.create({
-            data: {
-              userId: booking.userId,
-              points: earnedPoints,
-              type: "EARNED",
-              source: "BOOKING",
-              relatedBookingId: booking.id,
-            },
-          });
-        }
-      }
     }
 
     await tx.seatHold.deleteMany({
@@ -1285,12 +1265,6 @@ export async function confirmQrPayment(identity, bookingId) {
     throw httpError(400, "Đơn hàng không sử dụng thanh toán QR.");
   }
   if (booking.paymentStatus === "COMPLETED") return booking;
-  if (booking.paymentStatus !== "COMPLETED") {
-    throw httpError(
-      409,
-      "Thanh toan QR dang cho PayOS xac nhan. Ve chi duoc phat hanh sau webhook hop le.",
-    );
-  }
   if (
     booking.status !== "PENDING" ||
     (booking.expiresAt && booking.expiresAt <= new Date())
@@ -1332,23 +1306,12 @@ export async function confirmQrPayment(identity, bookingId) {
         },
       });
 
-      // Award loyalty points for QR payment confirmation
-      const earnedPoints = Math.floor(booking.totalAmount / 10000);
-      if (earnedPoints > 0) {
-        await tx.user.update({
-          where: { id: booking.userId },
-          data: { loyaltyPoints: { increment: earnedPoints } },
-        });
-        await tx.loyaltyPoint.create({
-          data: {
-            userId: booking.userId,
-            points: earnedPoints,
-            type: "EARNED",
-            source: "BOOKING",
-            relatedBookingId: booking.id,
-          },
-        });
-      }
+      await awardLoyaltyPointsAndCheckTier(
+        tx,
+        booking.userId,
+        booking.totalAmount,
+        booking.id,
+      );
     }
     return completed;
   });
@@ -1367,7 +1330,7 @@ export async function getBookingPaymentStatus(identity, bookingId) {
       : { id: bookingId, ...ownerWhere(identity) },
     include: { passengers: true },
   });
-  if (!booking) throw httpError(404, "Khong tim thay don dat ve.");
+  if (!booking) throw httpError(404, "Không tìm thấy đơn đặt vé.");
   return booking;
 }
 
@@ -1417,31 +1380,13 @@ async function completePayosBooking(tx, booking, webhookData) {
       data: {
         userId: booking.userId,
         type: "BOOKING_CONFIRMED",
-        title: "Thanh toan thanh cong",
-        message: `Ve dien tu cua don ${booking.bookingCode} dang duoc gui den ${booking.confirmationEmail}.`,
+        title: "Thanh toán thành công",
+        message: `Vé điện tử của đơn ${booking.bookingCode} đang được gửi đến ${booking.confirmationEmail}.`,
         relatedBookingId: booking.id,
         deliveryMethod: ["IN_APP", "EMAIL"],
         deliveryStatus: "PENDING",
       },
     });
-
-    // Award loyalty points for PayOS webhook confirmed booking
-    const earnedPoints = Math.floor(booking.totalAmount / 10000);
-    if (earnedPoints > 0) {
-      await tx.user.update({
-        where: { id: booking.userId },
-        data: { loyaltyPoints: { increment: earnedPoints } },
-      });
-      await tx.loyaltyPoint.create({
-        data: {
-          userId: booking.userId,
-          points: earnedPoints,
-          type: "EARNED",
-          source: "BOOKING",
-          relatedBookingId: booking.id,
-        },
-      });
-    }
   }
 
   return tx.booking.findUnique({
@@ -1465,7 +1410,7 @@ export async function handlePayosWebhook(payload) {
     !payload?.data ||
     !verifyPayosSignature(payload.data, payload.signature)
   ) {
-    throw httpError(400, "Chu ky webhook PayOS khong hop le.");
+    throw httpError(400, "Chữ ký webhook PayOS không hợp lệ.");
   }
 
   const data = payload.data;
