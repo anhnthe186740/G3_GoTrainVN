@@ -31,9 +31,11 @@ import { toast } from "sonner";
 import { bookingApi } from "../../services/bookingApi";
 import { pricingApi } from "../../services/pricingApi";
 import { seatSelectionApi } from "../../services/seatSelectionApi";
+import { staffSearchApi } from "../../services/staffSearchApi";
 import { walletApi } from "../../services/walletApi";
 import { api } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
+import { StaffTicketPrintPanel } from "../dashboard/StaffTicketPrintPanel";
 
 // Fallback dùng khi API /pricing/ticket-types/public không khả dụng.
 // Phản ánh cùng giá trị mặc định như DEFAULT_TICKET_TYPES trong pricing.service.js.
@@ -433,7 +435,131 @@ function FakeQr({ payload }) {
   );
 }
 
-function CompletionView({ result }) {
+function CompletionView({ result, isStaffExchange = false }) {
+  const exchange = result.exchange || {};
+
+  if (isStaffExchange) {
+    const methodLabel =
+      exchange.paymentMethod === "CASH" ? "Tiền mặt" : "Ví GoTrain khách";
+    return (
+      <div className="space-y-6">
+        {/* Exchange summary card */}
+        <div className="mx-auto max-w-2xl overflow-hidden rounded-[30px] border border-emerald-200 bg-white shadow-[0_24px_80px_rgba(15,118,110,0.12)]">
+          <div className="bg-[#073b4c] px-6 py-8 text-center text-white sm:px-10">
+            <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-[#073b4c]">
+              <TicketCheck className="h-8 w-8" />
+            </span>
+            <p className="mt-5 font-utility-mono text-xs uppercase tracking-[0.2em] text-cyan-200">
+              Đổi vé thành công
+            </p>
+            <h1 className="mt-2 text-2xl font-extrabold">
+              {result.booking.bookingCode}
+            </h1>
+            <p className="mt-2 text-sm text-cyan-50/75">
+              {result.passengers?.length || 0} hành khách đã được chuyển sang
+              chuyến tàu mới.
+            </p>
+          </div>
+
+          <div className="space-y-3 px-6 py-6 sm:px-8">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Phí cố định
+                </p>
+                <p className="mt-1 font-extrabold text-slate-800">
+                  {money(exchange.fixedFee || 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Phí 10%
+                </p>
+                <p className="mt-1 font-extrabold text-slate-800">
+                  {money(exchange.percentFee || 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Chênh lệch giá vé
+                </p>
+                <p
+                  className={`mt-1 font-extrabold ${(exchange.fareDifference || 0) < 0 ? "text-emerald-600" : "text-slate-800"}`}
+                >
+                  {(exchange.fareDifference || 0) < 0
+                    ? `−${money(-(exchange.fareDifference || 0))}`
+                    : `+${money(exchange.fareDifference || 0)}`}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Hình thức
+                </p>
+                <p className="mt-1 font-extrabold text-slate-800">
+                  {methodLabel}
+                </p>
+              </div>
+            </div>
+
+            {exchange.refundSurplus > 0 ? (
+              <div className="rounded-xl bg-emerald-50 p-4 text-center">
+                <p className="text-xs font-bold text-emerald-600">
+                  Đã hoàn chênh lệch
+                </p>
+                <p className="mt-1 text-2xl font-extrabold text-emerald-700">
+                  {money(exchange.refundSurplus)}
+                </p>
+                <p className="mt-1 text-xs text-emerald-600">
+                  {exchange.paymentMethod === "CASH"
+                    ? "Trả lại tiền mặt cho khách"
+                    : "Đã cộng vào ví GoTrain của khách"}
+                </p>
+              </div>
+            ) : exchange.amountDue > 0 ? (
+              <div className="rounded-xl bg-[#cfe5ff]/50 p-4 text-center">
+                <p className="text-xs font-bold text-[#00629d]">
+                  Đã thu phí đổi vé
+                </p>
+                <p className="mt-1 text-2xl font-extrabold text-[#00629d]">
+                  {money(exchange.amountDue)}
+                </p>
+                <p className="mt-1 text-xs text-[#00629d]">
+                  {exchange.paymentMethod === "CASH"
+                    ? "Đã nhận tiền mặt từ khách"
+                    : "Đã trừ từ ví GoTrain của khách"}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm font-semibold text-slate-600">
+                Không phát sinh thêm phí.
+              </div>
+            )}
+
+            <div className="grid gap-3 pt-1 sm:grid-cols-2">
+              <Link
+                to="/dashboard"
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#00629d] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#00527f]"
+              >
+                Về bảng điều hành
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/dashboard"
+                state={{ openSearch: true }}
+                className="flex items-center justify-center rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Tìm vé khác
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Boarding pass + print panel */}
+        <StaffTicketPrintPanel initialQuery={result.booking.bookingCode} />
+      </div>
+    );
+  }
+
   const lookupPassenger =
     result.passengers?.find(
       (passenger) =>
@@ -542,6 +668,9 @@ export function PassengerDetailsPage({
   );
   const isExchangeMode =
     currentMode === "exchange" && Boolean(exchangeBookingId);
+  const isStaffExchangeMode =
+    currentMode === "staff-exchange" && Boolean(exchangeBookingId);
+  const isAnyExchangeMode = isExchangeMode || isStaffExchangeMode;
   const sessionId = sessionIdOverride || searchParams.get("sessionId");
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);
@@ -554,7 +683,7 @@ export function PassengerDetailsPage({
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(
-    isExchangeMode ? "WALLET" : isStaffMode ? "CASH" : "BANK_QR",
+    isAnyExchangeMode ? "WALLET" : isStaffMode ? "CASH" : "BANK_QR",
   );
   const [walletBalance, setWalletBalance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -564,10 +693,12 @@ export function PassengerDetailsPage({
   const [paymentResult, setPaymentResult] = useState(null);
   const [completedResult, setCompletedResult] = useState(null);
   const [ruleError, setRuleError] = useState("");
+  const [staffExchangeReason, setStaffExchangeReason] = useState("");
+  const [staffIdentityVerified, setStaffIdentityVerified] = useState(false);
 
   useEffect(() => {
-    if (isExchangeMode) setPaymentMethod("WALLET");
-  }, [isExchangeMode]);
+    if (isAnyExchangeMode) setPaymentMethod("WALLET");
+  }, [isAnyExchangeMode]);
 
   useEffect(() => {
     pricingApi
@@ -599,8 +730,13 @@ export function PassengerDetailsPage({
         const count = data.session.holds.filter(
           (hold) => hold.scheduleId === data.session.outboundScheduleId,
         ).length;
-        if (count < 1 || count > 4) {
-          setError("Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.");
+        const maxAllowed = isAnyExchangeMode ? 20 : 4;
+        if (count < 1 || count > maxAllowed) {
+          setError(
+            isAnyExchangeMode
+              ? "Phiên giữ ghế không hợp lệ."
+              : "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.",
+          );
           return;
         }
         setSession(data.session);
@@ -774,18 +910,18 @@ export function PassengerDetailsPage({
   const expired = session && new Date(session.expiresAt).getTime() <= now;
   const timerText = session ? countdown(session.expiresAt, now) : "10:00";
   const timerUrgent = timerText <= "02:00";
-  const exchangeFixedFee = isExchangeMode && quote ? 20000 : 0;
+  const exchangeFixedFee = isAnyExchangeMode && quote ? 20000 : 0;
   const exchangePercentFee =
-    isExchangeMode && quote ? Math.round(exchangePaidAmount * 0.1) : 0;
+    isAnyExchangeMode && quote ? Math.round(exchangePaidAmount * 0.1) : 0;
   const exchangeFareDifference =
-    isExchangeMode && quote
+    isAnyExchangeMode && quote
       ? (quote.totalAmount || 0) - exchangePaidAmount // signed
       : 0;
   const exchangeNetAmount =
     exchangeFixedFee + exchangePercentFee + exchangeFareDifference;
   const exchangeAmountDue = Math.max(exchangeNetAmount, 0);
   const exchangeRefundSurplus = Math.max(-exchangeNetAmount, 0);
-  const payableAmount = isExchangeMode
+  const payableAmount = isAnyExchangeMode
     ? exchangeAmountDue
     : quote?.totalAmount || 0;
 
@@ -987,31 +1123,56 @@ export function PassengerDetailsPage({
   };
 
   const handleCheckout = async () => {
-    const nextRuleError = passengerRuleError(passengers);
-    setRuleError(nextRuleError);
-    if (nextRuleError) {
-      toast.error(nextRuleError);
-      return;
-    }
-    const nextErrors = validatePassengerList(passengers, {
-      requireEmail: !isStaffMode,
-      ticketTypes: publicTicketTypes,
-    });
-    setErrors(nextErrors);
-    if (nextErrors.some((item) => Object.keys(item).length > 0)) {
-      toast.error("Kiểm tra lại các trường được đánh dấu.");
-      document
-        .querySelector("[aria-invalid='true']")
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
+    if (!isStaffExchangeMode) {
+      const nextRuleError = passengerRuleError(passengers);
+      setRuleError(nextRuleError);
+      if (nextRuleError) {
+        toast.error(nextRuleError);
+        return;
+      }
+      const nextErrors = validatePassengerList(passengers, {
+        requireEmail: !isStaffMode,
+        ticketTypes: publicTicketTypes,
+      });
+      setErrors(nextErrors);
+      if (nextErrors.some((item) => Object.keys(item).length > 0)) {
+        toast.error("Kiểm tra lại các trường được đánh dấu.");
+        document
+          .querySelector("[aria-invalid='true']")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
     }
     if (expired) {
       toast.error("Phiên giữ ghế đã hết hạn.");
       return;
     }
 
+    if (isStaffExchangeMode) {
+      if (!staffExchangeReason.trim()) {
+        toast.error("Vui lòng nhập lý do đổi vé.");
+        return;
+      }
+      if (!staffIdentityVerified) {
+        toast.error("Phải xác minh danh tính hành khách trước khi đổi vé.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
+      if (isStaffExchangeMode) {
+        const { data } = await staffSearchApi.exchangeConfirm({
+          bookingId: exchangeBookingId,
+          sessionId: session.id,
+          paymentMethod,
+          reason: staffExchangeReason.trim(),
+        });
+        setCompletedResult(data);
+        toast.success("Đổi vé thành công.");
+        return;
+      }
+
       if (isExchangeMode) {
         const { data } = await bookingApi.exchange(exchangeBookingId, {
           sessionId: session.id,
@@ -1045,7 +1206,7 @@ export function PassengerDetailsPage({
     } catch (requestError) {
       toast.error(
         requestError.response?.data?.message ||
-          (isExchangeMode
+          (isAnyExchangeMode
             ? "Không thể đổi vé. Vui lòng thử lại."
             : "Không thể tạo đơn đặt vé. Vui lòng thử lại."),
       );
@@ -1110,7 +1271,12 @@ export function PassengerDetailsPage({
   }, [completedResult, paymentResult]);
 
   if (completedResult) {
-    return <CompletionView result={completedResult} />;
+    return (
+      <CompletionView
+        result={completedResult}
+        isStaffExchange={isStaffExchangeMode}
+      />
+    );
   }
 
   if (loading || isHydrating) {
@@ -1326,14 +1492,18 @@ export function PassengerDetailsPage({
                 UC-12 · Thông tin xuất vé
               </p>
               <h1 className="mt-1 font-headline-md text-2xl font-bold sm:text-3xl">
-                {isExchangeMode
-                  ? "Kiểm tra hành khách cho vé đổi"
-                  : "Ai sẽ đi trên chuyến tàu này?"}
+                {isStaffExchangeMode
+                  ? "Xác nhận đổi vé tại quầy"
+                  : isExchangeMode
+                    ? "Kiểm tra hành khách cho vé đổi"
+                    : "Ai sẽ đi trên chuyến tàu này?"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-50/70">
-                {isExchangeMode
-                  ? `Vé ${exchangeBookingCode || exchangeBookingId} đang được đổi sang chuyến mới. Số tiền bên phải chỉ là phần cần thanh toán thêm.`
-                  : "Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với một hành khách và một vé điện tử."}
+                {isStaffExchangeMode
+                  ? `Nhân viên đổi vé ${exchangeBookingCode || exchangeBookingId} sang chuyến mới. Xác minh danh tính, nhập lý do và chọn phương thức thanh toán.`
+                  : isExchangeMode
+                    ? `Vé ${exchangeBookingCode || exchangeBookingId} đang được đổi sang chuyến mới. Số tiền bên phải chỉ là phần cần thanh toán thêm.`
+                    : "Nhập đúng thông tin trên giấy tờ tùy thân. Mỗi ghế tương ứng với một hành khách và một vé điện tử."}
               </p>
             </div>
           </div>
@@ -1400,382 +1570,408 @@ export function PassengerDetailsPage({
 
       <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_350px]">
         <div className="space-y-5">
-          {!isStaffMode && passengers.length > 1 && (
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div className="flex items-center gap-3 text-sm text-slate-600">
-                <Mail className="h-4 w-4 text-[#087a91]" />
-                Dùng một email và số điện thoại để nhận tất cả vé
+          {isStaffExchangeMode ? (
+            <div className="rounded-2xl border border-[#00629d]/20 bg-[#cfe5ff]/30 p-4">
+              <p className="text-sm font-extrabold text-[#00629d]">
+                Thông tin hành khách giữ nguyên từ vé gốc
+              </p>
+              <p className="mt-1 text-xs font-semibold leading-5 text-[#3f4852]">
+                Đổi vé áp dụng cho toàn bộ{" "}
+                <strong>{passengers.length} hành khách</strong> trong booking.
+                Thông tin cá nhân (họ tên, CCCD, ngày sinh) sẽ được giữ nguyên —
+                chỉ ghế và chuyến tàu thay đổi.
+              </p>
+            </div>
+          ) : (
+            <>
+              {!isStaffMode && passengers.length > 1 && (
+                <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="flex items-center gap-3 text-sm text-slate-600">
+                    <Mail className="h-4 w-4 text-[#087a91]" />
+                    Dùng một email và số điện thoại để nhận tất cả vé
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyContact}
+                    className="flex items-center gap-1.5 text-xs font-extrabold text-[#087a91]"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Sao chép từ khách 1
+                  </button>
+                </div>
+              )}
+
+              {ruleError && (
+                <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold leading-5 text-rose-700">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                  {ruleError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="text-sm font-semibold text-amber-900">
+                  Trẻ dưới 6 tuổi đi kèm người lớn được miễn phí và không chọn
+                  ghế riêng.
+                </div>
+                <button
+                  type="button"
+                  onClick={addLapChild}
+                  disabled={passengers.length >= 4}
+                  className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-amber-800 shadow-sm disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm trẻ dưới 6
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={copyContact}
-                className="flex items-center gap-1.5 text-xs font-extrabold text-[#087a91]"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Sao chép từ khách 1
-              </button>
-            </div>
+            </>
           )}
 
-          {ruleError && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold leading-5 text-rose-700">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-              {ruleError}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <div className="text-sm font-semibold text-amber-900">
-              Trẻ dưới 6 tuổi đi kèm người lớn được miễn phí và không chọn ghế
-              riêng.
-            </div>
-            <button
-              type="button"
-              onClick={addLapChild}
-              disabled={passengers.length >= 4}
-              className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-amber-800 shadow-sm disabled:opacity-50"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Thêm trẻ dưới 6
-            </button>
-          </div>
-
-          {passengers.map((passenger, index) => {
-            const seatPair = pairedSeats[index];
-            const passengerError = errors[index] || {};
-            const quotedItem = quote?.items?.[index];
-            const selectedTicketType =
-              ticketTypeByValue(publicTicketTypes, passenger.passengerType) ||
-              ticketTypeOption(
-                PASSENGER_TYPES.find(
-                  (type) => type.value === passenger.passengerType,
-                ) || PASSENGER_TYPES[0],
+          {!isStaffExchangeMode &&
+            passengers.map((passenger, index) => {
+              const seatPair = pairedSeats[index];
+              const passengerError = errors[index] || {};
+              const quotedItem = quote?.items?.[index];
+              const selectedTicketType =
+                ticketTypeByValue(publicTicketTypes, passenger.passengerType) ||
+                ticketTypeOption(
+                  PASSENGER_TYPES.find(
+                    (type) => type.value === passenger.passengerType,
+                  ) || PASSENGER_TYPES[0],
+                );
+              const requiresDocument = passengerRequiresDocument(
+                passenger,
+                publicTicketTypes,
               );
-            const requiresDocument = passengerRequiresDocument(
-              passenger,
-              publicTicketTypes,
-            );
-            const autoAppliedTicketType = isAutoAppliedType(
-              passenger,
-              publicTicketTypes,
-            );
-            return (
-              <section
-                key={seatPair?.outbound.id || `lap-child-${index}`}
-                className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"
-              >
-                <div
-                  className={`absolute bottom-0 left-0 top-0 w-1.5 ${
-                    seatPair ? "bg-[#087a91]" : "bg-amber-500"
-                  }`}
-                />
-                <div className="border-b border-dashed border-slate-200 px-5 py-4 sm:px-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 font-utility-mono text-sm font-extrabold text-[#087a91]">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <div>
-                        <h2 className="font-headline-md text-lg font-bold text-slate-900">
-                          Hành khách {index + 1}
-                        </h2>
-                        <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          {seatPair ? (
-                            <>
-                              Lượt đi · Toa{" "}
-                              {seatPair.outbound.seat.carriage.carriageNumber} ·
-                              Ghế {seatPair.outbound.seat.seatNumber}
-                              {seatPair.return &&
-                                `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
-                            </>
-                          ) : (
-                            "Trẻ dưới 6 tuổi đi kèm · Không chiếm ghế"
-                          )}
-                        </p>
+              const autoAppliedTicketType = isAutoAppliedType(
+                passenger,
+                publicTicketTypes,
+              );
+              return (
+                <section
+                  key={seatPair?.outbound.id || `lap-child-${index}`}
+                  className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm"
+                >
+                  <div
+                    className={`absolute bottom-0 left-0 top-0 w-1.5 ${
+                      seatPair ? "bg-[#087a91]" : "bg-amber-500"
+                    }`}
+                  />
+                  <div className="border-b border-dashed border-slate-200 px-5 py-4 sm:px-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 font-utility-mono text-sm font-extrabold text-[#087a91]">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div>
+                          <h2 className="font-headline-md text-lg font-bold text-slate-900">
+                            Hành khách {index + 1}
+                          </h2>
+                          <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                            {seatPair ? (
+                              <>
+                                Lượt đi · Toa{" "}
+                                {seatPair.outbound.seat.carriage.carriageNumber}{" "}
+                                · Ghế {seatPair.outbound.seat.seatNumber}
+                                {seatPair.return &&
+                                  `  |  Lượt về · Toa ${seatPair.return.seat.carriage.carriageNumber} · Ghế ${seatPair.return.seat.seatNumber}`}
+                              </>
+                            ) : (
+                              "Trẻ dưới 6 tuổi đi kèm · Không chiếm ghế"
+                            )}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
-                        {quoteLoading
-                          ? "Đang tính..."
-                          : quote
-                            ? money(quotedItem?.total)
-                            : "Chưa tính"}
-                      </span>
-                      {!seatPair && (
-                        <button
-                          type="button"
-                          onClick={() => removePassenger(index)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 text-rose-600 hover:bg-rose-50"
-                          aria-label="Xóa trẻ đi kèm"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-extrabold text-slate-800">
+                          {quoteLoading
+                            ? "Đang tính..."
+                            : quote
+                              ? money(quotedItem?.total)
+                              : "Chưa tính"}
+                        </span>
+                        {!seatPair && (
+                          <button
+                            type="button"
+                            onClick={() => removePassenger(index)}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-100 text-rose-600 hover:bg-rose-50"
+                            aria-label="Xóa trẻ đi kèm"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-5 sm:p-6">
-                  {user && !isStaffMode && seatPair && (
-                    <button
-                      type="button"
-                      disabled={
-                        selfPassengerIndex != null &&
-                        selfPassengerIndex !== index
-                      }
-                      onClick={() => toggleSelfPassenger(index)}
-                      className={`mb-5 flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
-                        selfPassengerIndex === index
-                          ? "border-cyan-300 bg-cyan-50"
-                          : selfPassengerIndex != null
-                            ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
-                            : "border-slate-200 bg-slate-50 hover:border-cyan-200"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3">
-                        <UserRound className="h-5 w-5 text-[#087a91]" />
-                        <span>
-                          <strong className="block text-sm text-slate-800">
-                            Đặt ghế này cho tôi
-                          </strong>
-                          <span className="text-xs text-slate-500">
-                            {selfPassengerIndex != null &&
-                            selfPassengerIndex !== index
-                              ? `Đã chọn cho hành khách ${selfPassengerIndex + 1}`
-                              : "Tự động điền từ hồ sơ, vẫn có thể chỉnh sửa"}
-                          </span>
-                        </span>
-                      </span>
-                      <span
-                        className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                  <div className="p-5 sm:p-6">
+                    {user && !isStaffMode && seatPair && (
+                      <button
+                        type="button"
+                        disabled={
+                          selfPassengerIndex != null &&
+                          selfPassengerIndex !== index
+                        }
+                        onClick={() => toggleSelfPassenger(index)}
+                        className={`mb-5 flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
                           selfPassengerIndex === index
-                            ? "border-[#087a91] bg-[#087a91] text-white"
-                            : "border-slate-300 bg-white"
+                            ? "border-cyan-300 bg-cyan-50"
+                            : selfPassengerIndex != null
+                              ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
+                              : "border-slate-200 bg-slate-50 hover:border-cyan-200"
                         }`}
                       >
-                        {selfPassengerIndex === index && (
-                          <Check className="h-3 w-3" />
-                        )}
-                      </span>
-                    </button>
-                  )}
+                        <span className="flex items-center gap-3">
+                          <UserRound className="h-5 w-5 text-[#087a91]" />
+                          <span>
+                            <strong className="block text-sm text-slate-800">
+                              Đặt ghế này cho tôi
+                            </strong>
+                            <span className="text-xs text-slate-500">
+                              {selfPassengerIndex != null &&
+                              selfPassengerIndex !== index
+                                ? `Đã chọn cho hành khách ${selfPassengerIndex + 1}`
+                                : "Tự động điền từ hồ sơ, vẫn có thể chỉnh sửa"}
+                            </span>
+                          </span>
+                        </span>
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-full border ${
+                            selfPassengerIndex === index
+                              ? "border-[#087a91] bg-[#087a91] text-white"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {selfPassengerIndex === index && (
+                            <Check className="h-3 w-3" />
+                          )}
+                        </span>
+                      </button>
+                    )}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field
-                      label="Họ và tên hành khách"
-                      error={passengerError.fullName}
-                    >
-                      <RailInput
-                        value={passenger.fullName}
-                        onChange={(event) =>
-                          updatePassenger(index, "fullName", event.target.value)
-                        }
-                        placeholder="Nguyễn Văn A"
-                        autoComplete="name"
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field
+                        label="Họ và tên hành khách"
                         error={passengerError.fullName}
-                        aria-invalid={Boolean(passengerError.fullName)}
-                      />
-                    </Field>
+                      >
+                        <RailInput
+                          value={passenger.fullName}
+                          onChange={(event) =>
+                            updatePassenger(
+                              index,
+                              "fullName",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Nguyễn Văn A"
+                          autoComplete="name"
+                          error={passengerError.fullName}
+                          aria-invalid={Boolean(passengerError.fullName)}
+                        />
+                      </Field>
 
-                    <Field
-                      label="Ngày sinh"
-                      error={passengerError.dateOfBirth}
-                      hint="Dùng để kiểm tra điều kiện loại vé"
-                    >
-                      <RailInput
-                        type="date"
-                        value={passenger.dateOfBirth}
-                        max={new Date(Date.now() - 86400000)
-                          .toISOString()
-                          .slice(0, 10)}
-                        onChange={(event) =>
-                          updatePassenger(
-                            index,
-                            "dateOfBirth",
-                            event.target.value,
-                          )
-                        }
+                      <Field
+                        label="Ngày sinh"
                         error={passengerError.dateOfBirth}
-                        aria-invalid={Boolean(passengerError.dateOfBirth)}
-                      />
-                    </Field>
-
-                    {!requiresDocument ? (
-                      <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 sm:col-span-2">
-                        <p className="flex items-center gap-2 text-sm font-bold text-[#087a91]">
-                          <BadgeCheck className="h-4 w-4" />
-                          {selectedTicketType.label}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">
-                          Không cần CCCD, hộ chiếu, số điện thoại hoặc email
-                          riêng.{" "}
-                          {isStaffMode
-                            ? "Vé sẽ được in tại quầy sau khi thanh toán."
-                            : "Vé sẽ được gửi theo thông tin người đi kèm."}
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        <Field
-                          label="Loại vé / đối tượng ưu đãi"
-                          hint={
-                            autoAppliedTicketType
-                              ? "Tự động theo độ tuổi"
-                              : "Có thể chọn thủ công"
+                        hint="Dùng để kiểm tra điều kiện loại vé"
+                      >
+                        <RailInput
+                          type="date"
+                          value={passenger.dateOfBirth}
+                          max={new Date(Date.now() - 86400000)
+                            .toISOString()
+                            .slice(0, 10)}
+                          onChange={(event) =>
+                            updatePassenger(
+                              index,
+                              "dateOfBirth",
+                              event.target.value,
+                            )
                           }
-                        >
-                          <select
-                            value={passenger.passengerType}
-                            disabled={autoAppliedTicketType}
-                            onChange={(event) =>
-                              updatePassenger(
-                                index,
-                                "passengerType",
-                                event.target.value,
-                              )
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-[#087a91] focus:ring-4 focus:ring-cyan-50 disabled:bg-slate-50 disabled:text-slate-500"
-                          >
-                            {publicTicketTypes
-                              .filter(
-                                (type) =>
-                                  !["CHILD", "CHILD_UNDER_6"].includes(
-                                    type.value,
-                                  ) && type.seatMode !== "NOT_ALLOWED",
-                              )
-                              .map((type) => (
-                                <option key={type.value} value={type.value}>
-                                  {type.label} · {type.description}
-                                </option>
-                              ))}
-                          </select>
-                          <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-500">
-                            {autoAppliedTicketType
-                              ? `Đang tự động chọn "${selectedTicketType.label}" vì ngày sinh thuộc điều kiện tuổi của loại vé này.`
-                              : "Loại vé quyết định ưu đãi; ngày sinh dùng để kiểm tra điều kiện tuổi."}
+                          error={passengerError.dateOfBirth}
+                          aria-invalid={Boolean(passengerError.dateOfBirth)}
+                        />
+                      </Field>
+
+                      {!requiresDocument ? (
+                        <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 sm:col-span-2">
+                          <p className="flex items-center gap-2 text-sm font-bold text-[#087a91]">
+                            <BadgeCheck className="h-4 w-4" />
+                            {selectedTicketType.label}
                           </p>
-                        </Field>
-
-                        <Field label="Loại giấy tờ">
-                          <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-                            {[
-                              ["CCCD", "CCCD"],
-                              ["HCDC", "Hộ chiếu"],
-                            ].map(([value, label]) => (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() => {
-                                  updatePassenger(
-                                    index,
-                                    "nationalIdType",
-                                    value,
-                                  );
-                                  updatePassenger(index, "nationalId", "");
-                                }}
-                                className={`rounded-lg px-3 py-2.5 text-xs font-bold transition ${
-                                  passenger.nationalIdType === value
-                                    ? "bg-white text-[#087a91] shadow-sm"
-                                    : "text-slate-500"
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </Field>
-
-                        <Field
-                          label={
-                            passenger.nationalIdType === "CCCD"
-                              ? "Số CCCD"
-                              : "Số hộ chiếu"
-                          }
-                          error={passengerError.nationalId}
-                        >
-                          <div className="relative">
-                            <IdCard className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                            <RailInput
-                              value={passenger.nationalId}
-                              onChange={(event) =>
-                                updatePassenger(
-                                  index,
-                                  "nationalId",
-                                  event.target.value.toUpperCase(),
-                                )
-                              }
-                              placeholder={
-                                passenger.nationalIdType === "CCCD"
-                                  ? "012345678901"
-                                  : "B1234567"
-                              }
-                              className="pl-10"
-                              error={passengerError.nationalId}
-                              aria-invalid={Boolean(passengerError.nationalId)}
-                            />
-                          </div>
-                        </Field>
-
-                        <Field
-                          label="Số điện thoại"
-                          error={passengerError.phoneNumber}
-                        >
-                          <RailInput
-                            type="tel"
-                            value={passenger.phoneNumber}
-                            onChange={(event) =>
-                              updatePassenger(
-                                index,
-                                "phoneNumber",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="0912 345 678"
-                            autoComplete="tel"
-                            error={passengerError.phoneNumber}
-                            aria-invalid={Boolean(passengerError.phoneNumber)}
-                          />
-                        </Field>
-
-                        {!isStaffMode && (
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            Không cần CCCD, hộ chiếu, số điện thoại hoặc email
+                            riêng.{" "}
+                            {isStaffMode
+                              ? "Vé sẽ được in tại quầy sau khi thanh toán."
+                              : "Vé sẽ được gửi theo thông tin người đi kèm."}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
                           <Field
-                            label="Email nhận vé"
-                            error={passengerError.email}
-                            className="sm:col-span-2"
+                            label="Loại vé / đối tượng ưu đãi"
+                            hint={
+                              autoAppliedTicketType
+                                ? "Tự động theo độ tuổi"
+                                : "Có thể chọn thủ công"
+                            }
                           >
-                            <RailInput
-                              type="email"
-                              value={passenger.email}
+                            <select
+                              value={passenger.passengerType}
+                              disabled={autoAppliedTicketType}
                               onChange={(event) =>
                                 updatePassenger(
                                   index,
-                                  "email",
+                                  "passengerType",
                                   event.target.value,
                                 )
                               }
-                              placeholder="hanhkhach@example.com"
-                              autoComplete="email"
-                              error={passengerError.email}
-                              aria-invalid={Boolean(passengerError.email)}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-[#087a91] focus:ring-4 focus:ring-cyan-50 disabled:bg-slate-50 disabled:text-slate-500"
+                            >
+                              {publicTicketTypes
+                                .filter(
+                                  (type) =>
+                                    !["CHILD", "CHILD_UNDER_6"].includes(
+                                      type.value,
+                                    ) && type.seatMode !== "NOT_ALLOWED",
+                                )
+                                .map((type) => (
+                                  <option key={type.value} value={type.value}>
+                                    {type.label} · {type.description}
+                                  </option>
+                                ))}
+                            </select>
+                            <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-500">
+                              {autoAppliedTicketType
+                                ? `Đang tự động chọn "${selectedTicketType.label}" vì ngày sinh thuộc điều kiện tuổi của loại vé này.`
+                                : "Loại vé quyết định ưu đãi; ngày sinh dùng để kiểm tra điều kiện tuổi."}
+                            </p>
+                          </Field>
+
+                          <Field label="Loại giấy tờ">
+                            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+                              {[
+                                ["CCCD", "CCCD"],
+                                ["HCDC", "Hộ chiếu"],
+                              ].map(([value, label]) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => {
+                                    updatePassenger(
+                                      index,
+                                      "nationalIdType",
+                                      value,
+                                    );
+                                    updatePassenger(index, "nationalId", "");
+                                  }}
+                                  className={`rounded-lg px-3 py-2.5 text-xs font-bold transition ${
+                                    passenger.nationalIdType === value
+                                      ? "bg-white text-[#087a91] shadow-sm"
+                                      : "text-slate-500"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </Field>
+
+                          <Field
+                            label={
+                              passenger.nationalIdType === "CCCD"
+                                ? "Số CCCD"
+                                : "Số hộ chiếu"
+                            }
+                            error={passengerError.nationalId}
+                          >
+                            <div className="relative">
+                              <IdCard className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+                              <RailInput
+                                value={passenger.nationalId}
+                                onChange={(event) =>
+                                  updatePassenger(
+                                    index,
+                                    "nationalId",
+                                    event.target.value.toUpperCase(),
+                                  )
+                                }
+                                placeholder={
+                                  passenger.nationalIdType === "CCCD"
+                                    ? "012345678901"
+                                    : "B1234567"
+                                }
+                                className="pl-10"
+                                error={passengerError.nationalId}
+                                aria-invalid={Boolean(
+                                  passengerError.nationalId,
+                                )}
+                              />
+                            </div>
+                          </Field>
+
+                          <Field
+                            label="Số điện thoại"
+                            error={passengerError.phoneNumber}
+                          >
+                            <RailInput
+                              type="tel"
+                              value={passenger.phoneNumber}
+                              onChange={(event) =>
+                                updatePassenger(
+                                  index,
+                                  "phoneNumber",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="0912 345 678"
+                              autoComplete="tel"
+                              error={passengerError.phoneNumber}
+                              aria-invalid={Boolean(passengerError.phoneNumber)}
                             />
                           </Field>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </section>
-            );
-          })}
 
-          <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-            <p className="text-xs leading-5 text-slate-600">
-              Thông tin hành khách phải chính xác và trung thực để đối soát tại
-              ga. Dữ liệu định danh chỉ được dùng cho việc xuất và kiểm soát vé.
-            </p>
-          </div>
+                          {!isStaffMode && (
+                            <Field
+                              label="Email nhận vé"
+                              error={passengerError.email}
+                              className="sm:col-span-2"
+                            >
+                              <RailInput
+                                type="email"
+                                value={passenger.email}
+                                onChange={(event) =>
+                                  updatePassenger(
+                                    index,
+                                    "email",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="hanhkhach@example.com"
+                                autoComplete="email"
+                                error={passengerError.email}
+                                aria-invalid={Boolean(passengerError.email)}
+                              />
+                            </Field>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+
+          {!isStaffExchangeMode && (
+            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+              <p className="text-xs leading-5 text-slate-600">
+                Thông tin hành khách phải chính xác và trung thực để đối soát
+                tại ga. Dữ liệu định danh chỉ được dùng cho việc xuất và kiểm
+                soát vé.
+              </p>
+            </div>
+          )}
         </div>
 
         <aside className="sticky top-24 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
@@ -1792,7 +1988,7 @@ export function PassengerDetailsPage({
           </div>
 
           <div className="space-y-5 p-5">
-            {user && !isStaffMode && (
+            {user && !isStaffMode && !isStaffExchangeMode && (
               <div>
                 <label className="text-xs font-bold text-slate-700">
                   Mã giảm giá
@@ -1800,18 +1996,20 @@ export function PassengerDetailsPage({
                 <div className="mt-2 flex gap-2">
                   <input
                     value={voucherInput}
-                    disabled={isExchangeMode}
+                    disabled={isAnyExchangeMode}
                     onChange={(event) =>
                       setVoucherInput(event.target.value.toUpperCase())
                     }
                     placeholder={
-                      isExchangeMode ? "Không áp dụng khi đổi vé" : "GOTRAIN10"
+                      isAnyExchangeMode
+                        ? "Không áp dụng khi đổi vé"
+                        : "GOTRAIN10"
                     }
                     className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 font-utility-mono text-xs font-bold uppercase outline-none focus:border-[#087a91] disabled:bg-slate-50 disabled:text-slate-400"
                   />
                   <button
                     type="button"
-                    disabled={isExchangeMode}
+                    disabled={isAnyExchangeMode}
                     onClick={applyVoucher}
                     className="rounded-xl bg-cyan-50 px-3 text-xs font-extrabold text-[#087a91] disabled:cursor-not-allowed disabled:text-slate-400"
                   >
@@ -1832,7 +2030,7 @@ export function PassengerDetailsPage({
                 Phương thức thanh toán
               </p>
               <div className="mt-2 space-y-2">
-                {isStaffMode && (
+                {(isStaffMode || isStaffExchangeMode) && (
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("CASH")}
@@ -1850,7 +2048,9 @@ export function PassengerDetailsPage({
                         Tiền mặt tại quầy
                       </strong>
                       <span className="text-[11px] text-slate-500">
-                        Xác nhận sau khi đã nhận đủ tiền
+                        {isStaffExchangeMode
+                          ? "Thu/hoàn tiền mặt tại quầy"
+                          : "Xác nhận sau khi đã nhận đủ tiền"}
                       </span>
                     </span>
                     {paymentMethod === "CASH" && (
@@ -1859,7 +2059,7 @@ export function PassengerDetailsPage({
                   </button>
                 )}
 
-                {!isExchangeMode && (
+                {!isAnyExchangeMode && (
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("BANK_QR")}
@@ -1890,7 +2090,7 @@ export function PassengerDetailsPage({
                   </button>
                 )}
 
-                {user && !isStaffMode && (
+                {(isStaffExchangeMode || (user && !isStaffMode)) && (
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("WALLET")}
@@ -1905,10 +2105,14 @@ export function PassengerDetailsPage({
                     </span>
                     <span className="min-w-0 flex-1">
                       <strong className="block text-sm text-slate-800">
-                        Ví GoTrain
+                        {isStaffExchangeMode
+                          ? "Ví GoTrain của khách"
+                          : "Ví GoTrain"}
                       </strong>
                       <span className="text-[11px] text-slate-500">
-                        Số dư {money(walletBalance)}
+                        {isStaffExchangeMode
+                          ? "Trừ/hoàn vào ví tài khoản của khách"
+                          : `Số dư ${money(walletBalance)}`}
                       </span>
                     </span>
                     {paymentMethod === "WALLET" && (
@@ -1920,7 +2124,7 @@ export function PassengerDetailsPage({
             </div>
 
             <div className="space-y-2 border-t border-dashed border-slate-200 pt-4 text-sm">
-              {isExchangeMode ? (
+              {isAnyExchangeMode ? (
                 <>
                   <div className="flex justify-between text-slate-500">
                     <span>Giá vé mới</span>
@@ -1981,28 +2185,30 @@ export function PassengerDetailsPage({
                   )}
                 </>
               )}
-              {isExchangeMode && quote && exchangeRefundSurplus > 0 && (
+              {isAnyExchangeMode && quote && exchangeRefundSurplus > 0 && (
                 <div className="rounded-xl bg-emerald-50 p-3 text-xs font-semibold leading-5 text-emerald-700">
-                  Vé mới rẻ hơn, sẽ hoàn {money(exchangeRefundSurplus)} vào ví
-                  sau khi xác nhận đổi vé.
+                  Vé mới rẻ hơn, sẽ hoàn {money(exchangeRefundSurplus)}{" "}
+                  {isStaffExchangeMode
+                    ? "(tiền mặt hoặc vào ví khách)."
+                    : "vào ví sau khi xác nhận đổi vé."}
                 </div>
               )}
               <div className="flex items-end justify-between border-t border-slate-100 pt-4">
                 <span className="font-bold text-slate-800">
-                  {isExchangeMode && exchangeRefundSurplus > 0
+                  {isAnyExchangeMode && exchangeRefundSurplus > 0
                     ? "Số tiền hoàn lại"
-                    : isExchangeMode
+                    : isAnyExchangeMode
                       ? "Tổng cần thanh toán"
                       : "Tổng cộng"}
                 </span>
                 <span
-                  className={`text-xl font-extrabold ${isExchangeMode && exchangeRefundSurplus > 0 ? "text-emerald-600" : "text-[#073b4c]"}`}
+                  className={`text-xl font-extrabold ${isAnyExchangeMode && exchangeRefundSurplus > 0 ? "text-emerald-600" : "text-[#073b4c]"}`}
                 >
                   {quoteLoading
                     ? "..."
                     : quote
                       ? money(
-                          isExchangeMode && exchangeRefundSurplus > 0
+                          isAnyExchangeMode && exchangeRefundSurplus > 0
                             ? exchangeRefundSurplus
                             : payableAmount,
                         )
@@ -2011,11 +2217,42 @@ export function PassengerDetailsPage({
               </div>
             </div>
 
+            {isStaffExchangeMode && (
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-700">
+                  Lý do đổi vé{" "}
+                  <span className="font-semibold text-rose-500">
+                    (bắt buộc)
+                  </span>
+                </label>
+                <textarea
+                  value={staffExchangeReason}
+                  onChange={(e) => setStaffExchangeReason(e.target.value)}
+                  rows={2}
+                  placeholder="Ví dụ: khách thay đổi lịch trình"
+                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-[#087a91]"
+                />
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <input
+                    type="checkbox"
+                    checked={staffIdentityVerified}
+                    onChange={(e) => setStaffIdentityVerified(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-[#087a91]"
+                  />
+                  <span className="text-xs font-semibold leading-relaxed text-slate-600">
+                    Đã xác minh danh tính hành khách — SĐT, CCCD/hộ chiếu và
+                    ngày sinh khớp với thông tin trên vé.
+                  </span>
+                </label>
+              </div>
+            )}
+
             {paymentMethod === "WALLET" &&
               walletBalance != null &&
+              !isStaffExchangeMode &&
               walletBalance < payableAmount && (
                 <p className="rounded-xl bg-rose-50 p-3 text-xs font-semibold leading-5 text-rose-700">
-                  {isExchangeMode
+                  {isAnyExchangeMode
                     ? "Số dư ví chưa đủ để thanh toán phí đổi vé. Hãy nạp thêm tiền vào ví trước khi tiếp tục."
                     : "Số dư ví chưa đủ. Hãy chọn QR ngân hàng hoặc nạp thêm tiền."}
                 </p>
@@ -2028,7 +2265,10 @@ export function PassengerDetailsPage({
                 quoteLoading ||
                 !quote ||
                 expired ||
+                (isStaffExchangeMode &&
+                  (!staffExchangeReason.trim() || !staffIdentityVerified)) ||
                 (!isStaffMode &&
+                  !isStaffExchangeMode &&
                   paymentMethod === "WALLET" &&
                   walletBalance < payableAmount)
               }
@@ -2044,17 +2284,21 @@ export function PassengerDetailsPage({
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              {paymentMethod === "BANK_QR"
-                ? isStaffMode
-                  ? "Tạo QR chuyển khoản"
-                  : isExchangeMode
-                    ? "Xác nhận thanh toán phí đổi"
-                    : "Tạo QR thanh toán"
-                : paymentMethod === "CASH"
-                  ? "Đã nhận tiền"
-                  : isExchangeMode
-                    ? "Thanh toán phí đổi bằng ví"
-                    : "Thanh toán bằng ví"}
+              {isStaffExchangeMode
+                ? paymentMethod === "CASH"
+                  ? "Xác nhận đổi vé (tiền mặt)"
+                  : "Xác nhận đổi vé (ví khách)"
+                : paymentMethod === "BANK_QR"
+                  ? isStaffMode
+                    ? "Tạo QR chuyển khoản"
+                    : isExchangeMode
+                      ? "Xác nhận thanh toán phí đổi"
+                      : "Tạo QR thanh toán"
+                  : paymentMethod === "CASH"
+                    ? "Đã nhận tiền"
+                    : isExchangeMode
+                      ? "Thanh toán phí đổi bằng ví"
+                      : "Thanh toán bằng ví"}
             </button>
 
             <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">

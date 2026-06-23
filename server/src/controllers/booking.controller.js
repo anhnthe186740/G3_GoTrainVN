@@ -759,18 +759,41 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       .status(400)
       .json({ message: "Không thể đổi sang chuyến tàu đã khởi hành." });
   }
-  if (newHolds.length !== booking.totalPassengers) {
+  // Xây dựng map passengerId → bookingDetail, ưu tiên detail chưa CANCELLED
+  const detailByPassengerId = new Map();
+  for (const d of booking.bookingDetails) {
+    const existing = detailByPassengerId.get(d.passengerId);
+    if (!existing || existing.status === "CANCELLED") {
+      detailByPassengerId.set(d.passengerId, d);
+    }
+  }
+  const activePassengers = booking.passengers.filter((p) => {
+    const detail = detailByPassengerId.get(p.id);
+    return detail && detail.status !== "CANCELLED";
+  });
+  if (activePassengers.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "Booking không còn vé nào đủ điều kiện đổi." });
+  }
+
+  if (newHolds.length !== activePassengers.length) {
     return res.status(400).json({
-      message: `Vui lòng chọn đúng ${booking.totalPassengers} ghế mới để đổi vé.`,
+      message: `Vui lòng chọn đúng ${activePassengers.length} ghế mới để đổi vé.`,
     });
   }
 
-  const oldFare = Number(booking.totalAmount || 0);
+  // Tính giá trị thực tế từ các vé active
+  const oldFare = activePassengers.reduce((sum, p) => {
+    const detail = detailByPassengerId.get(p.id);
+    return sum + Number(detail?.finalPrice || 0);
+  }, 0);
   const newFare = newHolds.reduce(
     (sum, hold) => sum + Number(hold.priceSnapshot || 0),
     0,
   );
-  const fixedFee = 20000;
+  // Phí cố định tính theo đầu vé
+  const fixedFee = 20000 * activePassengers.length;
   const percentFee = Math.round(oldFare * 0.1);
   const fareDifference = newFare - oldFare; // signed: positive = cần bù thêm, negative = vé rẻ hơn
   const totalFees = fixedFee + percentFee;
@@ -843,12 +866,13 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       });
     }
 
+    // Giải phóng chỉ ghế của các hành khách active
     const oldSeatIds = [
       ...new Set(
-        [
-          ...booking.passengers.map((passenger) => passenger.seatId),
-          ...booking.bookingDetails.map((detail) => detail.seatId),
-        ].filter(Boolean),
+        activePassengers.flatMap((p) => {
+          const detail = detailByPassengerId.get(p.id);
+          return [p.seatId, detail?.seatId].filter(Boolean);
+        }),
       ),
     ];
     if (oldSeatIds.length > 0) {
@@ -875,18 +899,19 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       });
     }
 
-    for (const [index, passenger] of booking.passengers.entries()) {
+    // Chỉ cập nhật hành khách active, map bằng passengerId
+    for (const [index, passenger] of activePassengers.entries()) {
       const hold = newHolds[index];
+      const detail = detailByPassengerId.get(passenger.id);
       await tx.passenger.update({
         where: { id: passenger.id },
         data: {
           seatId: hold.seatId,
           carriageNumber: hold.seat.carriage.carriageNumber,
-          boardingAt: newSchedule.departureTime,
+          boardingAt: null,
         },
       });
 
-      const detail = booking.bookingDetails[index];
       if (detail) {
         await tx.bookingDetail.update({
           where: { id: detail.id },

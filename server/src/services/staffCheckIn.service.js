@@ -6,6 +6,28 @@ function httpError(statusCode, message) {
   return error;
 }
 
+const CHECK_IN_WINDOW_BEFORE_MS = 24 * 60 * 60 * 1000; // 24h trước giờ khởi hành
+const CHECK_IN_WINDOW_AFTER_MS = 30 * 60 * 1000; // 30 phút sau giờ khởi hành
+const UNDO_WINDOW_MS = 5 * 60 * 1000; // Cho phép hoàn tác trong 5 phút
+
+const passengerInclude = {
+  booking: {
+    include: {
+      schedule: {
+        include: {
+          train: true,
+          route: true,
+        },
+      },
+    },
+  },
+  seat: {
+    include: {
+      carriage: true,
+    },
+  },
+};
+
 export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
   if (!ticketCode) {
     throw httpError(400, "Mã vé không được để trống.");
@@ -13,26 +35,9 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
 
   const cleanTicketCode = ticketCode.trim().toUpperCase();
 
-  // 1. Find the Passenger by ticketCode
   const passenger = await prisma.passenger.findFirst({
     where: { ticketCode: cleanTicketCode },
-    include: {
-      booking: {
-        include: {
-          schedule: {
-            include: {
-              train: true,
-              route: true,
-            },
-          },
-        },
-      },
-      seat: {
-        include: {
-          carriage: true,
-        },
-      },
-    },
+    include: passengerInclude,
   });
 
   if (!passenger) {
@@ -42,7 +47,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     );
   }
 
-  // 2. Find the BookingDetail associated with this passenger
   const bookingDetail = await prisma.bookingDetail.findFirst({
     where: { passengerId: passenger.id },
   });
@@ -51,8 +55,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     throw httpError(404, "Không tìm thấy chi tiết đặt ghế cho vé này.");
   }
 
-  // 3. Validations
-  // A. Check if the booking or ticket detail status is CANCELLED
   if (
     bookingDetail.status === "CANCELLED" ||
     passenger.booking.status === "CANCELLED"
@@ -60,7 +62,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     throw httpError(400, "Vé này đã bị hủy, không thể sử dụng để lên tàu.");
   }
 
-  // B. Check if booking is paid
   if (passenger.booking.paymentStatus !== "COMPLETED") {
     throw httpError(
       400,
@@ -68,7 +69,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     );
   }
 
-  // C. Check if ticket has already been used (scanned)
   if (bookingDetail.status === "USED" || passenger.boardingAt !== null) {
     const timeString = passenger.boardingAt
       ? new Date(passenger.boardingAt).toLocaleString("vi-VN")
@@ -79,7 +79,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     );
   }
 
-  // D. Check if schedule is cancelled
   if (passenger.booking.schedule.status === "CANCELLED") {
     throw httpError(
       400,
@@ -87,21 +86,36 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     );
   }
 
-  // 4. Perform check-in update inside a transaction
+  // #4: Kiểm tra cửa sổ thời gian soát vé
+  const now = new Date();
+  const departureTime = new Date(passenger.booking.schedule.departureTime);
+  const diffMs = departureTime - now;
+
+  if (diffMs > CHECK_IN_WINDOW_BEFORE_MS) {
+    const depStr = departureTime.toLocaleString("vi-VN");
+    throw httpError(
+      400,
+      `Vé dành cho chuyến khởi hành lúc ${depStr}. Cửa soát vé mở trước 24 giờ khởi hành.`,
+    );
+  }
+  if (diffMs < -CHECK_IN_WINDOW_AFTER_MS) {
+    throw httpError(
+      400,
+      "Chuyến tàu đã khởi hành hơn 30 phút. Không thể soát vé.",
+    );
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
-    // A. Update Passenger boardingAt
     const updatedPassenger = await tx.passenger.update({
       where: { id: passenger.id },
       data: { boardingAt: new Date() },
     });
 
-    // B. Update BookingDetail status
     const updatedBookingDetail = await tx.bookingDetail.update({
       where: { id: bookingDetail.id },
       data: { status: "USED" },
     });
 
-    // C. Write to AdminLog
     await tx.adminLog.create({
       data: {
         adminId: staffId,
@@ -121,7 +135,6 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     return { updatedPassenger, updatedBookingDetail };
   });
 
-  // 5. Return detailed result for UI
   return {
     ticketCode: passenger.ticketCode,
     fullName: passenger.fullName,
@@ -138,4 +151,74 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
     departureTime: passenger.booking.schedule.departureTime,
     boardingAt: updated.updatedPassenger.boardingAt,
   };
+}
+
+// #5: Hoàn tác soát vé — chỉ cho phép trong vòng 5 phút
+export async function undoTicketCheckIn({ ticketCode, staffId, ipAddress }) {
+  if (!ticketCode) {
+    throw httpError(400, "Mã vé không được để trống.");
+  }
+
+  const cleanTicketCode = ticketCode.trim().toUpperCase();
+
+  const passenger = await prisma.passenger.findFirst({
+    where: { ticketCode: cleanTicketCode },
+    include: passengerInclude,
+  });
+
+  if (!passenger) {
+    throw httpError(404, `Mã vé "${cleanTicketCode}" không tồn tại.`);
+  }
+
+  if (!passenger.boardingAt) {
+    throw httpError(400, "Vé này chưa được soát, không có gì để hoàn tác.");
+  }
+
+  const now = new Date();
+  const elapsed = now - new Date(passenger.boardingAt);
+  if (elapsed > UNDO_WINDOW_MS) {
+    throw httpError(
+      409,
+      `Đã quá 5 phút kể từ lúc soát vé (${new Date(passenger.boardingAt).toLocaleString("vi-VN")}). Không thể hoàn tác.`,
+    );
+  }
+
+  const bookingDetail = await prisma.bookingDetail.findFirst({
+    where: { passengerId: passenger.id, status: "USED" },
+  });
+
+  if (!bookingDetail) {
+    throw httpError(400, "Không tìm thấy chi tiết vé ở trạng thái đã sử dụng.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.passenger.update({
+      where: { id: passenger.id },
+      data: { boardingAt: null },
+    });
+
+    await tx.bookingDetail.update({
+      where: { id: bookingDetail.id },
+      data: { status: "CONFIRMED" },
+    });
+
+    await tx.adminLog.create({
+      data: {
+        adminId: staffId,
+        action: "UPDATE",
+        entity: "Passenger",
+        entityId: passenger.id,
+        changes: JSON.stringify({
+          oldStatus: "USED",
+          newStatus: "CONFIRMED",
+          boardingAt: null,
+          undoneAt: now.toISOString(),
+        }),
+        description: `Hoàn tác soát vé: Vé ${passenger.ticketCode}, Hành khách: ${passenger.fullName}. Tàu ${passenger.booking.schedule.train.trainCode}`,
+        ipAddress: ipAddress || "",
+      },
+    });
+  });
+
+  return { ticketCode: cleanTicketCode, fullName: passenger.fullName };
 }

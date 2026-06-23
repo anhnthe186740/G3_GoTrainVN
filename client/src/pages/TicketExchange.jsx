@@ -87,6 +87,7 @@ export function TicketExchange() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const bookingCode = searchParams.get("bookingCode") || "";
+  const isStaffMode = Boolean(location.state?.staffMode);
 
   const [ticket, setTicket] = useState(location.state?.ticket || null);
   const [stations, setStations] = useState([]);
@@ -105,9 +106,23 @@ export function TicketExchange() {
   const selectedSchedule = schedules.find(
     (item) => item.id === selectedScheduleId,
   );
+
+  // Tính số hành khách active (loại trừ vé đã bị partial-cancel)
+  const activePassengerCount = useMemo(() => {
+    if (!booking?.passengers?.length) return booking?.totalPassengers || 1;
+    const hasDetails = booking.passengers[0]?.bookingDetails !== undefined;
+    if (hasDetails) {
+      const count = booking.passengers.filter((p) =>
+        (p.bookingDetails || []).some((d) => d.status !== "CANCELLED"),
+      ).length;
+      return count || 1;
+    }
+    return booking.passengers.length || booking.totalPassengers || 1;
+  }, [booking]);
+
   const paidAmount = booking?.totalAmount || 0;
   const newFare = selectedSchedule ? minFare(selectedSchedule) : 0;
-  const fixedFee = selectedSchedule ? 20000 : 0;
+  const fixedFee = selectedSchedule ? 20000 * activePassengerCount : 0;
   const percentFee = selectedSchedule ? Math.round(paidAmount * 0.1) : 0;
   const fareDifference = selectedSchedule ? newFare - paidAmount : 0; // signed
   const totalFees = fixedFee + percentFee;
@@ -240,10 +255,10 @@ export function TicketExchange() {
       outboundScheduleId: selectedSchedule.id,
       outboundFromStationId: fromStationId,
       outboundToStationId: toStationId,
-      mode: "exchange",
+      mode: isStaffMode ? "staff-exchange" : "exchange",
       exchangeBookingId: booking.id,
       exchangeBookingCode: booking.bookingCode || ticket.ticketCode || "",
-      exchangePassengerCount: String(booking.totalPassengers || 1),
+      exchangePassengerCount: String(activePassengerCount),
       exchangePaidAmount: String(paidAmount),
     });
 
@@ -283,6 +298,17 @@ export function TicketExchange() {
 
   return (
     <div className="pb-12">
+      {isStaffMode && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-[#00629d]/30 bg-[#cfe5ff]/40 px-5 py-3">
+          <span className="material-symbols-outlined text-[#00629d]">
+            badge
+          </span>
+          <p className="text-sm font-bold text-[#00629d]">
+            Nhân viên đang đổi vé thay cho khách — mọi thay đổi áp dụng trực
+            tiếp trên booking của khách.
+          </p>
+        </div>
+      )}
       <section className="mb-10">
         <h1 className="text-4xl font-extrabold tracking-tight text-primary">
           Đổi Vé Trực Tuyến

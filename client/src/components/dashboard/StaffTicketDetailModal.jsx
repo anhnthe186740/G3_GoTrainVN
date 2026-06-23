@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Banknote,
   CheckCircle2,
   LoaderCircle,
@@ -101,12 +103,14 @@ function InfoItem({ label, value }) {
 }
 
 export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
+  const navigate = useNavigate();
   const [selectedPassengerIds, setSelectedPassengerIds] = useState([]);
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [refundMethod, setRefundMethod] = useState("CASH");
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [identityVerified, setIdentityVerified] = useState(false);
 
   const passengers = booking?.passengers || [];
   const customer = booking?.user || null;
@@ -136,6 +140,19 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
 
   const schedule = booking.schedule;
   const selectedCount = selectedPassengerIds.length;
+
+  const canExchange =
+    booking.status === "CONFIRMED" &&
+    booking.paymentStatus === "COMPLETED" &&
+    schedule?.departureTime &&
+    new Date(schedule.departureTime).getTime() > Date.now();
+
+  const handleExchange = () => {
+    const firstPassenger = booking.passengers?.[0];
+    const ticket = firstPassenger ? { ...firstPassenger, booking } : null;
+    onClose();
+    navigate("/doi-ve", { state: { ticket, staffMode: true } });
+  };
 
   const togglePassenger = (passengerId) => {
     setQuote(null);
@@ -178,6 +195,14 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
       toast.error("Cần tính hoàn tiền và có ít nhất một vé đủ điều kiện hủy.");
       return;
     }
+    if (!reason.trim()) {
+      toast.error("Vui lòng nhập lý do hủy vé.");
+      return;
+    }
+    if (!identityVerified) {
+      toast.error("Phải xác minh danh tính hành khách trước khi hủy vé.");
+      return;
+    }
     setConfirming(true);
     try {
       const { data } = await staffSearchApi.cancellationConfirm({
@@ -218,14 +243,27 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
               {dateTime(schedule?.departureTime)}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#bec7d4]/60 text-[#3f4852] transition hover:border-[#00629d] hover:text-[#00629d]"
-            title="Đóng"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {canExchange && (
+              <button
+                type="button"
+                onClick={handleExchange}
+                className="flex items-center gap-2 rounded-xl border border-[#00629d]/40 bg-[#cfe5ff]/40 px-3 py-2 text-xs font-bold text-[#00629d] transition hover:bg-[#cfe5ff]"
+                title="Đổi sang chuyến khác"
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+                Đổi vé
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#bec7d4]/60 text-[#3f4852] transition hover:border-[#00629d] hover:text-[#00629d]"
+              title="Đóng"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="grid max-h-[calc(92vh-92px)] overflow-y-auto lg:grid-cols-[1fr_380px]">
@@ -295,21 +333,23 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
               {passengers.map((passenger) => {
                 const status = passengerStatus(passenger, booking);
                 const cancelled = status === "CANCELLED";
+                const boarded = !!passenger.boardingAt;
+                const locked = cancelled || boarded;
                 const selected = selectedPassengerIds.includes(passenger.id);
                 return (
                   <label
                     key={passenger.id}
-                    className={`block cursor-pointer rounded-xl border p-3 transition ${
+                    className={`block rounded-xl border p-3 transition ${
                       selected
-                        ? "border-[#00629d] bg-[#cfe5ff]/45"
+                        ? "cursor-pointer border-[#00629d] bg-[#cfe5ff]/45"
                         : "border-[#bec7d4]/35 bg-white hover:border-[#00629d]/60"
-                    } ${cancelled ? "cursor-not-allowed opacity-60" : ""}`}
+                    } ${locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                   >
                     <div className="flex items-start gap-3">
                       <input
                         type="checkbox"
                         checked={selected}
-                        disabled={cancelled}
+                        disabled={locked}
                         onChange={() => togglePassenger(passenger.id)}
                         className="mt-1 h-4 w-4 rounded border-[#bec7d4] text-[#00629d]"
                       />
@@ -327,6 +367,11 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                           >
                             {cancelled ? "Đã hủy" : "Còn hiệu lực"}
                           </span>
+                          {boarded && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                              Đã lên tàu
+                            </span>
+                          )}
                           <span className="rounded-full bg-[#f7f9fb] px-2 py-0.5 text-[11px] font-bold text-[#3f4852]">
                             {passengerTypeLabel(passenger.passengerType)}
                           </span>
@@ -462,7 +507,8 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
               )}
 
               <label className="mt-3 block text-xs font-bold text-[#3f4852]">
-                Lý do hủy
+                Lý do hủy{" "}
+                <span className="font-semibold text-rose-500">(bắt buộc)</span>
               </label>
               <textarea
                 value={reason}
@@ -472,10 +518,30 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                 className="mt-2 w-full resize-none rounded-xl border border-[#bec7d4]/60 px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
               />
 
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#bec7d4]/40 bg-[#f7f9fb] p-3">
+                <input
+                  type="checkbox"
+                  checked={identityVerified}
+                  onChange={(event) =>
+                    setIdentityVerified(event.target.checked)
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#bec7d4] text-[#00629d]"
+                />
+                <span className="text-xs font-semibold leading-relaxed text-[#3f4852]">
+                  Tôi đã xác minh danh tính hành khách — SĐT, CCCD/hộ chiếu và
+                  ngày sinh khớp với thông tin trên vé.
+                </span>
+              </label>
+
               <button
                 type="button"
                 onClick={confirmCancellation}
-                disabled={confirming || !quote?.eligible}
+                disabled={
+                  confirming ||
+                  !quote?.eligible ||
+                  !identityVerified ||
+                  !reason.trim()
+                }
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
               >
                 {confirming ? (

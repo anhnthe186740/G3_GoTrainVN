@@ -6,7 +6,6 @@ import {
   CameraOff,
   CheckCircle2,
   XCircle,
-  Clock,
   User,
   Ticket,
   Train,
@@ -14,110 +13,123 @@ import {
   RotateCcw,
   Keyboard,
   ListTodo,
+  Undo2,
 } from "lucide-react";
-import { api } from "../../services/api";
+import { staffSearchApi } from "../../services/staffSearchApi";
 import { toast } from "sonner";
+
+const SESSION_STORAGE_KEY = "gotrain_checkin_logs";
+const UNDO_WINDOW_MS = 5 * 60 * 1000; // 5 phút
+
+function loadLogsFromSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function StaffTicketCheckInPanel() {
   const [ticketCodeInput, setTicketCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null); // { success: true/false, data: ticketDetails, error: string }
+  const [result, setResult] = useState(null);
+  const [undoing, setUndoing] = useState(false);
+  const [, forceRerender] = useState(0); // để cập nhật countdown hoàn tác
 
   // Camera scanning states
   const [isScanning, setIsScanning] = useState(false);
   const [cameras, setCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
 
-  // History logs of current session
-  const [sessionLogs, setSessionLogs] = useState([]);
+  // Session logs — persist vào sessionStorage (#12)
+  const [sessionLogs, setSessionLogs] = useState(loadLogsFromSession);
 
   const qrCodeRef = useRef(null);
+  const cameraTriggeredRef = useRef(false); // track xem scan từ camera hay nhập tay
+  const autoRestartTimerRef = useRef(null);
 
-  // Web Audio API Sound Generator for Offline Premium Beeps
+  // Đồng bộ sessionLogs vào sessionStorage mỗi khi thay đổi (#12)
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionLogs));
+  }, [sessionLogs]);
+
+  // Cập nhật countdown undo mỗi 10 giây
+  useEffect(() => {
+    if (!result?.success) return;
+    const interval = setInterval(() => forceRerender((n) => n + 1), 10_000);
+    return () => clearInterval(interval);
+  }, [result]);
+
+  // Dọn dẹp timer khi unmount
+  useEffect(() => {
+    return () => {
+      if (autoRestartTimerRef.current)
+        clearTimeout(autoRestartTimerRef.current);
+      if (qrCodeRef.current) {
+        qrCodeRef.current.stop().catch(() => {});
+      }
+    };
+  }, []);
+
   const playBeep = (type) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-
       const ctx = new AudioCtx();
       const osc = ctx.createOscillator();
       const gainNode = ctx.createGain();
-
       osc.connect(gainNode);
       gainNode.connect(ctx.destination);
-
       if (type === "success") {
-        // Double positive high beep
         osc.type = "sine";
         osc.frequency.setValueAtTime(600, ctx.currentTime);
         gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
         osc.start();
         osc.stop(ctx.currentTime + 0.06);
-
         setTimeout(() => {
           try {
             const ctx2 = new AudioCtx();
             const osc2 = ctx2.createOscillator();
-            const gainNode2 = ctx2.createGain();
-            osc2.connect(gainNode2);
-            gainNode2.connect(ctx2.destination);
+            const g2 = ctx2.createGain();
+            osc2.connect(g2);
+            g2.connect(ctx2.destination);
             osc2.type = "sine";
             osc2.frequency.setValueAtTime(800, ctx2.currentTime);
-            gainNode2.gain.setValueAtTime(0.08, ctx2.currentTime);
+            g2.gain.setValueAtTime(0.08, ctx2.currentTime);
             osc2.start();
             osc2.stop(ctx2.currentTime + 0.1);
           } catch {}
         }, 80);
       } else {
-        // Low buzz beep for errors
         osc.type = "triangle";
         osc.frequency.setValueAtTime(120, ctx.currentTime);
         gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
         osc.start();
         osc.stop(ctx.currentTime + 0.3);
       }
-    } catch (e) {
-      console.warn(
-        "Web Audio API not supported/allowed by browser autoplay policy",
-        e,
-      );
-    }
+    } catch {}
   };
 
-  // Get available cameras on component mount
   useEffect(() => {
     Html5Qrcode.getCameras()
       .then((devices) => {
-        if (devices && devices.length > 0) {
+        if (devices?.length > 0) {
           setCameras(devices);
           setSelectedCameraId(devices[0].id);
         }
       })
-      .catch((err) => {
-        console.warn("No camera devices found or permission denied.", err);
-      });
-
-    return () => {
-      // Clean up scanning if component unmounts
-      if (qrCodeRef.current) {
-        qrCodeRef.current
-          .stop()
-          .catch((e) => console.error("Error stopping scanner on unmount", e));
-      }
-    };
+      .catch(() => {});
   }, []);
 
-  // Start Camera Scanning
   const handleStartScan = async () => {
     if (!selectedCameraId) {
       toast.error("Vui lòng chọn camera trước khi bắt đầu.");
       return;
     }
-
     setResult(null);
     const html5QrCode = new Html5Qrcode("reader");
     qrCodeRef.current = html5QrCode;
-
     try {
       setIsScanning(true);
       await html5QrCode.start(
@@ -130,13 +142,11 @@ export function StaffTicketCheckInPanel() {
           },
         },
         (decodedText) => {
-          // QR Code Scanned successfully
+          cameraTriggeredRef.current = true;
           handleCheckInTicket(decodedText);
           handleStopScan();
         },
-        () => {
-          // Silent callback for frame scanning errors
-        },
+        () => {},
       );
     } catch (err) {
       console.error("Camera startup failed", err);
@@ -148,20 +158,27 @@ export function StaffTicketCheckInPanel() {
     }
   };
 
-  // Stop Camera Scanning
   const handleStopScan = async () => {
     if (qrCodeRef.current) {
       try {
         await qrCodeRef.current.stop();
-      } catch (err) {
-        console.error("Error stopping camera", err);
-      }
+      } catch {}
       qrCodeRef.current = null;
     }
     setIsScanning(false);
   };
 
-  // API Call for check-in
+  // #8: Auto-restart camera sau khi soát xong (nếu được kích hoạt từ camera)
+  const scheduleAutoRestart = () => {
+    if (!cameraTriggeredRef.current) return;
+    if (autoRestartTimerRef.current) clearTimeout(autoRestartTimerRef.current);
+    autoRestartTimerRef.current = setTimeout(() => {
+      setResult(null);
+      cameraTriggeredRef.current = false;
+      handleStartScan();
+    }, 2500);
+  };
+
   const handleCheckInTicket = async (code) => {
     const ticketCode = (code || "").trim().toUpperCase();
     if (!ticketCode) {
@@ -173,18 +190,18 @@ export function StaffTicketCheckInPanel() {
     setResult(null);
 
     try {
-      const res = await api.post("/staff/check-in", { ticketCode });
+      const res = await staffSearchApi.checkIn(ticketCode);
 
       if (res.data?.success) {
         const ticketData = res.data.ticket;
         setResult({
           success: true,
           data: ticketData,
+          checkInAt: Date.now(), // timestamp để tính còn bao lâu có thể undo
         });
         playBeep("success");
         toast.success("Soát vé thành công!");
 
-        // Add to session logs
         setSessionLogs((prev) => [
           {
             id: Date.now(),
@@ -194,22 +211,20 @@ export function StaffTicketCheckInPanel() {
             carriageNumber: ticketData.carriageNumber,
             trainCode: ticketData.trainCode,
             status: "SUCCESS",
-            time: new Date(),
+            time: new Date().toISOString(),
           },
-          ...prev.slice(0, 9), // Keep last 10 entries
+          ...prev.slice(0, 49), // giữ tối đa 50 entry (#12)
         ]);
+
+        scheduleAutoRestart();
       }
     } catch (err) {
       const errMsg =
         err.response?.data?.message || "Lỗi soát vé. Vui lòng thử lại.";
-      setResult({
-        success: false,
-        error: errMsg,
-      });
+      setResult({ success: false, error: errMsg });
       playBeep("error");
       toast.error("Soát vé thất bại!");
 
-      // Add to session logs
       setSessionLogs((prev) => [
         {
           id: Date.now(),
@@ -220,22 +235,60 @@ export function StaffTicketCheckInPanel() {
           trainCode: "N/A",
           status: "FAILED",
           error: errMsg,
-          time: new Date(),
+          time: new Date().toISOString(),
         },
-        ...prev.slice(0, 9),
+        ...prev.slice(0, 49),
       ]);
+
+      scheduleAutoRestart();
     } finally {
       setLoading(false);
       setTicketCodeInput("");
     }
   };
 
+  // #5: Hoàn tác soát vé
+  const handleUndo = async () => {
+    if (!result?.success || !result.data?.ticketCode) return;
+    setUndoing(true);
+    try {
+      await staffSearchApi.undoCheckIn(result.data.ticketCode);
+      toast.success("Đã hoàn tác soát vé thành công.");
+      setResult(null);
+      setSessionLogs((prev) =>
+        prev.map((log) =>
+          log.ticketCode === result.data.ticketCode && log.status === "SUCCESS"
+            ? { ...log, status: "UNDONE" }
+            : log,
+        ),
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể hoàn tác. Vui lòng thử lại.",
+      );
+    } finally {
+      setUndoing(false);
+    }
+  };
+
   const handleManualSubmit = (e) => {
     e.preventDefault();
-    if (isScanning) {
-      handleStopScan();
+    cameraTriggeredRef.current = false;
+    if (autoRestartTimerRef.current) {
+      clearTimeout(autoRestartTimerRef.current);
+      autoRestartTimerRef.current = null;
     }
+    if (isScanning) handleStopScan();
     handleCheckInTicket(ticketCodeInput);
+  };
+
+  const handleClearResult = () => {
+    if (autoRestartTimerRef.current) {
+      clearTimeout(autoRestartTimerRef.current);
+      autoRestartTimerRef.current = null;
+    }
+    cameraTriggeredRef.current = false;
+    setResult(null);
   };
 
   const formatDateTime = (iso) => {
@@ -249,73 +302,73 @@ export function StaffTicketCheckInPanel() {
     });
   };
 
+  const undoSecondsLeft =
+    result?.success && result.checkInAt
+      ? Math.max(
+          0,
+          Math.ceil((UNDO_WINDOW_MS - (Date.now() - result.checkInAt)) / 1000),
+        )
+      : 0;
+  const canUndo = undoSecondsLeft > 0;
+
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-extrabold text-[#191c1e] tracking-tight flex items-center gap-2">
+        <h2 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-[#191c1e]">
           <QrCode className="h-7 w-7 text-[#00629d]" />
           Soát Vé Lên Tàu (QR Code Check-in)
         </h2>
-        <p className="text-sm font-medium text-[#6f7883] mt-1">
-          Quét mã QR soát vé tại cửa toa để kiểm tra tính hợp lệ và cho phép
-          hành khách lên tàu.
+        <p className="mt-1 text-sm font-medium text-[#6f7883]">
+          Quét mã QR hoặc nhập mã vé. Camera tự động khởi động lại sau mỗi lần
+          soát.
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-        {/* Left Column: Viewport & Inputs */}
+        {/* Left: camera + input */}
         <div className="space-y-6">
-          {/* Main Working Card */}
-          <div className="bg-white border border-[#bec7d4]/30 rounded-2xl p-5 shadow-sm space-y-5">
-            <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+          <div className="space-y-5 rounded-2xl border border-[#bec7d4]/30 bg-white p-5 shadow-sm">
+            <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800">
               <Camera className="h-4 w-4 text-[#00629d]" />
-              Máy quét QR & Nhập liệu
+              Máy quét QR &amp; Nhập liệu
             </h3>
 
-            {/* Video Viewport / Simulator area */}
-            <div className="relative border-2 border-dashed border-[#bec7d4]/50 rounded-2xl overflow-hidden bg-slate-900 aspect-video flex flex-center flex-col items-center justify-center text-white">
-              {/* Target Scan Frame overlay */}
+            {/* Viewport */}
+            <div className="relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-[#bec7d4]/50 bg-slate-900 text-white">
               {isScanning && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                  <div className="w-48 h-48 sm:w-60 sm:h-60 border-4 border-emerald-500 rounded-3xl relative flex items-center justify-center">
-                    {/* Laser Scanner Line */}
-                    <div className="absolute left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_15px_#10b981] animate-[bounce_2s_infinite]"></div>
-                    {/* Corners */}
-                    <span className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl -translate-x-1 -translate-y-1"></span>
-                    <span className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl translate-x-1 -translate-y-1"></span>
-                    <span className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl -translate-x-1 translate-y-1"></span>
-                    <span className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-xl translate-x-1 translate-y-1"></span>
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                  <div className="relative flex h-48 w-48 items-center justify-center rounded-3xl border-4 border-emerald-500 sm:h-60 sm:w-60">
+                    <div className="absolute left-0 right-0 h-1 animate-bounce bg-emerald-400 shadow-[0_0_15px_#10b981]" />
+                    <span className="absolute -left-1 -top-1 h-6 w-6 rounded-tl-xl border-l-4 border-t-4 border-emerald-400" />
+                    <span className="absolute -right-1 -top-1 h-6 w-6 rounded-tr-xl border-r-4 border-t-4 border-emerald-400" />
+                    <span className="absolute -bottom-1 -left-1 h-6 w-6 rounded-bl-xl border-b-4 border-l-4 border-emerald-400" />
+                    <span className="absolute -bottom-1 -right-1 h-6 w-6 rounded-br-xl border-b-4 border-r-4 border-emerald-400" />
                   </div>
                 </div>
               )}
-
-              {/* Html5Qrcode video node */}
-              <div id="reader" className="w-full h-full object-cover"></div>
-
-              {/* Placeholder when not scanning */}
+              <div id="reader" className="h-full w-full object-cover" />
               {!isScanning && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-950/90 z-20">
-                  <span className="material-symbols-outlined text-6xl text-[#00629d]/80 animate-pulse">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-3 bg-slate-950/90 p-6 text-center">
+                  <span className="material-symbols-outlined animate-pulse text-6xl text-[#00629d]/80">
                     qr_code_scanner
                   </span>
-                  <p className="font-bold text-sm">Máy ảnh đang tắt</p>
-                  <p className="text-xs text-slate-400 max-w-xs leading-5">
-                    Kích hoạt camera để quét trực tiếp mã QR in trên vé của hành
-                    khách.
+                  <p className="text-sm font-bold">Máy ảnh đang tắt</p>
+                  <p className="max-w-xs text-xs leading-5 text-slate-400">
+                    Kích hoạt camera để quét trực tiếp mã QR trên vé.
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Camera Controls */}
-            <div className="flex flex-col sm:flex-row gap-3">
+            {/* Camera controls */}
+            <div className="flex flex-col gap-3 sm:flex-row">
               <div className="flex-1">
                 <select
                   disabled={isScanning || cameras.length === 0}
                   value={selectedCameraId}
                   onChange={(e) => setSelectedCameraId(e.target.value)}
-                  className="w-full border border-[#bec7d4]/60 rounded-xl px-3 py-2.5 text-xs font-semibold focus:border-[#00629d] focus:ring-4 focus:ring-[#cfe5ff] outline-none bg-white cursor-pointer transition disabled:opacity-55"
+                  className="w-full cursor-pointer rounded-xl border border-[#bec7d4]/60 bg-white px-3 py-2.5 text-xs font-semibold outline-none transition focus:border-[#00629d] focus:ring-4 focus:ring-[#cfe5ff] disabled:opacity-55"
                 >
                   {cameras.length === 0 ? (
                     <option value="">Không tìm thấy camera</option>
@@ -328,15 +381,14 @@ export function StaffTicketCheckInPanel() {
                   )}
                 </select>
               </div>
-
               <button
                 type="button"
                 onClick={isScanning ? handleStopScan : handleStartScan}
                 disabled={cameras.length === 0}
-                className={`flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl font-bold text-xs transition-all border-none cursor-pointer disabled:opacity-50 ${
+                className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border-none px-5 py-2.5 text-xs font-bold transition-all disabled:opacity-50 ${
                   isScanning
-                    ? "bg-red-50 hover:bg-red-100/70 text-red-700"
-                    : "bg-[#00629d] hover:bg-[#00527f] text-white"
+                    ? "bg-red-50 text-red-700 hover:bg-red-100/70"
+                    : "bg-[#00629d] text-white hover:bg-[#00527f]"
                 }`}
               >
                 {isScanning ? (
@@ -353,17 +405,17 @@ export function StaffTicketCheckInPanel() {
               </button>
             </div>
 
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-[#bec7d4]/20"></div>
-              <span className="flex-shrink mx-4 text-xs font-bold text-slate-400">
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-[#bec7d4]/20" />
+              <span className="mx-4 flex-shrink text-xs font-bold text-slate-400">
                 HOẶC
               </span>
-              <div className="flex-grow border-t border-[#bec7d4]/20"></div>
+              <div className="flex-grow border-t border-[#bec7d4]/20" />
             </div>
 
-            {/* Manual entry form */}
+            {/* Manual input */}
             <form onSubmit={handleManualSubmit} className="flex gap-3">
-              <div className="flex-1 relative">
+              <div className="relative flex-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <Keyboard className="h-4 w-4" />
                 </span>
@@ -373,13 +425,13 @@ export function StaffTicketCheckInPanel() {
                   value={ticketCodeInput}
                   onChange={(e) => setTicketCodeInput(e.target.value)}
                   placeholder="Nhập mã vé thủ công (ví dụ: GT-ABC123XYZ)"
-                  className="w-full border border-[#bec7d4]/60 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold focus:border-[#00629d] focus:ring-4 focus:ring-[#cfe5ff] outline-none transition placeholder:font-medium uppercase"
+                  className="w-full rounded-xl border border-[#bec7d4]/60 py-2.5 pl-9 pr-4 text-xs font-bold uppercase outline-none transition placeholder:font-medium focus:border-[#00629d] focus:ring-4 focus:ring-[#cfe5ff]"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-[#071a2b] hover:bg-[#0f2a43] text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all border-none cursor-pointer disabled:opacity-60"
+                className="cursor-pointer rounded-xl border-none bg-[#071a2b] px-5 py-2.5 text-xs font-bold text-white transition-all hover:bg-[#0f2a43] disabled:opacity-60"
               >
                 {loading ? "Đang soát..." : "Soát vé"}
               </button>
@@ -387,18 +439,17 @@ export function StaffTicketCheckInPanel() {
           </div>
         </div>
 
-        {/* Right Column: Scan Result & Realtime details */}
+        {/* Right: result */}
         <div className="space-y-6">
-          {/* Scan result Card */}
-          <div className="bg-white border border-[#bec7d4]/30 rounded-2xl p-5 shadow-sm min-h-[300px] flex flex-col justify-between">
-            <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+          <div className="flex min-h-[300px] flex-col justify-between rounded-2xl border border-[#bec7d4]/30 bg-white p-5 shadow-sm">
+            <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800">
               <Ticket className="h-4 w-4 text-[#00629d]" />
               Chi tiết soát vé
             </h3>
 
             {loading && (
-              <div className="flex-grow flex flex-col items-center justify-center py-10 space-y-3">
-                <span className="material-symbols-outlined text-4xl animate-spin text-[#00629d]">
+              <div className="flex flex-grow flex-col items-center justify-center space-y-3 py-10">
+                <span className="material-symbols-outlined animate-spin text-4xl text-[#00629d]">
                   sync
                 </span>
                 <p className="text-xs font-bold text-slate-500">
@@ -408,158 +459,156 @@ export function StaffTicketCheckInPanel() {
             )}
 
             {!loading && !result && (
-              <div className="flex-grow flex flex-col items-center justify-center py-16 text-center space-y-2.5">
-                <QrCode className="h-12 w-12 text-[#bec7d4] stroke-[1.5]" />
-                <p className="font-bold text-slate-600 text-xs">Chờ soát vé</p>
-                <p className="text-[11px] text-slate-400 max-w-[200px] leading-relaxed">
-                  Vui lòng quét vé bằng camera hoặc nhập mã vé để bắt đầu soát
-                  vé hành khách.
+              <div className="flex flex-grow flex-col items-center justify-center space-y-2.5 py-16 text-center">
+                <QrCode className="h-12 w-12 stroke-[1.5] text-[#bec7d4]" />
+                <p className="text-xs font-bold text-slate-600">Chờ soát vé</p>
+                <p className="max-w-[200px] text-[11px] leading-relaxed text-slate-400">
+                  Quét vé bằng camera hoặc nhập mã vé để bắt đầu.
                 </p>
               </div>
             )}
 
-            {!loading && result && result.success && (
+            {!loading && result?.success && (
               <div className="flex-grow space-y-4 pt-3">
-                {/* Success Indicator Card */}
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
                   <div>
-                    <h4 className="text-sm font-extrabold text-emerald-800 uppercase tracking-wide">
-                      Vé Hợp Lệ - Check-in OK!
+                    <h4 className="text-sm font-extrabold uppercase tracking-wide text-emerald-800">
+                      Vé Hợp Lệ — Check-in OK!
                     </h4>
-                    <p className="text-xs text-emerald-600 font-semibold mt-0.5">
+                    <p className="mt-0.5 text-xs font-semibold text-emerald-600">
                       Đã ghi nhận soát vé và cho phép hành khách lên toa.
                     </p>
                   </div>
                 </div>
 
-                {/* Details Grid */}
                 <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      HÀNH KHÁCH:
-                    </span>
-                    <span className="font-extrabold text-[#191c1e] text-right flex items-center gap-1">
-                      <User className="h-3.5 w-3.5 text-slate-400" />
-                      {result.data.fullName}
-                    </span>
-                  </div>
+                  {[
+                    {
+                      label: "HÀNH KHÁCH:",
+                      value: result.data.fullName,
+                      icon: <User className="h-3.5 w-3.5 text-slate-400" />,
+                    },
+                    {
+                      label: "MÃ VÉ:",
+                      value: result.data.ticketCode,
+                      mono: true,
+                    },
+                    {
+                      label: "CCCD / HỘ CHIẾU:",
+                      value: result.data.nationalId,
+                    },
+                    { label: "ĐỐI TƯỢNG:", value: result.data.passengerType },
+                  ].map(({ label, value, icon, mono }) => (
+                    <div
+                      key={label}
+                      className="flex justify-between border-b border-slate-100 pb-1.5"
+                    >
+                      <span className="font-bold text-[#6f7883]">{label}</span>
+                      <span
+                        className={`flex items-center gap-1 text-right font-extrabold ${mono ? "font-mono text-[#00629d]" : "text-[#191c1e]"}`}
+                      >
+                        {icon}
+                        {value}
+                      </span>
+                    </div>
+                  ))}
 
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      MÃ VÉ (CODE):
-                    </span>
-                    <span className="font-extrabold text-[#00629d] font-mono">
-                      {result.data.ticketCode}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      CCCD / HỘ CHIẾU:
-                    </span>
-                    <span className="font-bold text-slate-700">
-                      {result.data.nationalId}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">ĐỐI TƯỢNG:</span>
-                    <span className="font-bold text-slate-700">
-                      {result.data.passengerType}
-                    </span>
-                  </div>
-
-                  {/* Seat bento block */}
-                  <div className="grid grid-cols-2 gap-2 my-3">
-                    <div className="bg-[#f2f4f6] rounded-lg p-2.5 text-center border border-slate-200/40">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                  <div className="my-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-slate-200/40 bg-[#f2f4f6] p-2.5 text-center">
+                      <p className="text-[10px] font-bold uppercase text-slate-400">
                         Toa tàu
                       </p>
-                      <p className="text-lg font-extrabold text-slate-800 mt-0.5">
+                      <p className="mt-0.5 text-lg font-extrabold text-slate-800">
                         {result.data.carriageNumber}
                       </p>
                     </div>
-                    <div className="bg-[#cfe5ff]/50 rounded-lg p-2.5 text-center border border-[#00629d]/10">
-                      <p className="text-[10px] text-[#00629d] font-bold uppercase">
+                    <div className="rounded-lg border border-[#00629d]/10 bg-[#cfe5ff]/50 p-2.5 text-center">
+                      <p className="text-[10px] font-bold uppercase text-[#00629d]">
                         Số ghế
                       </p>
-                      <p className="text-lg font-extrabold text-[#00629d] mt-0.5">
+                      <p className="mt-0.5 text-lg font-extrabold text-[#00629d]">
                         {result.data.seatNumber}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      MÃ CHUYẾN TÀU:
-                    </span>
-                    <span className="font-extrabold text-[#191c1e] flex items-center gap-1">
-                      <Train className="h-3.5 w-3.5 text-slate-400" />
-                      {result.data.trainCode}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      TUYẾN ĐƯỜNG:
-                    </span>
-                    <span className="font-bold text-slate-700 text-right">
-                      {result.data.routeName}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      GIỜ CHẠY GỐC:
-                    </span>
-                    <span className="font-bold text-slate-700">
-                      {formatDateTime(result.data.departureTime)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between pb-1.5">
-                    <span className="text-[#6f7883] font-bold">
-                      ĐÃ SOÁT VÀO LÚC:
-                    </span>
-                    <span className="font-extrabold text-emerald-600">
-                      {formatDateTime(result.data.boardingAt)}
-                    </span>
-                  </div>
+                  {[
+                    {
+                      label: "MÃ CHUYẾN TÀU:",
+                      value: result.data.trainCode,
+                      icon: <Train className="h-3.5 w-3.5 text-slate-400" />,
+                    },
+                    { label: "TUYẾN ĐƯỜNG:", value: result.data.routeName },
+                    {
+                      label: "GIỜ CHẠY GỐC:",
+                      value: formatDateTime(result.data.departureTime),
+                    },
+                    {
+                      label: "ĐÃ SOÁT VÀO LÚC:",
+                      value: formatDateTime(result.data.boardingAt),
+                      green: true,
+                    },
+                  ].map(({ label, value, icon, green }) => (
+                    <div
+                      key={label}
+                      className="flex justify-between border-b border-slate-100 pb-1.5"
+                    >
+                      <span className="font-bold text-[#6f7883]">{label}</span>
+                      <span
+                        className={`flex items-center gap-1 font-extrabold ${green ? "text-emerald-600" : "text-slate-700"}`}
+                      >
+                        {icon}
+                        {value}
+                      </span>
+                    </div>
+                  ))}
                 </div>
+
+                {/* #5: Nút hoàn tác soát vé */}
+                {canUndo && (
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={undoing}
+                    className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    {undoing
+                      ? "Đang hoàn tác..."
+                      : `Hoàn tác soát vé (còn ${Math.floor(undoSecondsLeft / 60)}:${String(undoSecondsLeft % 60).padStart(2, "0")})`}
+                  </button>
+                )}
               </div>
             )}
 
             {!loading && result && !result.success && (
               <div className="flex-grow space-y-4 pt-3">
-                {/* Error Banner */}
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                  <XCircle className="h-6 w-6 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-600" />
                   <div>
-                    <h4 className="text-sm font-extrabold text-red-800 uppercase tracking-wide">
+                    <h4 className="text-sm font-extrabold uppercase tracking-wide text-red-800">
                       Vé Không Hợp Lệ!
                     </h4>
-                    <p className="text-xs text-red-600 font-semibold mt-0.5">
+                    <p className="mt-0.5 text-xs font-semibold text-red-600">
                       Từ chối khách lên tàu và yêu cầu kiểm tra lại vé.
                     </p>
                   </div>
                 </div>
-
-                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-center space-y-2">
-                  <AlertTriangle className="h-7 w-7 text-amber-600 mx-auto" />
-                  <p className="text-xs font-bold text-[#ba1a1a] leading-5">
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <AlertTriangle className="mx-auto h-7 w-7 text-amber-600" />
+                  <p className="text-xs font-bold leading-5 text-[#ba1a1a]">
                     {result.error}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Clear / Next scan button */}
             {result && (
               <button
                 type="button"
-                onClick={() => setResult(null)}
-                className="mt-4 flex w-full items-center justify-center gap-1 text-xs font-bold text-[#00629d] hover:text-[#00527f] bg-slate-100 hover:bg-[#cfe5ff]/50 py-3 rounded-xl transition-all border-none cursor-pointer"
+                onClick={handleClearResult}
+                className="mt-4 flex w-full cursor-pointer items-center justify-center gap-1 rounded-xl border-none bg-slate-100 py-3 text-xs font-bold text-[#00629d] transition-all hover:bg-[#cfe5ff]/50 hover:text-[#00527f]"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Quét vé tiếp theo
@@ -569,41 +618,55 @@ export function StaffTicketCheckInPanel() {
         </div>
       </div>
 
-      {/* Session log history */}
-      <div className="bg-white border border-[#bec7d4]/30 rounded-2xl p-5 shadow-sm space-y-4">
-        <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
-          <ListTodo className="h-4 w-4 text-[#00629d]" />
-          Lịch sử soát vé phiên làm việc (Gần nhất)
-        </h3>
+      {/* Session logs (#12) */}
+      <div className="space-y-4 rounded-2xl border border-[#bec7d4]/30 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800">
+            <ListTodo className="h-4 w-4 text-[#00629d]" />
+            Lịch sử soát vé phiên làm việc
+          </h3>
+          {sessionLogs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem(SESSION_STORAGE_KEY);
+                setSessionLogs([]);
+              }}
+              className="cursor-pointer rounded-lg border-none bg-transparent px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-red-600"
+            >
+              Xóa lịch sử
+            </button>
+          )}
+        </div>
 
         {sessionLogs.length === 0 ? (
-          <p className="text-xs text-slate-400 italic text-center py-6">
+          <p className="py-6 text-center text-xs italic text-slate-400">
             Chưa soát vé nào trong phiên làm việc hiện tại.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-[#bec7d4]/20 font-bold text-slate-600">
+                <tr className="border-b border-[#bec7d4]/20 bg-slate-50 font-bold text-slate-600">
                   <th className="px-4 py-3">Thời gian</th>
                   <th className="px-4 py-3">Mã vé</th>
                   <th className="px-4 py-3">Hành khách</th>
                   <th className="px-4 py-3">Chuyến</th>
                   <th className="px-4 py-3">Vị trí ghế</th>
                   <th className="px-4 py-3">Trạng thái</th>
-                  <th className="px-4 py-3">Thông tin chi tiết / lỗi</th>
+                  <th className="px-4 py-3">Chi tiết</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                 {sessionLogs.map((log) => (
                   <tr
                     key={log.id}
-                    className="hover:bg-slate-50/60 transition-colors"
+                    className="transition-colors hover:bg-slate-50/60"
                   >
-                    <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                      {log.time.toLocaleTimeString("vi-VN")}
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                      {new Date(log.time).toLocaleTimeString("vi-VN")}
                     </td>
-                    <td className="px-4 py-3 font-bold font-mono text-[#00629d]">
+                    <td className="px-4 py-3 font-mono font-bold text-[#00629d]">
                       {log.ticketCode}
                     </td>
                     <td className="px-4 py-3 text-slate-800">{log.fullName}</td>
@@ -611,21 +674,28 @@ export function StaffTicketCheckInPanel() {
                     <td className="px-4 py-3">
                       Toa {log.carriageNumber} · Ghế {log.seatNumber}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {log.status === "SUCCESS" ? (
-                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-bold text-[10px]">
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {log.status === "SUCCESS" && (
+                        <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                           THÀNH CÔNG
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded font-bold text-[10px]">
+                      )}
+                      {log.status === "FAILED" && (
+                        <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
                           LỖI
                         </span>
                       )}
+                      {log.status === "UNDONE" && (
+                        <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                          ĐÃ HOÀN TÁC
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-slate-400 font-medium italic truncate max-w-xs">
-                      {log.status === "SUCCESS" ? (
-                        "Soát vé và lên tàu thành công"
-                      ) : (
+                    <td className="max-w-xs truncate px-4 py-3 font-medium italic text-slate-400">
+                      {log.status === "SUCCESS" &&
+                        "Soát vé và lên tàu thành công"}
+                      {log.status === "UNDONE" && "Đã hoàn tác soát vé"}
+                      {log.status === "FAILED" && (
                         <span className="text-red-500">{log.error}</span>
                       )}
                     </td>
