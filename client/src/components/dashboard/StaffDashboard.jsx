@@ -44,6 +44,13 @@ function StaffOverview({ onOpenBooking, onOpenPrint }) {
       value: statsLoading ? "—" : String(stats?.cancellationsToday ?? 0),
       helper: "Booking đã xử lý hủy & hoàn tiền",
       icon: "cancel",
+      color: "text-rose-700 bg-rose-50",
+    },
+    {
+      label: "Đổi vé hôm nay",
+      value: statsLoading ? "—" : String(stats?.exchangesToday ?? 0),
+      helper: "Booking đã đổi sang chuyến khác",
+      icon: "swap_horiz",
       color: "text-[#00629d] bg-[#cfe5ff]",
     },
     {
@@ -66,7 +73,7 @@ function StaffOverview({ onOpenBooking, onOpenPrint }) {
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <div
             key={card.label}

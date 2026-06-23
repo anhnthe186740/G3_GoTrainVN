@@ -935,7 +935,9 @@ export function SeatSelectionPage({
     1,
     Number(searchParams.get("exchangePassengerCount") || 1),
   );
-  const isExchangeMode = mode === "exchange" && Boolean(exchangeBookingId);
+  const isExchangeMode =
+    (mode === "exchange" || mode === "staff-exchange") &&
+    Boolean(exchangeBookingId);
 
   const journeyPayload = useMemo(
     () => ({
@@ -1323,7 +1325,7 @@ export function SeatSelectionPage({
     if (isExchangeMode) {
       const params = new URLSearchParams({
         sessionId: session.id,
-        mode: "exchange",
+        mode: mode,
         exchangeBookingId,
         exchangeBookingCode: exchangeBookingCode || "",
         exchangePaidAmount: exchangePaidAmount || "0",

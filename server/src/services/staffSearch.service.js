@@ -162,6 +162,10 @@ function bookingClauses(query, queryType) {
       userId: { not: null },
       user: { email: { contains: trimmed, mode: "insensitive" } },
     });
+    clauses.push({
+      userId: { not: null },
+      user: { fullName: { contains: trimmed, mode: "insensitive" } },
+    });
   }
 
   const pClauses = passengerClauses(query, queryType);
@@ -181,11 +185,11 @@ export async function searchStaffWorkspace(query) {
   }
 
   const queryType = classifyQuery(trimmed);
-  // #6: Mở rộng phạm vi tìm kiếm — staff được xem booking từ 30 ngày trước đến tương lai,
+  // Staff được xem booking từ 30 ngày trước đến tương lai,
   // bao gồm cả booking đã hủy/hoàn tiền để hỗ trợ giải quyết khiếu nại.
-  const sevenDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const bookingWhere = {
-    schedule: { departureTime: { gte: sevenDaysAgo } },
+    schedule: { departureTime: { gte: thirtyDaysAgo } },
   };
   const [tickets, bookings] = await Promise.all([
     passengerClauses(trimmed, queryType).length > 0

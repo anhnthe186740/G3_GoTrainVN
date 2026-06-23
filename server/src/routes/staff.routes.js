@@ -9,6 +9,7 @@ import {
   undoCheckInTicket,
 } from "../controllers/staffCheckIn.controller.js";
 import { getStaffStats } from "../controllers/staffStats.controller.js";
+import { exchangeTicket } from "../controllers/staffExchange.controller.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
@@ -21,3 +22,4 @@ staffRoutes.post("/cancellations/quote", quoteCancellation);
 staffRoutes.post("/cancellations/confirm", confirmCancellation);
 staffRoutes.post("/check-in", checkInTicket);
 staffRoutes.post("/check-in/undo", undoCheckInTicket);
+staffRoutes.post("/exchange", exchangeTicket);

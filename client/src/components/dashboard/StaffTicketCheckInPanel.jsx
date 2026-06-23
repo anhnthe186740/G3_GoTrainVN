@@ -15,7 +15,6 @@ import {
   ListTodo,
   Undo2,
 } from "lucide-react";
-import { api } from "../../services/api";
 import { staffSearchApi } from "../../services/staffSearchApi";
 import { toast } from "sonner";
 
@@ -191,7 +190,7 @@ export function StaffTicketCheckInPanel() {
     setResult(null);
 
     try {
-      const res = await api.post("/staff/check-in", { ticketCode });
+      const res = await staffSearchApi.checkIn(ticketCode);
 
       if (res.data?.success) {
         const ticketData = res.data.ticket;

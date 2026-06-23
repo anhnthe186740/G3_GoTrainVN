@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Banknote,
   CheckCircle2,
   LoaderCircle,
@@ -101,6 +103,7 @@ function InfoItem({ label, value }) {
 }
 
 export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
+  const navigate = useNavigate();
   const [selectedPassengerIds, setSelectedPassengerIds] = useState([]);
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -137,6 +140,19 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
 
   const schedule = booking.schedule;
   const selectedCount = selectedPassengerIds.length;
+
+  const canExchange =
+    booking.status === "CONFIRMED" &&
+    booking.paymentStatus === "COMPLETED" &&
+    schedule?.departureTime &&
+    new Date(schedule.departureTime).getTime() > Date.now();
+
+  const handleExchange = () => {
+    const firstPassenger = booking.passengers?.[0];
+    const ticket = firstPassenger ? { ...firstPassenger, booking } : null;
+    onClose();
+    navigate("/doi-ve", { state: { ticket, staffMode: true } });
+  };
 
   const togglePassenger = (passengerId) => {
     setQuote(null);
@@ -227,14 +243,27 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
               {dateTime(schedule?.departureTime)}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#bec7d4]/60 text-[#3f4852] transition hover:border-[#00629d] hover:text-[#00629d]"
-            title="Đóng"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {canExchange && (
+              <button
+                type="button"
+                onClick={handleExchange}
+                className="flex items-center gap-2 rounded-xl border border-[#00629d]/40 bg-[#cfe5ff]/40 px-3 py-2 text-xs font-bold text-[#00629d] transition hover:bg-[#cfe5ff]"
+                title="Đổi sang chuyến khác"
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+                Đổi vé
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#bec7d4]/60 text-[#3f4852] transition hover:border-[#00629d] hover:text-[#00629d]"
+              title="Đóng"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="grid max-h-[calc(92vh-92px)] overflow-y-auto lg:grid-cols-[1fr_380px]">

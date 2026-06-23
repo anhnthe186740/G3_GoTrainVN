@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
+import { refundPolicy } from "./bookingCancellation.service.js";
 
 const REFUND_METHODS = ["CASH", "WALLET"];
 
@@ -7,36 +8,6 @@ function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
-}
-
-function refundPolicy(departureTime, now = new Date()) {
-  const diffHours = (new Date(departureTime).getTime() - now.getTime()) / 36e5;
-  if (diffHours < 0) {
-    return {
-      allowed: false,
-      rate: 0,
-      message: "Chuyến tàu đã khởi hành.",
-    };
-  }
-  if (diffHours < 4) {
-    return {
-      allowed: false,
-      rate: 0,
-      message: "Không thể hủy vé trong vòng 4 giờ trước giờ khởi hành.",
-    };
-  }
-  if (diffHours < 24) {
-    return {
-      allowed: true,
-      rate: 0.5,
-      message: "Hoàn 50% vì còn từ 4 đến dưới 24 giờ trước giờ khởi hành.",
-    };
-  }
-  return {
-    allowed: true,
-    rate: 0.8,
-    message: "Hoàn 80% vì còn ít nhất 24 giờ trước giờ khởi hành.",
-  };
 }
 
 const bookingInclude = {
@@ -206,6 +177,10 @@ export async function confirmStaffCancellation({
   const eligiblePassengerIds = eligibleItems.map((item) => item.passengerId);
   const now = new Date();
   const totalRefundAmount = quote.totalRefundAmount;
+  const totalOriginalAmount = eligibleItems.reduce(
+    (sum, item) => sum + item.originalAmount,
+    0,
+  );
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.bookingDetail.updateMany({
@@ -236,6 +211,11 @@ export async function confirmStaffCancellation({
         paymentStatus: nextPaymentStatus,
         refundAmount:
           Number(quote.booking.refundAmount || 0) + totalRefundAmount,
+        // Giảm totalAmount theo giá trị gốc của các vé bị hủy
+        totalAmount: Math.max(
+          0,
+          Number(quote.booking.totalAmount || 0) - totalOriginalAmount,
+        ),
         cancelReason: reason || "Staff hủy vé tại quầy",
         cancelledAt: remainingActiveDetails === 0 ? now : undefined,
       },
