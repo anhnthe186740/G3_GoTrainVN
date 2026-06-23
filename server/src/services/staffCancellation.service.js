@@ -77,6 +77,13 @@ function activeDetails(passenger) {
   );
 }
 
+function isAlreadyBoarded(passenger) {
+  return (
+    passenger.boardingAt !== null ||
+    (passenger.bookingDetails || []).some((d) => d.status === "USED")
+  );
+}
+
 function ticketAmount(passenger) {
   return activeDetails(passenger).reduce(
     (sum, detail) => sum + Number(detail.finalPrice || 0),
@@ -109,18 +116,23 @@ export async function quoteStaffCancellation({ bookingId, passengerIds }) {
     .map((passenger) => {
       const originalAmount = ticketAmount(passenger);
       const alreadyCancelled = activeDetails(passenger).length === 0;
-      const eligible = !bookingClosed && !alreadyCancelled && policy.allowed;
+      const boarded = isAlreadyBoarded(passenger);
+      const eligible =
+        !bookingClosed && !alreadyCancelled && !boarded && policy.allowed;
       const reason = bookingClosed
         ? "Booking đã bị hủy hoặc hoàn tiền."
-        : alreadyCancelled
-          ? "Vé này đã được hủy trước đó."
-          : policy.message;
+        : boarded
+          ? "Hành khách đã lên tàu, không thể hủy vé."
+          : alreadyCancelled
+            ? "Vé này đã được hủy trước đó."
+            : policy.message;
       return {
         passengerId: passenger.id,
         ticketCode: passenger.ticketCode,
         fullName: passenger.fullName,
         seatNumber: passenger.seat?.seatNumber,
         carriageNumber: passenger.carriageNumber,
+        boardingAt: passenger.boardingAt,
         originalAmount,
         refundAmount: eligible ? Math.round(originalAmount * policy.rate) : 0,
         eligible,
@@ -176,6 +188,9 @@ export async function confirmStaffCancellation({
   const method = String(refundMethod || "").toUpperCase();
   if (!REFUND_METHODS.includes(method)) {
     throw httpError(400, "Phương thức hoàn tiền không hợp lệ.");
+  }
+  if (!reason || !String(reason).trim()) {
+    throw httpError(400, "Vui lòng nhập lý do hủy vé.");
   }
 
   const quote = await quoteStaffCancellation({ bookingId, passengerIds });

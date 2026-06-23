@@ -126,22 +126,11 @@ function passengerClauses(query, queryType) {
   if (["BOOKING_CODE", "CODE"].includes(queryType)) {
     clauses.push({ booking: { bookingCode: upper } });
   }
-  if (queryType === "EMAIL") {
-    clauses.push({
-      email: { equals: trimmed.toLowerCase(), mode: "insensitive" },
-    });
-  }
-  if (queryType === "PHONE" && cleanPhone.length > 0) {
-    clauses.push({ phoneNumber: { in: cleanPhone } });
-  }
   if (queryType === "NATIONAL_ID") {
     clauses.push({ nationalId: cleanNationalId });
   }
   if (queryType === "TEXT" && trimmed.length >= 2) {
-    clauses.push(
-      { fullName: { contains: trimmed, mode: "insensitive" } },
-      { email: { contains: trimmed, mode: "insensitive" } },
-    );
+    clauses.push({ fullName: { contains: trimmed, mode: "insensitive" } });
   }
 
   return clauses;
@@ -150,12 +139,32 @@ function passengerClauses(query, queryType) {
 function bookingClauses(query, queryType) {
   const trimmed = query.trim();
   const upper = trimmed.toUpperCase();
-  const pClauses = passengerClauses(query, queryType);
+  const cleanPhone = phoneVariants(trimmed);
   const clauses = [];
 
   if (["BOOKING_CODE", "CODE"].includes(queryType)) {
     clauses.push({ bookingCode: upper });
   }
+  if (queryType === "EMAIL") {
+    clauses.push({
+      userId: { not: null },
+      user: { email: { equals: trimmed.toLowerCase(), mode: "insensitive" } },
+    });
+  }
+  if (queryType === "PHONE" && cleanPhone.length > 0) {
+    clauses.push({
+      userId: { not: null },
+      user: { phoneNumber: { in: cleanPhone } },
+    });
+  }
+  if (queryType === "TEXT" && trimmed.length >= 2) {
+    clauses.push({
+      userId: { not: null },
+      user: { email: { contains: trimmed, mode: "insensitive" } },
+    });
+  }
+
+  const pClauses = passengerClauses(query, queryType);
   if (pClauses.length > 0) {
     clauses.push({ passengers: { some: { OR: pClauses } } });
   }
@@ -172,10 +181,11 @@ export async function searchStaffWorkspace(query) {
   }
 
   const queryType = classifyQuery(trimmed);
-  const activeBookingWhere = {
-    schedule: { departureTime: { gt: new Date() } },
-    status: { notIn: ["CANCELLED", "REFUNDED"] },
-    bookingDetails: { some: { status: { not: "CANCELLED" } } },
+  // #6: Mở rộng phạm vi tìm kiếm — staff được xem booking từ 30 ngày trước đến tương lai,
+  // bao gồm cả booking đã hủy/hoàn tiền để hỗ trợ giải quyết khiếu nại.
+  const sevenDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const bookingWhere = {
+    schedule: { departureTime: { gte: sevenDaysAgo } },
   };
   const [tickets, bookings] = await Promise.all([
     passengerClauses(trimmed, queryType).length > 0
@@ -183,10 +193,7 @@ export async function searchStaffWorkspace(query) {
           where: {
             AND: [
               { OR: passengerClauses(trimmed, queryType) },
-              {
-                booking: activeBookingWhere,
-                bookingDetails: { some: { status: { not: "CANCELLED" } } },
-              },
+              { booking: bookingWhere },
             ],
           },
           include: ticketInclude,
@@ -197,10 +204,7 @@ export async function searchStaffWorkspace(query) {
     bookingClauses(trimmed, queryType).length > 0
       ? prisma.booking.findMany({
           where: {
-            AND: [
-              { OR: bookingClauses(trimmed, queryType) },
-              activeBookingWhere,
-            ],
+            AND: [{ OR: bookingClauses(trimmed, queryType) }, bookingWhere],
           },
           include: bookingInclude.include,
           orderBy: { createdAt: "desc" },

@@ -882,7 +882,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         data: {
           seatId: hold.seatId,
           carriageNumber: hold.seat.carriage.carriageNumber,
-          boardingAt: newSchedule.departureTime,
+          boardingAt: null,
         },
       });
 
