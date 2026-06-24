@@ -10,7 +10,6 @@ import {
   Phone,
   Mail,
   ArrowRight,
-  MapPin,
   Clock,
   Printer,
   X,
@@ -43,6 +42,7 @@ export function TicketLookup() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null); // { type: 'single' | 'list', ticket?: any, tickets?: any[] }
   const [activeTicket, setActiveTicket] = useState(null); // The ticket details currently shown
+  const [ticketCategory, setTicketCategory] = useState("UPCOMING");
   const isGuest = !user;
   const [recentSearches, setRecentSearches] = useState([]);
 
@@ -94,11 +94,7 @@ export function TicketLookup() {
       if (data.type === "single") {
         setActiveTicket(data.ticket);
       } else if (data.type === "list" && data.tickets?.length > 0) {
-        // Find if there is an active future ticket, else show the first one
-        const active =
-          data.tickets.find((t) => t.booking?.status === "CONFIRMED") ||
-          data.tickets[0];
-        setActiveTicket(active);
+        selectInitialTicket(data.tickets);
       }
     } catch (err) {
       // Don't toast on auto-load to avoid annoying user if they have no tickets yet
@@ -132,6 +128,7 @@ export function TicketLookup() {
     setError("");
     setResult(null);
     setActiveTicket(null);
+    setTicketCategory("UPCOMING");
 
     const searchCode = forcedCode ?? ticketCode;
     const searchContact = forcedContact ?? contactInfo;
@@ -170,7 +167,7 @@ export function TicketLookup() {
             data.ticket.booking?.bookingCode,
         );
       } else if (data.type === "list" && data.tickets?.length > 0) {
-        setActiveTicket(data.tickets[0]);
+        selectInitialTicket(data.tickets);
         if (searchCode) saveRecentSearch(searchCode);
       }
       toast.success("Đã tìm thấy thông tin vé!");
@@ -309,6 +306,35 @@ export function TicketLookup() {
     return "UPCOMING";
   };
 
+  const getTicketCategory = (ticket) => {
+    const booking = ticket?.booking;
+    const journeyState = getJourneyState(
+      booking,
+      getBookedTripStations(booking),
+    );
+
+    if (journeyState === "CANCELLED") return "CANCELLED";
+    if (
+      ticket?.boardingAt ||
+      booking?.status === "COMPLETED" ||
+      ["IN_PROGRESS", "COMPLETED"].includes(journeyState)
+    ) {
+      return "USED";
+    }
+    return "UPCOMING";
+  };
+
+  const selectInitialTicket = (tickets = []) => {
+    const initialCategory = ["UPCOMING", "USED", "CANCELLED"].find((category) =>
+      tickets.some((ticket) => getTicketCategory(ticket) === category),
+    );
+    const category = initialCategory || "UPCOMING";
+    setTicketCategory(category);
+    setActiveTicket(
+      tickets.find((ticket) => getTicketCategory(ticket) === category) || null,
+    );
+  };
+
   const getJourneyStateBadge = (booking, tripStations) => {
     const state = getJourneyState(booking, tripStations);
     if (state === "COMPLETED") {
@@ -348,50 +374,21 @@ export function TicketLookup() {
     });
   };
 
-  const getSeatLayout = (ticket) => {
-    const carriageType = ticket?.seat?.carriage?.carriageType || "NORMAL_SEAT";
-    const totalSeats =
-      ticket?.seat?.carriage?.totalSeats ||
-      { NORMAL_SEAT: 40, AC_SEAT: 28, SLEEPER_6: 24, SLEEPER_4: 16 }[
-        carriageType
-      ] ||
-      40;
-    const currentSeat = ticket?.seat?.seatNumber;
-
-    if (carriageType === "NORMAL_SEAT" || carriageType === "AC_SEAT") {
-      return Array.from({ length: totalSeats }, (_, index) => ({
-        seatNumber: String(index + 1),
-        seatType: index % 4 === 0 || index % 4 === 3 ? "WINDOW" : "AISLE",
-        isMine: String(index + 1) === String(currentSeat),
-      }));
-    }
-
-    if (currentSeat && !/^\d+$/.test(String(currentSeat))) {
-      const floors =
-        carriageType === "SLEEPER_6" ? ["1", "2", "3"] : ["1", "2"];
-      return Array.from({ length: 4 }, (_, compartmentIndex) =>
-        floors.flatMap((floor) =>
-          ["A", "B"].map((side) => {
-            const seatNumber = `K${compartmentIndex + 1}-T${floor}-${side}`;
-            return {
-              seatNumber,
-              seatType: floor === "1" ? "WINDOW" : "AISLE",
-              isMine: seatNumber === currentSeat,
-            };
-          }),
-        ),
-      ).flat();
-    }
-
-    return [];
-  };
-
-  const getStatusBadge = (status, cancellationStatus) => {
+  const getStatusBadge = (status, cancellationStatus, category) => {
     if (cancellationStatus === "PENDING") {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <Clock className="h-3.5 w-3.5" />
           Chờ hủy vé
+        </span>
+      );
+    }
+
+    if (category === "USED") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <CheckCircle className="h-3.5 w-3.5" />
+          Đã sử dụng
         </span>
       );
     }
@@ -472,6 +469,31 @@ export function TicketLookup() {
     }
   };
 
+  const listTickets = result?.type === "list" ? result.tickets || [] : [];
+  const ticketCounts = listTickets.reduce(
+    (counts, ticket) => {
+      counts[getTicketCategory(ticket)] += 1;
+      return counts;
+    },
+    { UPCOMING: 0, USED: 0, CANCELLED: 0 },
+  );
+  const visibleTickets = listTickets.filter(
+    (ticket) => getTicketCategory(ticket) === ticketCategory,
+  );
+  const ticketTabs = [
+    { value: "UPCOMING", label: "Chưa chạy", icon: Clock },
+    { value: "USED", label: "Đã sử dụng", icon: CheckCircle },
+    { value: "CANCELLED", label: "Đã hủy", icon: X },
+  ];
+
+  const handleTicketCategoryChange = (category) => {
+    setTicketCategory(category);
+    setActiveTicket(
+      listTickets.find((ticket) => getTicketCategory(ticket) === category) ||
+        null,
+    );
+  };
+
   const refundInfo = calculateRefundPolicy(activeTicket);
   const activeTripStations = getBookedTripStations(activeTicket?.booking);
   const activeTripTimes = getBookedTripTimes(
@@ -482,7 +504,6 @@ export function TicketLookup() {
     activeTicket?.booking,
     activeTripStations,
   );
-  const activeSeatLayout = getSeatLayout(activeTicket);
   const activeJourneyState = getJourneyState(
     activeTicket?.booking,
     activeTripStations,
@@ -782,87 +803,146 @@ export function TicketLookup() {
           {/* List state (Multiple tickets found for email/phone) */}
           {!loading && result && result.type === "list" && (
             <div className="flex flex-col gap-4 no-print">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center">
                 <h2 className="text-lg font-bold text-slate-800">
                   Danh sách vé tìm thấy ({result.tickets.length})
                 </h2>
                 <span className="text-xs text-slate-400 font-semibold">
-                  Click để xem thông tin chi tiết từng vé
+                  Chọn một vé để xem thông tin chi tiết
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {result.tickets.map((t) => {
-                  const schedule = t.booking?.schedule;
-                  const tripStations = getBookedTripStations(t.booking);
-                  const isCurrent = activeTicket?.id === t.id;
-
+              <div
+                className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"
+                role="tablist"
+                aria-label="Phân loại vé"
+              >
+                {ticketTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = ticketCategory === tab.value;
                   return (
-                    <div
-                      key={t.id}
-                      onClick={() => setActiveTicket(t)}
-                      className={`p-5 rounded-3xl border cursor-pointer transition-all flex flex-col gap-3 bg-white relative overflow-hidden ${
-                        isCurrent
-                          ? "border-primary shadow-md shadow-primary/5 ring-1 ring-primary"
-                          : "border-slate-100 hover:border-slate-200 shadow-sm"
+                    <button
+                      key={tab.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => handleTicketCategoryChange(tab.value)}
+                      className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-bold transition-all sm:text-sm ${
+                        isActive
+                          ? "bg-primary text-white shadow-sm"
+                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
                       }`}
                     >
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                            {schedule?.train?.trainName}
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-slate-400 block uppercase">
-                              Mã vé
-                            </span>
-                            <span className="text-sm font-extrabold text-slate-800">
-                              {t.ticketCode || t.booking?.bookingCode}
-                            </span>
-                          </div>
-                        </div>
-                        {getStatusBadge(
-                          t.booking?.status || "CONFIRMED",
-                          t.booking?.cancellationRequest?.status,
-                        )}
-                      </div>
-
-                      <div className="flex justify-between items-center py-2 border-t border-b border-dashed border-slate-100">
-                        <div className="text-left">
-                          <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                            Ga đi
-                          </span>
-                          <span className="text-xs font-bold text-slate-700">
-                            {stationCity(tripStations.from) ||
-                              stationName(tripStations.from)}
-                          </span>
-                        </div>
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                            Ga đến
-                          </span>
-                          <span className="text-xs font-bold text-slate-700">
-                            {stationCity(tripStations.to) ||
-                              stationName(tripStations.to)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center text-xs font-semibold text-slate-500">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5 opacity-70" />
-                          {formatDate(schedule?.departureTime)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 opacity-70" />
-                          {formatTime(schedule?.departureTime)}
-                        </span>
-                      </div>
-                    </div>
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{tab.label}</span>
+                      <span
+                        className={`min-w-5 rounded-full px-1.5 py-0.5 text-[10px] ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {ticketCounts[tab.value]}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
+
+              {visibleTickets.length > 0 ? (
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                  role="tabpanel"
+                >
+                  {visibleTickets.map((t) => {
+                    const schedule = t.booking?.schedule;
+                    const tripStations = getBookedTripStations(t.booking);
+                    const isCurrent = activeTicket?.id === t.id;
+
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => setActiveTicket(t)}
+                        className={`p-5 rounded-3xl border cursor-pointer transition-all flex flex-col gap-3 bg-white relative overflow-hidden ${
+                          isCurrent
+                            ? "border-primary shadow-md shadow-primary/5 ring-1 ring-primary"
+                            : "border-slate-100 hover:border-slate-200 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                              {schedule?.train?.trainName}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-400 block uppercase">
+                                Mã vé
+                              </span>
+                              <span className="text-sm font-extrabold text-slate-800">
+                                {t.ticketCode || t.booking?.bookingCode}
+                              </span>
+                            </div>
+                          </div>
+                          {getStatusBadge(
+                            t.booking?.status || "CONFIRMED",
+                            t.booking?.cancellationRequest?.status,
+                            getTicketCategory(t),
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center py-2 border-t border-b border-dashed border-slate-100">
+                          <div className="text-left">
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                              Ga đi
+                            </span>
+                            <span className="text-xs font-bold text-slate-700">
+                              {stationCity(tripStations.from) ||
+                                stationName(tripStations.from)}
+                            </span>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                              Ga đến
+                            </span>
+                            <span className="text-xs font-bold text-slate-700">
+                              {stationCity(tripStations.to) ||
+                                stationName(tripStations.to)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs font-semibold text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5 opacity-70" />
+                            {formatDate(schedule?.departureTime)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5 opacity-70" />
+                            {formatTime(schedule?.departureTime)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  className="flex min-h-40 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white p-8 text-center"
+                  role="tabpanel"
+                >
+                  <Ticket className="mb-2 h-8 w-8 text-slate-300" />
+                  <p className="text-sm font-bold text-slate-600">
+                    Không có vé{" "}
+                    {ticketTabs
+                      .find((tab) => tab.value === ticketCategory)
+                      ?.label.toLowerCase()}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Hãy chọn nhóm khác để xem các vé còn lại.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -896,6 +976,7 @@ export function TicketLookup() {
                     {getStatusBadge(
                       activeTicket.booking?.status || "CONFIRMED",
                       activeTicket.booking?.cancellationRequest?.status,
+                      getTicketCategory(activeTicket),
                     )}
                   </div>
 
@@ -1175,90 +1256,6 @@ export function TicketLookup() {
                         </span>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ============================================================== */}
-              {/* 3. SEAT MAP VISUALIZER                                         */}
-              {/* ============================================================== */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col gap-4 no-print">
-                <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  Sơ Đồ Vị Trí Ghế Ngồi trên Tàu
-                </h3>
-                <p className="text-slate-500 text-xs">
-                  Vị trí ghế{" "}
-                  <span className="font-bold text-primary">
-                    {activeTicket.seat?.seatNumber}
-                  </span>{" "}
-                  của bạn được tô màu cam nổi bật trong Toa số{" "}
-                  <span className="font-bold text-slate-800">
-                    {activeTicket.carriageNumber || "1"}
-                  </span>
-                  .
-                </p>
-
-                {/* carriage diagram wrapper */}
-                <div className="mt-2 border border-slate-200/80 bg-slate-50 rounded-2xl p-4 flex flex-col gap-4 overflow-x-auto">
-                  <div className="flex items-center justify-center gap-2 min-w-[500px]">
-                    {/* Locomotive (Tầu kéo) */}
-                    <div className="w-12 h-16 bg-slate-800 text-white rounded-l-2xl flex flex-col items-center justify-center text-[10px] font-black tracking-tighter shrink-0 border-r border-slate-700">
-                      <span>ĐẦU</span>
-                      <span>MÁY</span>
-                    </div>
-
-                    {/* Carriage label */}
-                    <div className="flex items-center gap-2 py-2 px-3 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-extrabold text-slate-700 uppercase shrink-0">
-                      Toa {activeTicket.carriageNumber || "1"} (
-                      {activeTicket.seat?.carriage?.carriageType || "AC SEAT"})
-                    </div>
-
-                    {/* Seats Layout */}
-                    <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 relative">
-                      {activeSeatLayout.length > 0 ? (
-                        <div className="grid grid-cols-[repeat(2,32px)_minmax(28px,1fr)_repeat(2,32px)] gap-1.5 justify-center">
-                          {activeSeatLayout.map((seat, idx) => {
-                            const column = idx % 4;
-                            const gridColumn =
-                              column < 2 ? column + 1 : column + 2;
-                            return (
-                              <div
-                                key={seat.seatNumber}
-                                style={{ gridColumn }}
-                                className={`w-8 h-8 rounded-lg text-[10px] font-bold flex items-center justify-center border transition-all ${
-                                  seat.isMine
-                                    ? "bg-amber-500 border-amber-600 text-white shadow shadow-amber-500/20 scale-110"
-                                    : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
-                                }`}
-                                title={`Ghế ${seat.seatNumber} (${seat.seatType === "WINDOW" ? "Cửa sổ" : "Lối đi"})`}
-                              >
-                                {seat.seatNumber}
-                              </div>
-                            );
-                          })}
-                          <div className="col-start-3 row-start-1 row-end-[99] flex items-center justify-center border-x border-dashed border-slate-100 text-[8px] font-black text-slate-300 tracking-widest uppercase [writing-mode:vertical-rl] select-none">
-                            Lối đi
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="py-8 text-center text-xs font-semibold text-slate-400">
-                          Chưa có sơ đồ cho loại ghế này.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Map legends */}
-                <div className="flex justify-start gap-4 text-xs font-semibold text-slate-500 mt-1 pl-1">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3.5 h-3.5 rounded bg-amber-500 border border-amber-600" />
-                    <span>Ghế của bạn</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3.5 h-3.5 rounded bg-slate-50 border border-slate-200" />
-                    <span>Ghế trống / Khác</span>
                   </div>
                 </div>
               </div>
