@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+
+import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
@@ -1037,9 +1039,13 @@ export function Profile() {
                                     : "Cao tuổi"}
                               )
                               {p.ticketCode && (
-                                <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                <Link
+                                  to={`/tra-cuu-ve?ticketCode=${p.ticketCode}&contactInfo=${booking.confirmationEmail || user?.email || ""}`}
+                                  className="bg-primary/10 hover:bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors hover:underline"
+                                  title="Nhấp để xem Boarding Pass và mã QR"
+                                >
                                   {p.ticketCode}
-                                </span>
+                                </Link>
                               )}
                               {p.carriageNumber && (
                                 <span className="text-[10px] text-slate-500 font-bold">
