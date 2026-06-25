@@ -757,22 +757,26 @@ export async function quoteBooking(
   const { findBestPromotion, validateVoucher } =
     await import("./promotion.service.js");
 
-  const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
-    await findBestPromotion(scheduleInputs, beforeVoucher);
-
-  const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
-
   let voucher = null;
   let voucherDiscount = 0;
+  let autoPromo = null;
+  let autoPromoDiscount = 0;
+
   if (voucherCode) {
     const result = await validateVoucher(
       voucherCode,
-      beforeVoucherWithPromo,
+      beforeVoucher,
       identity.userId,
     );
     voucher = result.voucher;
     voucherDiscount = result.discountAmount;
+  } else {
+    const result = await findBestPromotion(scheduleInputs, beforeVoucher);
+    autoPromo = result.promotion;
+    autoPromoDiscount = result.discountAmount;
   }
+
+  const finalDiscount = voucher ? voucherDiscount : autoPromoDiscount;
 
   return {
     session,
@@ -783,7 +787,7 @@ export async function quoteBooking(
     passengerDiscount,
     promotionDiscount: autoPromoDiscount,
     voucherDiscount,
-    totalAmount: Math.max(0, beforeVoucherWithPromo - voucherDiscount),
+    totalAmount: Math.max(0, beforeVoucher - finalDiscount),
   };
 }
 
