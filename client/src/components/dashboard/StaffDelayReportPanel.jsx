@@ -14,8 +14,6 @@ import {
   Thermometer,
   User,
   Navigation,
-  Play,
-  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
@@ -49,11 +47,6 @@ export function StaffDelayReportPanel() {
   const [trackStation, setTrackStation] = useState("");
   const [trackStatus, setTrackStatus] = useState("ON_TIME");
   const [updatingTracking, setUpdatingTracking] = useState(false);
-  const [, setSimulationForceUpdate] = useState(0); // Trigger re-render
-
-  const isSimulating = useCallback((scheduleId) => {
-    return !!window.gotrainSimulations?.[scheduleId];
-  }, []);
 
   const handleOpenTrackingModal = async (sch) => {
     setSelectedTrackingSchedule(sch);
@@ -113,107 +106,6 @@ export function StaffDelayReportPanel() {
     } finally {
       setUpdatingTracking(false);
     }
-  };
-
-  const toggleSimulation = (sch) => {
-    const scheduleId = sch.id;
-    window.gotrainSimulations = window.gotrainSimulations || {};
-
-    if (window.gotrainSimulations[scheduleId]) {
-      // Clear interval
-      clearInterval(window.gotrainSimulations[scheduleId].intervalId);
-      delete window.gotrainSimulations[scheduleId];
-      toast.success(
-        `Đã dừng mô phỏng hành trình tự động cho tàu ${sch.train?.trainCode}.`,
-      );
-    } else {
-      toast.success(
-        `Bắt đầu mô phỏng tự động 10s cho tàu ${sch.train?.trainCode}.`,
-      );
-
-      // Nodes tracing
-      const nodes = [];
-      nodes.push({
-        lat: sch.route?.startStation?.latitude || 21.0245,
-        lng: sch.route?.startStation?.longitude || 105.8412,
-        name: sch.route?.startStation?.stationName || "Ga xuất phát",
-      });
-
-      if (sch.scheduleStops && sch.scheduleStops.length > 0) {
-        const sortedStops = [...sch.scheduleStops].sort(
-          (a, b) => a.stopOrder - b.stopOrder,
-        );
-        for (const stop of sortedStops) {
-          nodes.push({
-            lat: stop.station?.latitude || 16.0,
-            lng: stop.station?.longitude || 108.0,
-            name: stop.station?.stationName || "Ga trung gian",
-          });
-        }
-      }
-
-      nodes.push({
-        lat: sch.route?.endStation?.latitude || 10.7769,
-        lng: sch.route?.endStation?.longitude || 106.6952,
-        name: sch.route?.endStation?.stationName || "Ga kết thúc",
-      });
-
-      let progressPct = 0;
-
-      const runStep = async () => {
-        progressPct += 5; // increment 5% every 10s
-        if (progressPct > 100) progressPct = 0;
-
-        const numSegments = nodes.length - 1;
-        const segmentLength = 100 / numSegments;
-        const currentSegmentIdx = Math.min(
-          Math.floor(progressPct / segmentLength),
-          numSegments - 1,
-        );
-
-        const startNode = nodes[currentSegmentIdx];
-        const endNode = nodes[currentSegmentIdx + 1];
-
-        const segmentProgress = (progressPct % segmentLength) / segmentLength;
-
-        // Lerp coordinates
-        const lat =
-          startNode.lat + (endNode.lat - startNode.lat) * segmentProgress;
-        const lng =
-          startNode.lng + (endNode.lng - startNode.lng) * segmentProgress;
-
-        const speed = 55.0; // Đi với vận tốc 55 km/h cố định
-        const temp = 22.5 + Math.random() * 2.5; // 22.5 - 25°C
-        const passengers = 60 + Math.floor(Math.random() * 30); // 60-90 passengers
-        const currentStationName =
-          segmentProgress < 0.5 ? startNode.name : endNode.name;
-
-        try {
-          await api.put(`/schedules/${scheduleId}/live-tracking`, {
-            speed,
-            temperature: temp,
-            passengerCount: passengers,
-            latitude: lat,
-            longitude: lng,
-            currentStation: currentStationName,
-            status: "ON_TIME",
-          });
-        } catch (e) {
-          console.error("[Sim] Failed auto update:", e);
-        }
-      };
-
-      // Run immediate step
-      runStep();
-
-      const intervalId = setInterval(runStep, 10000);
-      window.gotrainSimulations[scheduleId] = {
-        intervalId,
-        progressPct,
-      };
-    }
-
-    setSimulationForceUpdate((val) => val + 1);
   };
 
   // Load schedules
@@ -716,27 +608,6 @@ export function StaffDelayReportPanel() {
                           </span>
                         ) : (
                           <div className="flex justify-end items-center gap-2">
-                            <button
-                              onClick={() => toggleSimulation(sch)}
-                              className={`inline-flex items-center gap-1 px-3 py-2 rounded-xl font-bold transition-all border cursor-pointer ${
-                                isSimulating(sch.id)
-                                  ? "bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
-                                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
-                              }`}
-                              title={
-                                isSimulating(sch.id)
-                                  ? "Dừng mô phỏng"
-                                  : "Bật mô phỏng tự động 10s"
-                              }
-                            >
-                              {isSimulating(sch.id) ? (
-                                <Pause className="h-3.5 w-3.5" />
-                              ) : (
-                                <Play className="h-3.5 w-3.5" />
-                              )}
-                              {isSimulating(sch.id) ? "Dừng Sim" : "Bật Sim"}
-                            </button>
-
                             <button
                               onClick={() => handleOpenTrackingModal(sch)}
                               className="inline-flex items-center gap-1 bg-[#e0f2fe] hover:bg-[#bae6fd] text-[#0369a1] border border-[#bae6fd] px-3.5 py-2 rounded-xl font-bold transition-all cursor-pointer"

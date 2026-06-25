@@ -8,12 +8,14 @@ import { StaffTicketPrintPanel } from "./StaffTicketPrintPanel.jsx";
 import { StaffDelayReportPanel } from "./StaffDelayReportPanel.jsx";
 import { StaffTicketCheckInPanel } from "./StaffTicketCheckInPanel.jsx";
 import { StaffTicketDetailModal } from "./StaffTicketDetailModal.jsx";
+import { AdminLiveTrackingPanel } from "./AdminLiveTrackingPanel.jsx";
 
 const SIDEBAR = [
   { label: "Tổng quan", icon: "dashboard" },
   { label: "Đặt vé tại quầy", icon: "point_of_sale" },
   { label: "Soát vé & In vé", icon: "confirmation_number" },
   { label: "Soát vé (Quét QR)", icon: "qr_code_scanner" },
+  { label: "Bản đồ chạy tàu", icon: "explore" },
   { label: "Điều hành chuyến", icon: "schedule" },
   { label: "Tra cứu Booking", icon: "manage_search" },
 ];
@@ -388,6 +390,7 @@ export function StaffDashboard() {
     if (active === "Đặt vé tại quầy") return <StaffDirectBookingPanel />;
     if (active === "Soát vé & In vé") return <StaffTicketPrintPanel />;
     if (active === "Soát vé (Quét QR)") return <StaffTicketCheckInPanel />;
+    if (active === "Bản đồ chạy tàu") return <AdminLiveTrackingPanel />;
     if (active === "Điều hành chuyến") return <StaffDelayReportPanel />;
     if (active === "Tra cứu Booking") return <StaffSearchPanel />;
     return (
