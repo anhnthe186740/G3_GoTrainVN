@@ -1414,13 +1414,25 @@ export const updateScheduleLiveTracking = asyncHandler(async (req, res) => {
       },
     });
   } else {
+    const bookedPassengerCount = await prisma.passenger.count({
+      where: {
+        booking: {
+          scheduleId: id,
+          status: { in: ["CONFIRMED", "COMPLETED"] },
+        },
+      },
+    });
+
     tracking = await prisma.liveTracking.create({
       data: {
         scheduleId: id,
         trainId: schedule.trainId,
         speed: parseFloat(speed) || 0.0,
         temperature: parseFloat(temperature) || 25.0,
-        passengerCount: parseInt(passengerCount) || 0,
+        passengerCount:
+          passengerCount !== undefined
+            ? parseInt(passengerCount)
+            : bookedPassengerCount || 45,
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
         currentStation: currentStation || null,
@@ -1446,6 +1458,15 @@ export const getScheduleLiveTracking = asyncHandler(async (req, res) => {
     where: { scheduleId: id },
   });
 
+  const bookedPassengerCount = await prisma.passenger.count({
+    where: {
+      booking: {
+        scheduleId: id,
+        status: { in: ["CONFIRMED", "COMPLETED"] },
+      },
+    },
+  });
+
   if (!tracking) {
     const schedule = await prisma.schedule.findUnique({
       where: { id },
@@ -1457,12 +1478,16 @@ export const getScheduleLiveTracking = asyncHandler(async (req, res) => {
       trainId: schedule?.trainId || "",
       speed: 55.0,
       temperature: 25.0,
-      passengerCount: 45,
+      passengerCount: bookedPassengerCount || 45,
       latitude: 21.0285,
       longitude: 105.8542,
       currentStation: "Ga Hà Nội",
       status: "ON_TIME",
     };
+  } else {
+    if (!tracking.passengerCount) {
+      tracking.passengerCount = bookedPassengerCount || 45;
+    }
   }
 
   res.json({ tracking });
@@ -1543,10 +1568,54 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
     trackingMap[t.scheduleId] = t;
   });
 
+  // Truy vấn số lượng khách đặt vé thành công cho các schedule này
+  const passengers = await prisma.passenger.findMany({
+    where: {
+      booking: {
+        scheduleId: { in: scheduleIds },
+        status: { in: ["CONFIRMED", "COMPLETED"] },
+      },
+    },
+    select: {
+      booking: {
+        select: {
+          scheduleId: true,
+        },
+      },
+    },
+  });
+
+  const actualCounts = {};
+  passengers.forEach((p) => {
+    const sId = p.booking?.scheduleId;
+    if (sId) {
+      actualCounts[sId] = (actualCounts[sId] || 0) + 1;
+    }
+  });
+
   const results = schedules.map((s) => {
     const defaultLat = s.route.startStation.latitude || 21.0285;
-    const defaultLong = s.route.startStation.longitude || 105.8542;
+    const defaultLong = s.route.startStation.longitude || 105.8412;
     const defaultStation = s.route.startStation.stationName || "Ga xuất phát";
+    const realCount = actualCounts[s.id] || 0;
+
+    let tr = trackingMap[s.id];
+    if (!tr) {
+      tr = {
+        scheduleId: s.id,
+        trainId: s.trainId,
+        speed: 55.0,
+        temperature: 24.5,
+        passengerCount: realCount || 50,
+        latitude: defaultLat,
+        longitude: defaultLong,
+        currentStation: defaultStation,
+        status: s.status === "DELAYED" ? "DELAYED" : "ON_TIME",
+        lastUpdated: new Date(),
+      };
+    } else if (!tr.passengerCount) {
+      tr.passengerCount = realCount || 50;
+    }
 
     return {
       schedule: {
@@ -1562,18 +1631,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
         route: s.route,
         scheduleStops: s.scheduleStops,
       },
-      tracking: trackingMap[s.id] || {
-        scheduleId: s.id,
-        trainId: s.trainId,
-        speed: 55.0,
-        temperature: 24.5,
-        passengerCount: 50,
-        latitude: defaultLat,
-        longitude: defaultLong,
-        currentStation: defaultStation,
-        status: s.status === "DELAYED" ? "DELAYED" : "ON_TIME",
-        lastUpdated: new Date(),
-      },
+      tracking: tr,
     };
   });
 
