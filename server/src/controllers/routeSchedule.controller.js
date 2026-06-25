@@ -297,7 +297,7 @@ export const generateRoute = asyncHandler(async (req, res) => {
   });
   if (existing) {
     return res.status(409).json({
-      message: `Tuyến đường từ ga này đến ga đích đã tồn tại: "${existing.routeName}". Hãy chọn cặp ga khác.`,
+      message: `Tuyến đường từ ga khởi hành đến ga kết thúc đã tồn tại: "${existing.routeName}". Hãy chọn cặp ga khác.`,
     });
   }
 

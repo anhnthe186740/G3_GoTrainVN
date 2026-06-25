@@ -66,12 +66,16 @@ const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
   const durHours = Math.floor(totalDurationMins / 60);
   const durMins = totalDurationMins % 60;
 
+  const displayDuration = [];
+  if (durHours > 0) displayDuration.push(`${durHours} giờ`);
+  if (durMins > 0) displayDuration.push(`${durMins} phút`);
+  const durationText = displayDuration.join(" ") || "0 phút";
+
   return (
     <div className="mt-3 p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
       <p className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
         <span className="material-symbols-outlined text-[16px]">info</span>
-        Thời gian hành trình dự kiến ({durHours > 0 ? `${durHours}h` : ""}{" "}
-        {durMins > 0 ? `${durMins}m` : ""}):
+        Thời gian hành trình dự kiến ({durationText}):
       </p>
       <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
         {times.map((t) => {

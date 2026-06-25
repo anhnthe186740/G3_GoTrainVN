@@ -25,7 +25,9 @@ const formatDuration = (minutes) => {
   if (!minutes) return "—";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  if (h > 0 && m > 0) return `${h} giờ ${m} phút`;
+  if (h > 0) return `${h} giờ`;
+  return `${m} phút`;
 };
 
 const STATUS_BADGE = {
@@ -141,6 +143,42 @@ export function RouteScheduleMgmt({ mode }) {
   const [autoCalcDistance, setAutoCalcDistance] = useState(false);
   const [selectedStopIds, setSelectedStopIds] = useState(new Set());
   const [routeSubmitting, setRouteSubmitting] = useState(false);
+
+  // Computed hours & minutes for display based on estimatedDuration (in minutes)
+  const displayHours = routeForm.estimatedDuration
+    ? Math.floor(parseInt(routeForm.estimatedDuration, 10) / 60)
+    : "";
+  const displayMinutes = routeForm.estimatedDuration
+    ? parseInt(routeForm.estimatedDuration, 10) % 60
+    : "";
+
+  const handleHoursChange = (val) => {
+    setAutoCalcDistance(false);
+    if (val === "" && displayMinutes === "") {
+      setRouteForm((prev) => ({ ...prev, estimatedDuration: "" }));
+      return;
+    }
+    const h = val === "" ? 0 : parseInt(val, 10);
+    const m = displayMinutes === "" ? 0 : parseInt(displayMinutes, 10);
+    setRouteForm((prev) => ({
+      ...prev,
+      estimatedDuration: String(h * 60 + m),
+    }));
+  };
+
+  const handleMinutesChange = (val) => {
+    setAutoCalcDistance(false);
+    if (val === "" && displayHours === "") {
+      setRouteForm((prev) => ({ ...prev, estimatedDuration: "" }));
+      return;
+    }
+    const h = displayHours === "" ? 0 : parseInt(displayHours, 10);
+    const m = val === "" ? 0 : parseInt(val, 10);
+    setRouteForm((prev) => ({
+      ...prev,
+      estimatedDuration: String(h * 60 + m),
+    }));
+  };
 
   // Schedule form state
   const [schedForm, setSchedForm] = useState({
@@ -281,6 +319,26 @@ export function RouteScheduleMgmt({ mode }) {
       toast.error("Ga khởi hành và ga kết thúc không được trùng nhau.");
       return;
     }
+
+    // Check if route with same start and end station already exists
+    const duplicateRoute = routes.find(
+      (r) =>
+        r.startStationId === routeForm.startStationId &&
+        r.endStationId === routeForm.endStationId,
+    );
+    if (duplicateRoute) {
+      toast.error(
+        `Tuyến đường từ ga khởi hành đến ga kết thúc đã tồn tại: "${duplicateRoute.routeName}" (kể cả khi đã vô hiệu hóa).`,
+      );
+      return;
+    }
+
+    const duration = parseInt(routeForm.estimatedDuration, 10);
+    if (isNaN(duration) || duration <= 0) {
+      toast.error("Thời gian di chuyển phải lớn hơn 0 phút.");
+      return;
+    }
+
     setRouteSubmitting(true);
     try {
       // Build stations array từ các ga đã chọn, giữ thứ tự theo distanceFromStart
@@ -296,7 +354,7 @@ export function RouteScheduleMgmt({ mode }) {
       const payload = {
         ...routeForm,
         distance: parseInt(routeForm.distance),
-        estimatedDuration: parseInt(routeForm.estimatedDuration),
+        estimatedDuration: duration,
         stations: selectedStops,
       };
       await api.post("/routes/auto-generate", payload);
@@ -600,38 +658,51 @@ export function RouteScheduleMgmt({ mode }) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-[#3f4852] mb-1 flex items-center gap-1">
-                    Thời gian (phút) *
+                    Thời gian di chuyển *
                     {autoCalcDistance && (
                       <span className="text-[10px] bg-[#cfe5ff] text-[#00629d] px-1.5 py-0.5 rounded-full font-bold">
                         Tự động
                       </span>
                     )}
                   </label>
-                  <div className="relative">
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      value={routeForm.estimatedDuration}
-                      onChange={(e) => {
-                        setRouteForm({
-                          ...routeForm,
-                          estimatedDuration: e.target.value,
-                        });
-                        setAutoCalcDistance(false);
-                      }}
-                      placeholder="Chọn ga để tự động tính"
-                      className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
-                        autoCalcDistance
-                          ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
-                          : "border-[#bec7d4]/50"
-                      }`}
-                    />
-                    {autoCalcDistance && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-[16px] text-[#00629d]">
-                        schedule
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="relative">
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        value={displayHours}
+                        onChange={(e) => handleHoursChange(e.target.value)}
+                        placeholder="Giờ"
+                        className={`w-full border rounded-xl pl-3 pr-8 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
+                          autoCalcDistance
+                            ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
+                            : "border-[#bec7d4]/50"
+                        }`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[#3f4852]/60 font-semibold pointer-events-none">
+                        giờ
                       </span>
-                    )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={displayMinutes}
+                        onChange={(e) => handleMinutesChange(e.target.value)}
+                        placeholder="Phút"
+                        className={`w-full border rounded-xl pl-3 pr-9 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
+                          autoCalcDistance
+                            ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
+                            : "border-[#bec7d4]/50"
+                        }`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[#3f4852]/60 font-semibold pointer-events-none">
+                        phút
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
