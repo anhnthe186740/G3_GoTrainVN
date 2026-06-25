@@ -34,6 +34,10 @@ import { seatSelectionApi } from "../../services/seatSelectionApi";
 import { staffSearchApi } from "../../services/staffSearchApi";
 import { walletApi } from "../../services/walletApi";
 import { api } from "../../services/api";
+import {
+  clearPendingBooking,
+  savePendingBooking,
+} from "../../services/pendingBooking";
 import { useAuthStore } from "../../store/authStore";
 import { StaffTicketPrintPanel } from "../dashboard/StaffTicketPrintPanel";
 
@@ -566,15 +570,9 @@ function CompletionView({ result, isStaffExchange = false }) {
         passenger.ticketCode && (passenger.email || passenger.phoneNumber),
     ) || result.passengers?.find((passenger) => passenger.ticketCode);
   const lookupContact =
-    lookupPassenger?.email ||
-    lookupPassenger?.phoneNumber ||
-    result.booking.confirmationEmail ||
-    "";
+    result.booking.confirmationEmail || lookupPassenger?.email || "";
   const lookupParams = new URLSearchParams();
-  lookupParams.set(
-    "ticketCode",
-    lookupPassenger?.ticketCode || result.booking.bookingCode,
-  );
+  lookupParams.set("ticketCode", result.booking.bookingCode);
   if (lookupContact) lookupParams.set("contactInfo", lookupContact);
 
   return (
@@ -925,6 +923,26 @@ export function PassengerDetailsPage({
     ? exchangeAmountDue
     : quote?.totalAmount || 0;
 
+  useEffect(() => {
+    if (!session || embedded || isStaffMode || isStaffExchangeMode) return;
+    if (
+      session.status !== "ACTIVE" ||
+      new Date(session.expiresAt).getTime() <= Date.now()
+    ) {
+      clearPendingBooking(session.id);
+      return;
+    }
+    savePendingBooking({
+      sessionId: session.id,
+      expiresAt: session.expiresAt,
+      resumePath: `${window.location.pathname}${window.location.search}`,
+    });
+  }, [embedded, isStaffExchangeMode, isStaffMode, session]);
+
+  useEffect(() => {
+    if (expired && session?.id) clearPendingBooking(session.id);
+  }, [expired, session?.id]);
+
   const checkoutButtonLabel =
     paymentMethod === "BANK_QR"
       ? isStaffMode
@@ -1168,6 +1186,7 @@ export function PassengerDetailsPage({
           paymentMethod,
           reason: staffExchangeReason.trim(),
         });
+        clearPendingBooking(session.id);
         setCompletedResult(data);
         toast.success("Đổi vé thành công.");
         return;
@@ -1178,6 +1197,7 @@ export function PassengerDetailsPage({
           sessionId: session.id,
           paymentMethod: "WALLET",
         });
+        clearPendingBooking(session.id);
         setCompletedResult(data);
         toast.success("Đổi vé và thanh toán phí thành công.");
         return;
@@ -1196,6 +1216,7 @@ export function PassengerDetailsPage({
         voucherCode: appliedVoucher || undefined,
         paymentMethod,
       });
+      clearPendingBooking(session.id);
       if (data.booking.paymentStatus === "COMPLETED") {
         setCompletedResult(data);
         onComplete?.(data);

@@ -80,7 +80,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
 
   if (!ticketCode && !contactInfo) {
     return res.status(400).json({
-      message: "Vui lòng cung cấp Mã vé hoặc Email/Số điện thoại để tra cứu.",
+      message: "Vui lòng cung cấp mã đặt chỗ và email để tra cứu.",
     });
   }
 
@@ -116,94 +116,92 @@ export const lookupBooking = asyncHandler(async (req, res) => {
   const currentUserId = req.user?.id || req.bookingIdentity?.userId;
 
   // ------------------------------------------------------------------
-  // Scenario 1: Both Ticket Code AND Contact Info → secure single lookup
+  // Scenario 1: Booking Code + Email → return every ticket in the booking
   // ------------------------------------------------------------------
   if (ticketCode && contactInfo) {
-    const cleanTicketCode = ticketCode.trim().toUpperCase();
+    const cleanBookingCode = ticketCode.trim().toUpperCase();
     const cleanContact = contactInfo.trim().toLowerCase();
 
-    const passenger = await prisma.passenger.findFirst({
-      where: {
-        AND: [
-          {
-            OR: [
-              { ticketCode: cleanTicketCode },
-              { booking: { bookingCode: cleanTicketCode } },
-            ],
-          },
-          {
-            OR: [
-              { email: { equals: cleanContact, mode: "insensitive" } },
-              { phoneNumber: cleanContact },
-            ],
-          },
-        ],
+    const matchedBooking = await prisma.booking.findUnique({
+      where: { bookingCode: cleanBookingCode },
+      select: {
+        id: true,
+        confirmationEmail: true,
+        passengers: { select: { email: true } },
       },
+    });
+    const emailMatches =
+      matchedBooking &&
+      [
+        matchedBooking.confirmationEmail,
+        ...matchedBooking.passengers.map((passenger) => passenger.email),
+      ].some((email) => email?.trim().toLowerCase() === cleanContact);
+
+    if (!emailMatches) {
+      return res.status(404).json({
+        message: "Mã đặt chỗ hoặc email không chính xác.",
+      });
+    }
+
+    const passengers = await prisma.passenger.findMany({
+      where: { bookingId: matchedBooking.id },
       include: {
         booking: bookingInclude,
         seat: seatInclude,
       },
+      orderBy: { createdAt: "asc" },
     });
 
-    if (!passenger) {
+    if (passengers.length === 0) {
       return res.status(404).json({
-        message:
-          "Không tìm thấy thông tin vé khớp với mã vé và thông tin liên hệ đã cung cấp.",
+        message: "Không tìm thấy vé nào thuộc mã đặt chỗ này.",
       });
     }
 
-    return res.json({ type: "single", ticket: passenger });
+    return res.json({ type: "list", tickets: passengers });
   }
 
   // ------------------------------------------------------------------
-  // Scenario 2: Only Ticket Code → public lookup (masked PII)
+  // Scenario 2: Booking Code only → allowed for its owner or staff/admin
   // ------------------------------------------------------------------
   if (ticketCode) {
     if (!isPrivilegedLookup && !currentUserId) {
       return res.status(400).json({
-        message:
-          "Vui lòng nhập thêm Email/Số điện thoại liên hệ để tra cứu vé.",
+        message: "Vui lòng nhập thêm email liên hệ để tra cứu đặt chỗ.",
       });
     }
 
-    const cleanTicketCode = ticketCode.trim().toUpperCase();
-
-    const ownerLookupFilter = isPrivilegedLookup
-      ? []
-      : [
-          {
-            OR: [
-              { userId: currentUserId },
-              { booking: { userId: currentUserId } },
-            ],
-          },
-        ];
-
-    const passenger = await prisma.passenger.findFirst({
+    const cleanBookingCode = ticketCode.trim().toUpperCase();
+    const matchedBooking = await prisma.booking.findFirst({
       where: {
-        AND: [
-          {
-            OR: [
-              { ticketCode: cleanTicketCode },
-              { booking: { bookingCode: cleanTicketCode } },
-            ],
-          },
-          ...ownerLookupFilter,
-        ],
+        bookingCode: cleanBookingCode,
+        ...(isPrivilegedLookup ? {} : { userId: currentUserId }),
       },
+      select: { id: true },
+    });
+
+    if (!matchedBooking) {
+      return res.status(404).json({
+        message: "Không tìm thấy đặt chỗ cho mã đã nhập.",
+      });
+    }
+
+    const passengers = await prisma.passenger.findMany({
+      where: { bookingId: matchedBooking.id },
       include: {
         booking: bookingInclude,
         seat: seatInclude,
       },
+      orderBy: { createdAt: "asc" },
     });
 
-    if (!passenger) {
+    if (passengers.length === 0) {
       return res.status(404).json({
-        message: "Không tìm thấy thông tin vé cho mã đã nhập.",
+        message: "Không tìm thấy vé nào thuộc mã đặt chỗ này.",
       });
     }
 
-    return res.json({ type: "single", ticket: passenger });
+    return res.json({ type: "list", tickets: passengers });
   }
 
   // ------------------------------------------------------------------
@@ -212,7 +210,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
   if (contactInfo) {
     if (!isPrivilegedLookup && !currentUserId) {
       return res.status(400).json({
-        message: "Vui lòng nhập mã vé kèm Email/Số điện thoại để tra cứu.",
+        message: "Vui lòng nhập mã đặt chỗ kèm email để tra cứu.",
       });
     }
 
