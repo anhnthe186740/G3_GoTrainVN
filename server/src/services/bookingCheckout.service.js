@@ -1524,3 +1524,28 @@ async function sendBookingEmail(bookingId, type) {
     console.error(`❌ Gửi email booking (${type}) thất bại:`, err.message);
   }
 }
+
+export async function cleanupExpiredBookings(now = new Date()) {
+  const expired = await prisma.booking.findMany({
+    where: {
+      status: "PENDING",
+      expiresAt: { lte: now },
+    },
+    select: { id: true, bookingCode: true },
+  });
+
+  if (expired.length === 0) return [];
+
+  await prisma.booking.updateMany({
+    where: { id: { in: expired.map((b) => b.id) }, status: "PENDING" },
+    data: {
+      status: "CANCELLED",
+      paymentStatus: "FAILED",
+      cancelReason: "Hết thời gian thanh toán",
+      cancelledAt: now,
+      expiresAt: null,
+    },
+  });
+
+  return expired;
+}
