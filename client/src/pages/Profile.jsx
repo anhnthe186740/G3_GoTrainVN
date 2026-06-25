@@ -1,7 +1,14 @@
 import { useState, useEffect } from "react";
+
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
+import { seatSelectionApi } from "../services/seatSelectionApi";
+import {
+  clearPendingBooking,
+  getPendingBooking,
+} from "../services/pendingBooking";
 import { toast } from "sonner";
 import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 import {
@@ -30,6 +37,7 @@ import {
 
 export function Profile() {
   const { user, setAuth } = useAuth();
+  const navigate = useNavigate();
 
   // Tabs: 'profile' or 'bookings'
   const [activeTab, setActiveTab] = useState("profile");
@@ -53,6 +61,8 @@ export function Profile() {
   // Bookings list state
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState(null);
+  const [pendingNow, setPendingNow] = useState(Date.now());
 
   // Cancel Booking modal state
   const [selectedCancelBooking, setSelectedCancelBooking] = useState(null);
@@ -127,6 +137,40 @@ export function Profile() {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    const saved = getPendingBooking();
+    if (!saved) return;
+
+    seatSelectionApi
+      .getSession(saved.sessionId)
+      .then(({ data }) => {
+        const session = data.session;
+        if (
+          session.status !== "ACTIVE" ||
+          new Date(session.expiresAt).getTime() <= Date.now()
+        ) {
+          clearPendingBooking(saved.sessionId);
+          return;
+        }
+        setPendingBooking({ ...saved, session });
+        setPendingNow(Date.now());
+      })
+      .catch(() => clearPendingBooking(saved.sessionId));
+  }, []);
+
+  useEffect(() => {
+    if (!pendingBooking) return;
+    const interval = setInterval(() => {
+      const current = Date.now();
+      setPendingNow(current);
+      if (new Date(pendingBooking.expiresAt).getTime() <= current) {
+        clearPendingBooking(pendingBooking.sessionId);
+        setPendingBooking(null);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [pendingBooking]);
 
   // Fetch bookings when switching tabs
   useEffect(() => {
@@ -429,6 +473,19 @@ export function Profile() {
     );
   };
 
+  const pendingSeconds = pendingBooking
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(pendingBooking.expiresAt).getTime() - pendingNow) / 1000,
+        ),
+      )
+    : 0;
+  const pendingTimer = `${String(Math.floor(pendingSeconds / 60)).padStart(2, "0")}:${String(pendingSeconds % 60).padStart(2, "0")}`;
+  const pendingSeatCount = pendingBooking?.session?.holds?.length || 0;
+  const isPendingExchange =
+    pendingBooking?.resumePath?.includes("mode=exchange");
+
   if (loading) {
     return (
       <div className="bg-[#f7f9fb] min-h-[70vh] flex flex-col items-center justify-center p-6">
@@ -453,6 +510,38 @@ export function Profile() {
           hành trình.
         </p>
       </div>
+
+      {pendingBooking && (
+        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-blue-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 text-left">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-sm">
+              <Clock className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-black text-slate-800">
+                  Bạn có {pendingSeatCount} ghế đang được giữ
+                </h2>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-mono text-xs font-black text-amber-700">
+                  {pendingTimer}
+                </span>
+              </div>
+              <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                Phiên {isPendingExchange ? "đổi vé" : "đặt vé"} chưa hoàn tất.
+                Hãy quay lại thanh toán trước khi thời gian giữ ghế kết thúc.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(pendingBooking.resumePath)}
+            className="flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-white shadow-lg shadow-primary/15 transition hover:bg-primary/90 active:scale-95"
+          >
+            Tiếp tục thanh toán
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Tabs Selector */}
       <div className="flex gap-6 border-b border-slate-200 mb-8">

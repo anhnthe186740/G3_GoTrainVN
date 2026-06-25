@@ -76,11 +76,11 @@ export function TicketLookup() {
       }
     }
 
-    // Pre-fill email/phone if user is logged in
+    // Pre-fill the account email if the user is logged in
     if (user && !hasInitialLookup) {
-      setContactInfo(user.email || user.phoneNumber || "");
+      setContactInfo(user.email || "");
       // Auto-load user's tickets on page mount
-      autoLoadUserTickets(user.email || user.phoneNumber);
+      autoLoadUserTickets(user.email);
     }
   }, [hasInitialLookup, user]);
 
@@ -135,14 +135,12 @@ export function TicketLookup() {
     const searchContact = forcedContact ?? contactInfo;
 
     if (!searchCode && !searchContact) {
-      setError("Vui lòng nhập Mã vé hoặc Email/Số điện thoại để tìm kiếm.");
+      setError("Vui lòng nhập mã đặt chỗ và email để tìm kiếm.");
       return;
     }
 
     if (!user && (!searchCode || !searchContact)) {
-      setError(
-        "Khách vãng lai cần nhập cả mã vé và Email/Số điện thoại liên hệ.",
-      );
+      setError("Vui lòng nhập cả mã đặt chỗ và email đã dùng khi đặt vé.");
       return;
     }
 
@@ -638,7 +636,7 @@ export function TicketLookup() {
               Tra Cứu Vé Tàu
             </h1>
             <p className="text-slate-500 text-sm mt-1">
-              Nhập mã vé hoặc thông tin liên hệ để kiểm tra hành trình của bạn.
+              Nhập mã đặt chỗ và email để xem toàn bộ vé trong đơn của bạn.
             </p>
           </div>
 
@@ -647,10 +645,10 @@ export function TicketLookup() {
             <div className="absolute top-0 left-0 w-2 h-full bg-primary" />
 
             <form onSubmit={handleSearch} className="flex flex-col gap-5">
-              {/* Ticket Code input */}
+              {/* Booking Code input */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Mã vé (Ticket Code)
+                  Mã đặt chỗ (Booking Code)
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -660,7 +658,7 @@ export function TicketLookup() {
                     type="text"
                     value={ticketCode}
                     onChange={(e) => setTicketCode(e.target.value)}
-                    placeholder="Ví dụ: GT2026A02"
+                    placeholder="Ví dụ: GT2026368F2E22"
                     className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   />
                 </div>
@@ -670,24 +668,24 @@ export function TicketLookup() {
               <div className="relative my-1 flex items-center justify-center">
                 <div className="absolute w-full border-t border-dashed border-slate-200" />
                 <span className="relative px-3 bg-white text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
-                  Hoặc tra cứu bằng
+                  Xác thực bằng
                 </span>
               </div>
 
-              {/* Email/Phone input */}
+              {/* Email input */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Email hoặc Số điện thoại
+                  Email đã dùng khi đặt vé
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <Search className="h-5 w-5 text-slate-400" />
                   </div>
                   <input
-                    type="text"
+                    type="email"
                     value={contactInfo}
                     onChange={(e) => setContactInfo(e.target.value)}
-                    placeholder="Nhập email hoặc SĐT mua vé"
+                    placeholder="Nhập email mua vé"
                     className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   />
                 </div>
@@ -757,15 +755,15 @@ export function TicketLookup() {
             </span>
             <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
               <li>
-                Mã vé bao gồm 10 ký tự in hoa được gửi về email của bạn sau khi
-                thanh toán thành công.
+                Mã đặt chỗ bắt đầu bằng GT và được hiển thị sau khi thanh toán
+                thành công.
               </li>
               <li>
                 Nếu không tìm thấy, vui lòng kiểm tra kỹ cả hộp thư rác (Spam).
               </li>
               <li>
-                Bạn cũng có thể tra cứu nhanh bằng Email hoặc Số điện thoại để
-                liệt kê toàn bộ vé đã mua.
+                Mỗi mã đặt chỗ sẽ hiển thị toàn bộ vé của các hành khách trong
+                cùng đơn sau khi email được xác thực.
               </li>
             </ul>
           </div>
