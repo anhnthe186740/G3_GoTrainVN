@@ -4,6 +4,8 @@ import { useAuth } from "../hooks/useAuth";
 import { AdminDashboard } from "../components/dashboard/AdminDashboard";
 import { StaffDashboard } from "../components/dashboard/StaffDashboard";
 import { api } from "../services/api";
+import { bookingApi } from "../services/bookingApi";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 
@@ -12,6 +14,14 @@ function formatCurrency(amount) {
     style: "currency",
     currency: "VND",
   }).format(amount || 0);
+}
+
+function resumeCountdown(expiresAt, nowMs) {
+  const seconds = Math.max(
+    0,
+    Math.ceil((new Date(expiresAt).getTime() - nowMs) / 1000),
+  );
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function formatDate(dateStr) {
@@ -81,6 +91,9 @@ function CustomerDashboard({ user }) {
   const [wallet, setWallet] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [policyBooking, setPolicyBooking] = useState(null);
+  const [resumeBooking, setResumeBooking] = useState(null);
+  const [resumeSubmitting, setResumeSubmitting] = useState(false);
+  const [resumeNow, setResumeNow] = useState(() => Date.now());
   const [tab, setTab] = useState("upcoming");
   const [page, setPage] = useState(1);
   const LIMIT = 5;
@@ -108,6 +121,37 @@ function CustomerDashboard({ user }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Countdown ticker — cập nhật mỗi giây khi modal thanh toán đang mở
+  useEffect(() => {
+    if (!resumeBooking) return;
+    const t = setInterval(() => setResumeNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [resumeBooking]);
+
+  // Polling tự động kiểm tra thanh toán mỗi 4 giây khi modal đang mở
+  useEffect(() => {
+    if (!resumeBooking) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const { data } = await bookingApi.paymentStatus(resumeBooking.id);
+        if (!active) return;
+        if (data.booking.paymentStatus === "COMPLETED") {
+          toast.success("Thanh toán thành công! Vé đã được xác nhận.");
+          setResumeBooking(null);
+          fetchData();
+        }
+      } catch {
+        // silent
+      }
+    };
+    const t = setInterval(poll, 4000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, [resumeBooking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const now = new Date();
   const upcomingBookings = bookings.filter(
@@ -153,6 +197,25 @@ function CustomerDashboard({ user }) {
       );
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  const confirmResumeQr = async () => {
+    if (!resumeBooking || resumeSubmitting) return;
+    setResumeSubmitting(true);
+    try {
+      const { data } = await bookingApi.paymentStatus(resumeBooking.id);
+      if (data.booking.paymentStatus === "COMPLETED") {
+        toast.success("Thanh toán thành công! Vé đã được xác nhận.");
+        setResumeBooking(null);
+        fetchData();
+      } else {
+        toast.info("Đang chờ PayOS xác nhận giao dịch.");
+      }
+    } catch {
+      toast.error("Không thể kiểm tra trạng thái thanh toán.");
+    } finally {
+      setResumeSubmitting(false);
     }
   };
 
@@ -336,6 +399,20 @@ function CustomerDashboard({ user }) {
                         </span>
                         Xem vé
                       </Link>
+                      {next.status === "PENDING" &&
+                        next.paymentStatus === "PENDING" &&
+                        next.expiresAt &&
+                        new Date(next.expiresAt) > now && (
+                          <button
+                            onClick={() => setResumeBooking(next)}
+                            className="flex items-center gap-2 border border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-700 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              payment
+                            </span>
+                            Thanh toán
+                          </button>
+                        )}
                       {next.cancellationRequest?.status === "PENDING" ? (
                         <span className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs font-bold text-amber-700">
                           Chờ Admin duyệt hủy
@@ -502,6 +579,20 @@ function CustomerDashboard({ user }) {
                                 qr_code_2
                               </span>
                             </Link>
+                            {booking.status === "PENDING" &&
+                              booking.paymentStatus === "PENDING" &&
+                              booking.expiresAt &&
+                              new Date(booking.expiresAt) > now && (
+                                <button
+                                  onClick={() => setResumeBooking(booking)}
+                                  className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                                  title="Tiếp tục thanh toán"
+                                >
+                                  <span className="material-symbols-outlined text-[20px]">
+                                    payment
+                                  </span>
+                                </button>
+                              )}
                             {booking.cancellationRequest?.status ===
                             "PENDING" ? (
                               <span
@@ -636,6 +727,116 @@ function CustomerDashboard({ user }) {
           </Link>
         </div>
       </div>
+      {/* Modal tiếp tục thanh toán */}
+      {resumeBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-[#191c1e]">
+                  Tiếp tục thanh toán
+                </h3>
+                <p className="text-xs text-[#6f7883] mt-0.5">
+                  Mã đặt vé:{" "}
+                  <span className="font-mono font-bold text-[#00629d]">
+                    {resumeBooking.bookingCode}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setResumeBooking(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-[#6f7883]"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  close
+                </span>
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col items-center gap-4">
+              {/* QR Code */}
+              {resumeBooking.payosQrCode ? (
+                <div className="rounded-2xl bg-white p-3 shadow-[0_8px_30px_rgba(7,26,43,0.12)] border border-slate-100">
+                  <QRCodeSVG
+                    value={resumeBooking.payosQrCode}
+                    size={192}
+                    level="M"
+                    marginSize={3}
+                    bgColor="#ffffff"
+                    fgColor="#071a2b"
+                  />
+                </div>
+              ) : (
+                <div className="w-48 h-48 flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs text-center text-slate-500 font-semibold leading-5 p-4">
+                  Không thể hiển thị QR. Vui lòng mở trang thanh toán PayOS.
+                </div>
+              )}
+
+              {/* Đếm ngược */}
+              <div className="w-full rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex justify-between items-center">
+                <div className="flex items-center gap-1.5 text-amber-800">
+                  <span className="material-symbols-outlined text-[18px]">
+                    timer
+                  </span>
+                  <span className="text-sm font-semibold">
+                    Thời gian còn lại
+                  </span>
+                </div>
+                <span className="font-mono font-bold text-amber-700 text-lg tracking-widest">
+                  {resumeCountdown(resumeBooking.expiresAt, resumeNow)}
+                </span>
+              </div>
+
+              {/* Thông tin đơn */}
+              <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Số tiền</span>
+                  <span className="font-bold text-[#191c1e]">
+                    {formatCurrency(resumeBooking.totalAmount)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Nút mở PayOS */}
+              {resumeBooking.payosCheckoutUrl && (
+                <a
+                  href={resumeBooking.payosCheckoutUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 bg-[#00629d] hover:bg-[#00629d]/90 text-white px-5 py-3 rounded-xl font-semibold text-sm transition-all"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    open_in_new
+                  </span>
+                  Mở trang thanh toán PayOS
+                </a>
+              )}
+
+              {/* Nút kiểm tra trạng thái */}
+              <button
+                type="button"
+                disabled={resumeSubmitting}
+                onClick={confirmResumeQr}
+                className="w-full flex items-center justify-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-5 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60"
+              >
+                {resumeSubmitting ? (
+                  <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">
+                    check_circle
+                  </span>
+                )}
+                Tôi đã thanh toán, kiểm tra ngay
+              </button>
+
+              <p className="text-[11px] text-slate-400 text-center">
+                Hệ thống tự động cập nhật khi PayOS xác nhận giao dịch.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <CancellationPolicyModal
         open={Boolean(policyBooking)}
         audience="registered"

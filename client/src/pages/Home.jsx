@@ -4,7 +4,6 @@ import {
   MapPin,
   Navigation,
   Calendar,
-  RotateCw,
   Users,
   Train,
   ArrowRight,
@@ -28,6 +27,15 @@ import { api } from "../services/api";
 
 const DEFAULT_FROM_STATION = "Hà Nội";
 const DEFAULT_TO_STATION = "Đà Nẵng";
+const HERO_SLIDES = [
+  { src: "/assets/hero-bg.jpg", alt: "Hà Nội" },
+  { src: "/assets/hcmc.jpg", alt: "Thành phố Hồ Chí Minh" },
+  { src: "/assets/danang.jpg", alt: "Đà Nẵng" },
+  {
+    src: "https://lh3.googleusercontent.com/aida-public/AB6AXuDQ5Xajf7mAtz_KfO6j1nNYU6Gl2Ny9UHhksIUer32EoNV1qzgM2acR7OEP0_kY6Cc6PrObB4TX0XxzDiMlOdRMFu8JCnqcymHMAR23ph0FbYkpOUVAZtiQJlASOaO5FxY7XoJsHnOGMTZ12aI_ra4iVxJKlXfYbbCBK6iEoVggaPh5YjxE7dN_nK8F4L2-SsIHKYiSgOWhqhAZ4f-hA00jGPe3D0SqY3jvxGiQN-CWWjFzfRVKDopprohqOGCVMq78EiVhNDfqskkX",
+    alt: "Huế",
+  },
+];
 
 export function Home() {
   const navigate = useNavigate();
@@ -67,6 +75,14 @@ export function Home() {
 
   const [promotionsList, setPromotionsList] = useState([]);
   const [loadingPromotions, setLoadingPromotions] = useState(true);
+  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveHeroSlide((current) => (current + 1) % HERO_SLIDES.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -305,13 +321,18 @@ export function Home() {
     <div className="text-on-surface bg-[#f7f9fb] min-h-screen pb-16 md:pb-0 pt-16">
       {/* 1. Hero Section */}
       <section className="relative min-h-[680px] flex items-center">
-        <div className="absolute inset-0 z-0">
-          <img
-            className="w-full h-full object-cover"
-            alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning."
-            data-alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning. The visual style is premium and minimalist, with a high-key lighting that emphasizes a clean and airy atmosphere."
-            src="/assets/hero-bg.jpg"
-          />
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          {HERO_SLIDES.map((slide, index) => (
+            <img
+              key={slide.src}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out ${
+                index === activeHeroSlide ? "opacity-100" : "opacity-0"
+              }`}
+              alt={slide.alt}
+              src={slide.src}
+              aria-hidden={index !== activeHeroSlide}
+            />
+          ))}
           <div className="absolute inset-0 bg-white/20"></div>
         </div>
 
@@ -331,7 +352,7 @@ export function Home() {
                   className={`grid grid-cols-1 gap-md items-end ${tripType === "round-trip" ? "md:grid-cols-5" : "md:grid-cols-4"}`}
                 >
                   {/* Station Fields Container */}
-                  <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-md relative">
+                  <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)] gap-md md:gap-3 relative">
                     {/* Ga Đi */}
                     <div
                       className={`flex flex-col gap-xs relative text-left ${showFromSuggestions ? "z-30" : "z-0"}`}
@@ -456,10 +477,11 @@ export function Home() {
                     <button
                       type="button"
                       onClick={handleSwapStations}
-                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-white border border-slate-200 rounded-full p-2.5 text-[#007aff] hover:text-[#005bb5] hover:rotate-180 hover:shadow-md transition-all duration-500 hidden md:flex items-center justify-center cursor-pointer"
+                      className="hidden h-11 w-11 self-end mb-1 md:flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#007aff] shadow-sm transition-all duration-200 hover:border-[#007aff] hover:bg-[#007aff] hover:text-white hover:shadow-md active:scale-95 cursor-pointer"
                       title="Đảo chiều ga"
+                      aria-label="Đảo chiều ga đi và ga đến"
                     >
-                      <RotateCw className="h-5 w-5" />
+                      <ArrowLeftRight className="h-5 w-5" />
                     </button>
 
                     {/* Ga Đến */}
@@ -687,6 +709,28 @@ export function Home() {
               </form>
             </div>
           </div>
+        </div>
+
+        <div
+          className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2"
+          role="tablist"
+          aria-label="Chọn ảnh banner"
+        >
+          {HERO_SLIDES.map((slide, index) => (
+            <button
+              key={slide.alt}
+              type="button"
+              onClick={() => setActiveHeroSlide(index)}
+              className={`h-2.5 rounded-full transition-all duration-300 ${
+                index === activeHeroSlide
+                  ? "w-8 bg-[#007aff]"
+                  : "w-2.5 bg-white/80 hover:bg-white"
+              }`}
+              aria-label={`Hiển thị ảnh ${slide.alt}`}
+              aria-selected={index === activeHeroSlide}
+              role="tab"
+            />
+          ))}
         </div>
       </section>
 
