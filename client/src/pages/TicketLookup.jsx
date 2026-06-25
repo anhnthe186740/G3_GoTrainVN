@@ -24,6 +24,7 @@ import {
   Repeat2,
 } from "lucide-react";
 import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
+import { QRCodeSVG } from "qrcode.react";
 
 export function TicketLookup() {
   const { user } = useAuth();
@@ -1090,21 +1091,21 @@ export function TicketLookup() {
                     </span>
                   </div>
 
-                  {/* Stylized QR Code placeholder */}
-                  <div className="w-28 h-28 bg-white border border-slate-200 rounded-2xl p-2 flex items-center justify-center shadow-inner relative overflow-hidden group">
-                    <div className="grid grid-cols-5 gap-1.5 w-full h-full opacity-80">
-                      {Array.from({ length: 25 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`rounded-sm ${(i * 7 + 13) % 5 === 0 || i % 3 === 0 ? "bg-slate-800" : "bg-transparent"}`}
-                        />
-                      ))}
-                    </div>
-                    {/* QR Code corners */}
-                    <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-slate-800" />
-                    <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-slate-800" />
-                    <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-slate-800" />
-                    <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-slate-800" />
+                  {/* Dynamic QR Code */}
+                  <div className="w-36 h-36 bg-white border border-slate-200 rounded-2xl p-2 flex items-center justify-center shadow-sm relative overflow-hidden">
+                    <QRCodeSVG
+                      value={
+                        activeTicket.ticketCode ||
+                        activeTicket.booking?.bookingCode ||
+                        ""
+                      }
+                      size={128}
+                      level="H"
+                      includeMargin={true}
+                      bgColor="#ffffff"
+                      fgColor="#0f172a"
+                      title="Mã QR soát vé"
+                    />
                   </div>
 
                   <div className="w-full flex flex-col gap-1 text-center text-[10px] font-bold text-slate-400">
