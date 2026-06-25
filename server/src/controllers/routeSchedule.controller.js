@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { searchJourneys } from "../services/scheduleSearch.service.js";
@@ -602,6 +603,7 @@ export const deleteRoute = asyncHandler(async (req, res) => {
     });
 
     const futureScheduleIds = futureSchedules.map((s) => s.id);
+    let confirmedBookings = [];
 
     if (futureScheduleIds.length > 0) {
       // 3. Update schedules status to CANCELLED
@@ -658,6 +660,136 @@ export const deleteRoute = asyncHandler(async (req, res) => {
           }
         }
       }
+
+      // 4b. Cancel and auto-refund any CONFIRMED bookings on these schedules
+      confirmedBookings = await tx.booking.findMany({
+        where: {
+          scheduleId: { in: futureScheduleIds },
+          status: "CONFIRMED",
+        },
+        include: {
+          user: {
+            select: { email: true, fullName: true },
+          },
+          schedule: {
+            include: {
+              train: { select: { trainCode: true, trainName: true } },
+              route: {
+                include: {
+                  startStation: { select: { stationName: true } },
+                  endStation: { select: { stationName: true } },
+                },
+              },
+            },
+          },
+          fromStation: { select: { stationName: true } },
+          toStation: { select: { stationName: true } },
+          passengers: {
+            select: { fullName: true, email: true },
+          },
+        },
+      });
+
+      if (confirmedBookings.length > 0) {
+        const confirmedBookingIds = confirmedBookings.map((b) => b.id);
+
+        // Update all booking details to CANCELLED
+        await tx.bookingDetail.updateMany({
+          where: {
+            bookingId: { in: confirmedBookingIds },
+            status: { in: ["CONFIRMED", "PENDING"] },
+          },
+          data: { status: "CANCELLED" },
+        });
+
+        const now = new Date();
+
+        for (const booking of confirmedBookings) {
+          const method = String(
+            booking.paymentMethod || "WALLET",
+          ).toUpperCase();
+          const isWallet = method === "WALLET";
+          const refundStatus = isWallet ? "COMPLETED" : "PENDING";
+          const paymentMethod = `REFUND_${isWallet ? "WALLET" : "BANK_TRANSFER"}`;
+
+          // Update booking status
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: {
+              status: "CANCELLED",
+              paymentStatus: isWallet ? "REFUNDED" : booking.paymentStatus,
+              refundAmount: booking.totalAmount,
+              cancelReason: "Tuyến đường ngưng hoạt động",
+              cancelledAt: now,
+            },
+          });
+
+          // Create payment history record
+          await tx.bookingPaymentHistory.create({
+            data: {
+              bookingId: booking.id,
+              paymentMethod,
+              amount: booking.totalAmount,
+              status: refundStatus === "COMPLETED" ? "SUCCESS" : "PENDING",
+              transactionId:
+                refundStatus === "COMPLETED"
+                  ? `REFUND-WALLET-AUTO-${randomUUID()}`
+                  : null,
+              attemptNumber: 1,
+            },
+          });
+
+          // Create refund tracking record
+          await tx.refund.create({
+            data: {
+              bookingId: booking.id,
+              refundAmount: booking.totalAmount,
+              refundMethod: isWallet ? "WALLET" : "BANK_TRANSFER",
+              status: refundStatus,
+              reason: "Tuyến đường ngưng hoạt động",
+              processedAt: refundStatus === "COMPLETED" ? now : null,
+            },
+          });
+
+          // If payment was via wallet, refund to customer's wallet
+          if (isWallet && booking.userId) {
+            const wallet = await tx.wallet.upsert({
+              where: { userId: booking.userId },
+              update: {},
+              create: { userId: booking.userId, balance: 0, currency: "VND" },
+            });
+            await tx.wallet.update({
+              where: { id: wallet.id },
+              data: { balance: { increment: booking.totalAmount } },
+            });
+            await tx.walletTransaction.create({
+              data: {
+                walletId: wallet.id,
+                type: "REFUND",
+                amount: booking.totalAmount,
+                description: `Hoàn tiền vé ${booking.bookingCode} (Tuyến đường bị vô hiệu hóa)`,
+                relatedBookingId: booking.id,
+                status: "COMPLETED",
+              },
+            });
+          }
+
+          // Create in-app notification
+          if (booking.userId) {
+            await tx.notification.create({
+              data: {
+                userId: booking.userId,
+                type: "BOOKING_CANCELLED",
+                title: "Chuyến tàu bị hủy khẩn cấp và Hoàn tiền",
+                message: `Chuyến tàu của đơn đặt vé ${booking.bookingCode} đã bị hủy do tuyến đường ngừng hoạt động. Hệ thống đã ${isWallet ? "hoàn trả 100% số tiền vào ví của bạn" : "tạo yêu cầu hoàn tiền chờ chuyển khoản"}.`,
+                relatedBookingId: booking.id,
+                deliveryMethod: ["IN_APP"],
+                deliveryStatus: "SENT",
+              },
+            });
+          }
+        }
+      }
     }
 
     // 5. Create admin log
@@ -672,22 +804,17 @@ export const deleteRoute = asyncHandler(async (req, res) => {
       },
     });
 
-    return { route, futureScheduleIds };
+    return { route, futureScheduleIds, confirmedBookings };
   });
 
   // 6. Notify passengers outside transaction to avoid blocking it with email sending
-  if (result.futureScheduleIds.length > 0) {
-    for (const scheduleId of result.futureScheduleIds) {
-      try {
-        notifyScheduleChange(scheduleId, "CANCELLED", {
-          notes: `Hủy chuyến do tuyến đường bị vô hiệu hóa (${result.route.routeName})`,
-        });
-      } catch (err) {
-        console.error(
-          `Error notifying schedule change for schedule ${scheduleId}:`,
-          err,
-        );
-      }
+  if (result.confirmedBookings && result.confirmedBookings.length > 0) {
+    try {
+      notifyScheduleChange(result.confirmedBookings, "CANCELLED", {
+        notes: `Hủy chuyến do tuyến đường bị vô hiệu hóa (${result.route.routeName})`,
+      });
+    } catch (err) {
+      console.error("Error notifying schedule change:", err);
     }
   }
 

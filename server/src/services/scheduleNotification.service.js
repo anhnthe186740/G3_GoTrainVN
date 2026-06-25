@@ -11,41 +11,48 @@ import {
  * @param {"DELAYED" | "CANCELLED"} type - Loại sự kiện thay đổi
  * @param {object} details - Chi tiết (delayMinutes, originalDepartureTime, newDepartureTime, notes)
  */
-export async function notifyScheduleChange(scheduleId, type, details) {
+export async function notifyScheduleChange(
+  scheduleIdOrBookings,
+  type,
+  details,
+) {
   try {
-    // Tìm tất cả các booking có trạng thái CONFIRMED hoặc PENDING của lịch trình này
-    const bookings = await prisma.booking.findMany({
-      where: {
-        scheduleId,
-        status: { in: ["CONFIRMED", "PENDING"] },
-      },
-      include: {
-        user: {
-          select: { email: true, fullName: true },
+    let bookings = [];
+    if (Array.isArray(scheduleIdOrBookings)) {
+      bookings = scheduleIdOrBookings;
+    } else {
+      // Tìm tất cả các booking có trạng thái CONFIRMED hoặc PENDING của lịch trình này
+      bookings = await prisma.booking.findMany({
+        where: {
+          scheduleId: scheduleIdOrBookings,
+          status: { in: ["CONFIRMED", "PENDING"] },
         },
-        schedule: {
-          include: {
-            train: { select: { trainCode: true, trainName: true } },
-            route: {
-              include: {
-                startStation: { select: { stationName: true } },
-                endStation: { select: { stationName: true } },
+        include: {
+          user: {
+            select: { email: true, fullName: true },
+          },
+          schedule: {
+            include: {
+              train: { select: { trainCode: true, trainName: true } },
+              route: {
+                include: {
+                  startStation: { select: { stationName: true } },
+                  endStation: { select: { stationName: true } },
+                },
               },
             },
           },
+          fromStation: { select: { stationName: true } },
+          toStation: { select: { stationName: true } },
+          passengers: {
+            select: { fullName: true, email: true },
+          },
         },
-        fromStation: { select: { stationName: true } },
-        toStation: { select: { stationName: true } },
-        passengers: {
-          select: { fullName: true, email: true },
-        },
-      },
-    });
+      });
+    }
 
     if (bookings.length === 0) {
-      console.log(
-        `[Notification] Không có đơn đặt vé nào cho scheduleId ${scheduleId} cần thông báo.`,
-      );
+      console.log(`[Notification] Không có đơn đặt vé nào cần thông báo.`);
       return;
     }
 
@@ -97,7 +104,8 @@ export async function notifyScheduleChange(scheduleId, type, details) {
     }
   } catch (error) {
     console.error(
-      `[Notification] Gặp lỗi trong notifyScheduleChange cho scheduleId ${scheduleId}:`,
+      `[Notification] Gặp lỗi trong notifyScheduleChange cho:`,
+      scheduleIdOrBookings,
       error,
     );
   }
