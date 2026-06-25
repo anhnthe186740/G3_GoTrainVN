@@ -420,8 +420,10 @@ export function RouteScheduleMgmt({ mode }) {
       await api.delete(`/routes/${id}`);
       toast.success("Đã vô hiệu hóa tuyến đường.");
       loadAll({ force: true });
-    } catch {
-      toast.error("Lỗi khi xóa tuyến đường.");
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Lỗi khi vô hiệu hóa tuyến đường.",
+      );
     }
   };
 

@@ -577,6 +577,27 @@ export const generateSchedules = asyncHandler(async (req, res) => {
 // ============================================================
 export const deleteRoute = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
+  const now = new Date();
+  // Safe validation (BR-30): Check if there is any active or delayed train currently running on this route
+  const runningSchedule = await prisma.schedule.findFirst({
+    where: {
+      routeId: id,
+      status: { in: ["ACTIVE", "DELAYED"] },
+      departureTime: { lte: now },
+      arrivalTime: { gte: now },
+    },
+    include: {
+      train: { select: { trainName: true } },
+    },
+  });
+
+  if (runningSchedule) {
+    return res.status(422).json({
+      message: `Ràng buộc an toàn (BR-30): Không thể vô hiệu hóa tuyến đường vì có tàu đang chạy trên tuyến này (${runningSchedule.train?.trainName || "Tàu"}).`,
+    });
+  }
+
   const route = await prisma.route.update({
     where: { id },
     data: { isActive: false },
