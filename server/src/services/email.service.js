@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import nodemailer from "nodemailer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,9 +10,42 @@ const __dirname = path.dirname(__filename);
 const emailsFilePath = path.join(__dirname, "../../../sent_emails.json");
 
 export async function sendEmail({ to, subject, html }) {
-  // If RESEND_API_KEY is configured in env, send real email via Resend API
+  // Option 1: Send via SMTP (Nodemailer) if SMTP_USER is configured
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
+      const info = await transporter.sendMail({
+        from: `"${senderName}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html,
+      });
+
+      console.log(
+        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
+      );
+      return { success: true, emailId: info.messageId };
+    } catch (err) {
+      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
+      console.log("⚠️  Đang tự động chuyển sang kiểm tra cấu hình Resend...");
+    }
+  }
+
+  // Option 2: Send via Resend API
   if (process.env.RESEND_API_KEY) {
     try {
+      const fromEmail =
+        process.env.EMAIL_FROM || "GoTrain VN <onboarding@resend.dev>";
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -19,7 +53,7 @@ export async function sendEmail({ to, subject, html }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "GoTrain VN <onboarding@resend.dev>",
+          from: fromEmail,
           to: [to],
           subject,
           html,
