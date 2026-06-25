@@ -425,7 +425,9 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
                 endStation: { select: { stationName: true } },
               },
             },
-            train: { select: { trainType: true, trainName: true } },
+            train: {
+              select: { trainType: true, trainName: true, totalCapacity: true },
+            },
           },
         },
         bookingDetails: {
@@ -572,9 +574,17 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
       name: route,
       bookings: 0,
       revenue: 0,
+      totalCapacity: 0,
+      scheduleIds: new Set(),
     };
-    routeStats.bookings += 1;
+    const ticketCount = booking.bookingDetails?.length || 0;
+    routeStats.bookings += ticketCount;
     routeStats.revenue += booking.totalAmount || 0;
+
+    if (booking.scheduleId && !routeStats.scheduleIds.has(booking.scheduleId)) {
+      routeStats.scheduleIds.add(booking.scheduleId);
+      routeStats.totalCapacity += booking.schedule?.train?.totalCapacity || 0;
+    }
     routeMap.set(route, routeStats);
 
     for (const detail of booking.bookingDetails || []) {
@@ -592,16 +602,19 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     (sum, item) => sum + item.count,
     0,
   );
-  const totalBookings = filteredBookings.length;
-  const confirmedBookings = filteredBookings.filter(
-    (booking) => booking.status === "CONFIRMED",
-  ).length;
-  const cancelledBookings = filteredBookings.filter((booking) =>
-    ["CANCELLED", "REFUNDED"].includes(booking.status),
-  ).length;
-  const pendingBookings = filteredBookings.filter(
-    (booking) => booking.status === "PENDING",
-  ).length;
+  const totalBookings = filteredBookings.reduce(
+    (sum, booking) => sum + (booking.totalPassengers || 0),
+    0,
+  );
+  const confirmedBookings = filteredBookings
+    .filter((booking) => ["CONFIRMED", "COMPLETED"].includes(booking.status))
+    .reduce((sum, booking) => sum + (booking.totalPassengers || 0), 0);
+  const cancelledBookings = filteredBookings
+    .filter((booking) => ["CANCELLED", "REFUNDED"].includes(booking.status))
+    .reduce((sum, booking) => sum + (booking.totalPassengers || 0), 0);
+  const pendingBookings = filteredBookings
+    .filter((booking) => booking.status === "PENDING")
+    .reduce((sum, booking) => sum + (booking.totalPassengers || 0), 0);
   const totalRevenue = completedReportBookings.reduce(
     (sum, booking) => sum + (booking.totalAmount || 0),
     0,
@@ -610,10 +623,77 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     if (!["CANCELLED", "REFUNDED"].includes(booking.status)) return sum;
     return sum + (booking.refundAmount || 0);
   }, 0);
-  const totalPassengers = filteredBookings.reduce(
-    (sum, booking) => sum + (booking.totalPassengers || 0),
+  const totalPassengers = totalBookings;
+
+  // Calculate average utilization rate
+  const totalCompletedBookedSeats = completedReportBookings.reduce(
+    (sum, b) => sum + (b.totalPassengers || 0),
     0,
   );
+  const uniqueScheduleIds = new Set();
+  let totalCompletedCapacity = 0;
+  for (const b of completedReportBookings) {
+    if (b.scheduleId && !uniqueScheduleIds.has(b.scheduleId)) {
+      uniqueScheduleIds.add(b.scheduleId);
+      totalCompletedCapacity += b.schedule?.train?.totalCapacity || 0;
+    }
+  }
+  const avgUtilization =
+    totalCompletedCapacity > 0
+      ? Number(
+          ((totalCompletedBookedSeats / totalCompletedCapacity) * 100).toFixed(
+            1,
+          ),
+        )
+      : 0;
+
+  // Initialize heatmap structure: Monday (index 0) to Sunday (index 6)
+  const daysOfWeek = [
+    "Thứ 2",
+    "Thứ 3",
+    "Thứ 4",
+    "Thứ 5",
+    "Thứ 6",
+    "Thứ 7",
+    "Chủ Nhật",
+  ];
+  const heatmapTemp = Array.from({ length: 7 }, (_, i) => ({
+    day: daysOfWeek[i],
+    slots: Array.from({ length: 4 }, () => ({
+      booked: 0,
+      capacity: 0,
+      scheduleIds: new Set(),
+    })),
+  }));
+
+  for (const booking of completedReportBookings) {
+    if (!booking.schedule) continue;
+    const depTime = new Date(booking.schedule.departureTime);
+    const jsDay = depTime.getDay();
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // Map Sunday (0) to index 6, Monday (1) to index 0...
+
+    const hour = depTime.getHours();
+    let slotIndex = 0;
+    if (hour >= 6 && hour < 12) slotIndex = 1;
+    else if (hour >= 12 && hour < 18) slotIndex = 2;
+    else if (hour >= 18 && hour < 24) slotIndex = 3;
+
+    const slot = heatmapTemp[dayIndex].slots[slotIndex];
+    slot.booked += booking.totalPassengers || 0;
+
+    if (booking.scheduleId && !slot.scheduleIds.has(booking.scheduleId)) {
+      slot.scheduleIds.add(booking.scheduleId);
+      slot.capacity += booking.schedule?.train?.totalCapacity || 0;
+    }
+  }
+
+  const heatmap = heatmapTemp.map((d) => ({
+    day: d.day,
+    slots: d.slots.map((s) => {
+      if (s.capacity === 0) return 0;
+      return Number(((s.booked / s.capacity) * 100).toFixed(1));
+    }),
+  }));
 
   res.json({
     stats: {
@@ -631,6 +711,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
           completedReportBookings.length > 0
             ? Math.round(totalRevenue / completedReportBookings.length)
             : 0,
+        avgUtilization,
       },
       adminOverview: {
         totalUsers,
@@ -656,7 +737,18 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
       topRoutes: [...routeMap.values()]
         .sort((a, b) => b.bookings - a.bookings)
         .slice(0, 5)
-        .map((item) => ({ ...item, revenue: Math.round(item.revenue) })),
+        .map((item) => {
+          const occupancy =
+            item.totalCapacity > 0
+              ? Number(((item.bookings / item.totalCapacity) * 100).toFixed(1))
+              : 0;
+          const { scheduleIds, ...rest } = item;
+          return {
+            ...rest,
+            revenue: Math.round(item.revenue),
+            occupancy,
+          };
+        }),
       trainTypes: [...carriageMap.values()]
         .sort((a, b) => b.count - a.count)
         .map((item) => ({
@@ -670,6 +762,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
         label,
         value,
       })),
+      heatmap,
     },
   });
 });

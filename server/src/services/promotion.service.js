@@ -631,7 +631,7 @@ export async function sendVoucherEmail(voucherId, targetEmail, adminContext) {
 
   await sendEmail({
     to: targetEmail,
-    subject: `[GoTrain] Tặng bạn mã giảm giá độc quyền ${voucher.voucherCode}`,
+    subject: `[GoTrain] Thông tin mã ưu đãi ${voucher.voucherCode}`,
     html,
   });
 
@@ -734,7 +734,7 @@ export async function triggerBirthdayVouchers() {
 
     await sendEmail({
       to: u.email,
-      subject: `[GoTrain] Chúc mừng sinh nhật! Nhận quà tặng mã giảm giá độc quyền từ chúng tôi 🎁`,
+      subject: `[GoTrain] Quà tặng sinh nhật thành viên - Mã ưu đãi ${voucherCode}`,
       html,
     });
 
@@ -865,7 +865,7 @@ export async function awardLoyaltyPointsAndCheckTier(
 
     await sendEmail({
       to: user.email,
-      subject: `👑 [GoTrain] Chúc mừng bạn đã thăng hạng thành viên lên ${newTier.name}!`,
+      subject: `[GoTrain] Thông báo cập nhật hạng thành viên: ${newTier.name}`,
       html,
     });
   }
