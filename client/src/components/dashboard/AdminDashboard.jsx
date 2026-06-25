@@ -63,6 +63,7 @@ export function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchFocused, setSearchFocused] = useState(false);
   const [showAiTooltip, setShowAiTooltip] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   // Dynamic Dashboard statistics and schedules
   const [stats, setStats] = useState(null);
@@ -449,32 +450,7 @@ export function AdminDashboard() {
           ))}
         </nav>
 
-        <div className="p-6 mt-auto">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center px-4 py-3 mb-4 rounded-xl text-[#ba1a1a] hover:bg-[#ffdad6]/40 group transition-all text-left border-none bg-transparent cursor-pointer"
-          >
-            <span className="material-symbols-outlined mr-3">logout</span>
-            <span className="font-label-md text-sm font-semibold">
-              Đăng xuất
-            </span>
-          </button>
-
-          <div className="bg-[#cfe5ff]/30 rounded-2xl p-4 border border-[#cfe5ff]">
-            <p className="font-label-sm text-[#00629d] font-bold mb-2 text-xs">
-              Hỗ Trợ Kỹ Thuật
-            </p>
-            <p className="text-[11px] text-[#3f4852] leading-tight">
-              Gặp sự cố hệ thống? Liên hệ ngay đội ngũ IT 24/7.
-            </p>
-            <button
-              onClick={handleTicketRequest}
-              className="mt-3 w-full bg-[#00629d] hover:bg-[#00629d]/90 text-white py-2 rounded-lg font-label-sm text-xs hover:shadow-lg transition-all border-none cursor-pointer"
-            >
-              Gửi Ticket
-            </button>
-          </div>
-        </div>
+        <div className="p-6 mt-auto"></div>
       </aside>
 
       {/* Main Content Area */}
@@ -518,26 +494,39 @@ export function AdminDashboard() {
               </span>
             </div>
 
-            <div className="relative group cursor-pointer p-2 rounded-full hover:bg-[#eceef0] transition-colors">
-              <span className="material-symbols-outlined text-[#3f4852]">
-                notifications
-              </span>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-[#ba1a1a] rounded-full"></span>
-            </div>
-            <div className="flex items-center gap-3 pl-6 border-l border-[#bec7d4]/30">
-              <div className="text-right hidden sm:block">
-                <p className="font-label-md text-[#191c1e] text-sm font-semibold">
-                  {user?.name || user?.fullName || "Admin GoTrain"}
-                </p>
-                <p className="font-label-sm text-[#3f4852] text-xs">
-                  Quản trị viên
-                </p>
-              </div>
-              <img
-                alt="Admin Profile"
-                className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfHN2yz-0iI2baB3WRjPg1bG00TEOS4zEIC-_MMJaFStnTcC0zWsOJRzo05kkMT30wzec88PazR4407fD0JMLUf6aEguOUXT28jtqTn0Rppw6dqlVZY96RFnp_j4wJU8OL5ENS9qcKji6IwE3B9d55EhH4MjQcAW0PetRgFyhnwy9hJ6eo5xfLxjKey03rgCU9CLJ4b-PbGVKud_E1HdOJSSudsbtVltInmYm6grX6Ei_aSg7Wv-Ty2aVcfSK5OYIoFIn6MW6QjKhH"
-              />
+            <div className="relative">
+              <button
+                onClick={() => setAdminMenuOpen(!adminMenuOpen)}
+                className="flex items-center gap-3 pl-6 border-l border-[#bec7d4]/30 bg-transparent border-none cursor-pointer focus:outline-none"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="font-label-md text-[#191c1e] text-sm font-semibold">
+                    {user?.name || user?.fullName || "Admin GoTrain"}
+                  </p>
+                  <p className="font-label-sm text-[#3f4852] text-xs">
+                    Quản trị viên
+                  </p>
+                </div>
+                <img
+                  alt="Admin Profile"
+                  className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover"
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfHN2yz-0iI2baB3WRjPg1bG00TEOS4zEIC-_MMJaFStnTcC0zWsOJRzo05kkMT30wzec88PazR4407fD0JMLUf6aEguOUXT28jtqTn0Rppw6dqlVZY96RFnp_j4wJU8OL5ENS9qcKji6IwE3B9d55EhH4MjQcAW0PetRgFyhnwy9hJ6eo5xfLxjKey03rgCU9CLJ4b-PbGVKud_E1HdOJSSudsbtVltInmYm6grX6Ei_aSg7Wv-Ty2aVcfSK5OYIoFIn6MW6QjKhH"
+                />
+              </button>
+
+              {adminMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-[#bec7d4]/20 rounded-xl shadow-xl py-2 z-50">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center px-4 py-2.5 text-sm text-[#ba1a1a] hover:bg-[#ffdad6]/40 transition-colors border-none bg-transparent cursor-pointer text-left font-semibold"
+                  >
+                    <span className="material-symbols-outlined mr-3 text-lg">
+                      logout
+                    </span>
+                    Đăng xuất
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
