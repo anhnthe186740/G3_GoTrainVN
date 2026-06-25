@@ -12,10 +12,6 @@ import {
   Thermometer,
   Navigation,
   MapPin,
-  Play,
-  Pause,
-  RotateCcw,
-  Sliders,
 } from "lucide-react";
 import { api } from "../../services/api";
 import { createSeatSocket } from "../../services/seatSelectionApi";
@@ -222,48 +218,12 @@ export function AdminLiveTrackingPanel() {
   // Time reference clock for real-time recalculations
   const [timeRef, setTimeRef] = useState(new Date());
 
-  // Simulated Time Travel states
-  const [isSimulatedTime, setIsSimulatedTime] = useState(false);
-  const [simulatedMinutes, setSimulatedMinutes] = useState(540); // 9:00 AM default (9 * 60 = 540)
-  const [isSimPlay, setIsSimPlay] = useState(false);
-
   useEffect(() => {
     const interval = setInterval(() => {
       setTimeRef(new Date());
     }, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Simulation time ticker
-  useEffect(() => {
-    if (!isSimPlay || !isSimulatedTime) return;
-    const interval = setInterval(() => {
-      setSimulatedMinutes((prev) => {
-        const next = prev + 2; // Advance 2 minutes per tick
-        return next >= 1440 ? 0 : next;
-      });
-    }, 250); // Every 250ms
-    return () => clearInterval(interval);
-  }, [isSimPlay, isSimulatedTime]);
-
-  // Compute the active time Reference (either real-time clock or custom travel time)
-  const activeTime = useMemo(() => {
-    if (!isSimulatedTime) {
-      return timeRef;
-    }
-    const d = new Date();
-    const hrs = Math.floor(simulatedMinutes / 60);
-    const mins = simulatedMinutes % 60;
-    d.setHours(hrs, mins, 0, 0);
-    return d;
-  }, [isSimulatedTime, simulatedMinutes, timeRef]);
-
-  // Helper to format minutes to HH:MM
-  const formatMinutesToTime = (totalMinutes) => {
-    const hrs = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
-    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
-  };
 
   // Map coordinate conversion helpers
   const mapX = useCallback((longitude) => {
@@ -344,7 +304,7 @@ export function AdminLiveTrackingPanel() {
     return activeTrackings.map((item) => {
       // If we are actively simulating or have explicit overrides, let them stand
       // Otherwise, interpolate location dynamically by timeline
-      const interpolated = getInterpolatedTracking(item, activeTime);
+      const interpolated = getInterpolatedTracking(item, timeRef);
       return {
         ...item,
         tracking: {
@@ -353,7 +313,7 @@ export function AdminLiveTrackingPanel() {
         },
       };
     });
-  }, [activeTrackings, activeTime]);
+  }, [activeTrackings, timeRef]);
 
   // KPI Calculations
   const kpis = useMemo(() => {
@@ -415,7 +375,7 @@ export function AdminLiveTrackingPanel() {
       },
     ];
 
-    const progressPercent = getTimelineProgress(item, activeTime);
+    const progressPercent = getTimelineProgress(item, timeRef);
 
     return (
       <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 text-white text-left space-y-4">
@@ -624,176 +584,6 @@ export function AdminLiveTrackingPanel() {
             {kpis.performance}%
           </h3>
         </div>
-      </div>
-
-      {/* Bảng Điều Khiển Thời Gian Giám Sát */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 rounded-xl">
-              <Sliders className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="font-extrabold text-slate-800 dark:text-white text-sm">
-                BẢNG ĐIỀU KHIỂN THỜI GIAN GIÁM SÁT
-              </h4>
-              <p className="text-xs text-slate-400 font-semibold">
-                Thay đổi thời gian để kiểm tra vị trí tàu tại các thời điểm khác
-                nhau trong ngày
-              </p>
-            </div>
-          </div>
-
-          {/* Mode Switcher */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            <button
-              onClick={() => {
-                setIsSimulatedTime(false);
-                setIsSimPlay(false);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${
-                !isSimulatedTime
-                  ? "bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 bg-transparent"
-              }`}
-            >
-              <Activity className="h-3.5 w-3.5" />
-              Thời gian thực
-            </button>
-            <button
-              onClick={() => setIsSimulatedTime(true)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${
-                isSimulatedTime
-                  ? "bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 bg-transparent"
-              }`}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Giả lập (Time Travel)
-            </button>
-          </div>
-        </div>
-
-        {isSimulatedTime && (
-          <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800 animate-fadeIn">
-            {/* Slider & Clock display */}
-            <div className="flex flex-col md:flex-row items-center gap-6">
-              {/* Digital Clock Display */}
-              <div className="flex flex-col items-center justify-center bg-slate-950 border border-slate-800 rounded-xl px-5 py-3 min-w-[120px] shadow-inner shrink-0">
-                <span className="text-[10px] text-sky-400 font-extrabold uppercase tracking-widest">
-                  MỐC GIỜ XEM
-                </span>
-                <span className="text-2xl font-mono font-bold text-white tracking-wider mt-0.5 select-none drop-shadow-[0_0_8px_#38bdf8]">
-                  {formatMinutesToTime(simulatedMinutes)}
-                </span>
-              </div>
-
-              {/* Slider */}
-              <div className="flex-1 w-full space-y-2">
-                <div className="flex justify-between text-xs text-slate-400 font-semibold px-1">
-                  <span>00:00</span>
-                  <span className="text-sky-400">
-                    Kéo thanh trượt để điều chỉnh giờ
-                  </span>
-                  <span>23:59</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1439"
-                  value={simulatedMinutes}
-                  onChange={(e) => {
-                    setSimulatedMinutes(parseInt(e.target.value, 10));
-                    setIsSimPlay(false); // Pause play on manual slide
-                  }}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500 focus:outline-none"
-                />
-              </div>
-
-              {/* Simulator Playback Controls */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setIsSimPlay(!isSimPlay)}
-                  className={`flex items-center justify-center p-2.5 rounded-xl border-none cursor-pointer transition-all ${
-                    isSimPlay
-                      ? "bg-amber-500 hover:bg-amber-600 text-white"
-                      : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  }`}
-                  title={isSimPlay ? "Tạm dừng" : "Tự động trôi thời gian"}
-                >
-                  {isSimPlay ? (
-                    <Pause className="h-4.5 w-4.5" />
-                  ) : (
-                    <Play className="h-4.5 w-4.5" />
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    // Reset to 09:00
-                    setSimulatedMinutes(540);
-                    setIsSimPlay(false);
-                  }}
-                  className="flex items-center justify-center p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border-none cursor-pointer transition-all"
-                  title="Đặt lại về 9:00"
-                >
-                  <RotateCcw className="h-4.5 w-4.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Presets and Quick Inspection helper */}
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-bold">
-                Mốc giờ thử nghiệm nhanh:
-              </span>
-              {[
-                { time: "08:00", label: "08:00 (Khởi hành)", mins: 480 },
-                {
-                  time: "09:00",
-                  label: "09:00 (Thời điểm 9h sáng)",
-                  mins: 540,
-                },
-                {
-                  time: "11:55",
-                  label: "11:55 (Kết thúc hành trình Hà Nội - Vinh)",
-                  mins: 715,
-                },
-                { time: "14:00", label: "14:00 (Chiều)", mins: 840 },
-                { time: "20:00", label: "20:00 (Tối)", mins: 1200 },
-              ].map((preset) => (
-                <button
-                  key={preset.time}
-                  onClick={() => {
-                    setSimulatedMinutes(preset.mins);
-                    setIsSimPlay(false);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                    simulatedMinutes === preset.mins
-                      ? "bg-sky-50 border-sky-300 text-sky-700 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-300"
-                      : "bg-transparent border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Explain the exact status of selected or active trains at the simulated time */}
-            <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-4 text-xs leading-relaxed">
-              <p className="text-slate-500 dark:text-slate-400 font-semibold">
-                💡{" "}
-                <span className="font-extrabold text-slate-700 dark:text-slate-300">
-                  Nội suy vận tốc 55 km/h:
-                </span>{" "}
-                Khi ở chế độ giả lập thời gian, hệ thống tự động tính toán vị
-                trí của tàu dựa trên thời gian thực tế so với lịch khởi hành và
-                lịch đến ga dừng. Với tàu đi từ Hà Nội lúc 8h00 và đến Vinh lúc
-                11h55, lúc 9h00 (sau 1 tiếng chạy) tàu sẽ được hiển thị ở vị trí
-                khoảng 25% quãng đường trên bản đồ SVG mạng lưới Việt Nam.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main Workspace: SVG Map + Sidebar Details */}
