@@ -24,6 +24,11 @@ import {
   updateScheduleLiveTracking,
   getScheduleLiveTracking,
   getActiveSchedulesTracking,
+  // UC-27: New endpoints
+  createSchedule,
+  updateSchedule,
+  cancelSchedule,
+  updateScheduleStop,
 } from "../controllers/routeSchedule.controller.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { adminOnly } from "../middlewares/adminOnly.js";
@@ -123,4 +128,20 @@ routeScheduleRoutes.put(
   "/schedules/:id/live-tracking",
   ...adminOnlyRoute,
   updateScheduleLiveTracking,
+);
+
+// UC-27: Single schedule CRUD
+routeScheduleRoutes.post("/schedules", ...adminOnlyRoute, createSchedule);
+routeScheduleRoutes.put("/schedules/:id", ...adminOnlyRoute, updateSchedule);
+routeScheduleRoutes.patch(
+  "/schedules/:id/cancel",
+  ...adminOnlyRoute,
+  cancelSchedule,
+);
+
+// UC-27 G3b: Chỉnh sửa giờ dừng tại ga (hỗ trợ ?preview=true)
+routeScheduleRoutes.put(
+  "/schedules/:scheduleId/stops/:stopId",
+  ...adminOnlyRoute,
+  updateScheduleStop,
 );

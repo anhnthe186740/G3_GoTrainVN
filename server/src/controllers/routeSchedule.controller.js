@@ -12,6 +12,12 @@ import {
   generateSchedulesForDay30,
   generateSchedulesForRange,
 } from "../services/autoSchedule.service.js";
+import {
+  validateSameDirectionGap,
+  validateOpposingDirectionConflict,
+  validateStopTimeSequence,
+  validateSingleStopSequence,
+} from "../utils/singleTrackValidator.js";
 
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
@@ -385,6 +391,7 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     select: {
       id: true,
       trainCode: true,
+      status: true,
       carriages: {
         select: {
           id: true,
@@ -397,6 +404,24 @@ export const generateSchedules = asyncHandler(async (req, res) => {
       },
     },
   });
+
+  // [G12] Validate tàu không đang trong bảo trì
+  if (train) {
+    const now = new Date();
+    const activeMaintenance = await prisma.vehicleMaintenance.findFirst({
+      where: {
+        trainId,
+        status: "SCHEDULED",
+        startDate: { lte: new Date(endDate || startDate) },
+        endDate: { gte: new Date(startDate) },
+      },
+    });
+    if (activeMaintenance) {
+      return res.status(400).json({
+        message: `Tàu ${train.trainCode} đang có lịch bảo trì trong khoảng thời gian này (từ ${new Date(activeMaintenance.startDate).toLocaleDateString("vi-VN")} đến ${new Date(activeMaintenance.endDate).toLocaleDateString("vi-VN")}). Không thể tạo lịch trình.`,
+      });
+    }
+  }
   if (!train) {
     return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
   }
@@ -1917,4 +1942,690 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
   });
 
   res.json({ activeTrackings: results });
+});
+
+// ============================================================
+// POST /api/v1/schedules - Tạo lịch trình đơn lẻ (UC-27 G4)
+// ============================================================
+export const createSchedule = asyncHandler(async (req, res) => {
+  const {
+    trainId,
+    routeId,
+    departureTime,
+    bufferMinutes = 60,
+    notes,
+  } = req.body;
+
+  // --- Validate required fields (MSG07) ---
+  if (!trainId || !routeId || !departureTime) {
+    return res.status(400).json({
+      message: "Thiếu thông tin bắt buộc: ID tàu, ID tuyến, giờ xuất phát.",
+    });
+  }
+
+  // --- Validate không tạo lịch trong quá khứ ---
+  if (new Date(departureTime) < new Date()) {
+    return res.status(400).json({
+      message: "Không thể tạo lịch trình trong quá khứ.",
+    });
+  }
+
+  // --- Fetch route ---
+  const route = await prisma.route.findUnique({
+    where: { id: routeId },
+    include: { startStation: true, endStation: true },
+  });
+  if (!route)
+    return res.status(404).json({ message: "Không tìm thấy tuyến đường." });
+  if (!route.isActive)
+    return res.status(400).json({ message: "Tuyến đường đã bị vô hiệu hóa." });
+
+  // --- Fetch train ---
+  const train = await prisma.train.findUnique({
+    where: { id: trainId },
+    select: {
+      id: true,
+      trainCode: true,
+      carriages: {
+        select: {
+          id: true,
+          totalSeats: true,
+          seats: {
+            where: { status: { not: "BLOCKED" } },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+  if (!train)
+    return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+
+  // --- [G12] Validate tàu không trong bảo trì ---
+  const activeMaintenance = await prisma.vehicleMaintenance.findFirst({
+    where: {
+      trainId,
+      status: "SCHEDULED",
+      startDate: { lte: new Date(departureTime) },
+      endDate: { gte: new Date(departureTime) },
+    },
+  });
+  if (activeMaintenance) {
+    return res.status(400).json({
+      message: `Tàu ${train.trainCode} đang có lịch bảo trì trùng với thời gian này. Không thể tạo lịch trình.`,
+    });
+  }
+
+  // --- Tính arrivalTime từ route.estimatedDuration + bufferMinutes ---
+  const bufferMins = parseInt(bufferMinutes) || 60;
+  const numStops = route.stations ? route.stations.length : 0;
+  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+  const arrivalTime = new Date(
+    new Date(departureTime).getTime() + totalDurationMins * 60 * 1000,
+  );
+
+  // --- [G9] Validate ràng buộc duy nhất (bộ tứ) ---
+  const duplicate = await prisma.schedule.findFirst({
+    where: {
+      trainId,
+      startStationId: route.startStationId,
+      endStationId: route.endStationId,
+      departureTime: new Date(departureTime),
+    },
+  });
+  if (duplicate) {
+    return res.status(409).json({
+      message: `Đã tồn tại lịch trình cho tàu ${train.trainCode} trên tuyến này với giờ xuất phát trùng lặp.`,
+    });
+  }
+
+  // --- [G1] Validate đường đơn: giãn cách cùng chiều ---
+  const gapCheck = await validateSameDirectionGap({
+    routeId,
+    departureTime: new Date(departureTime),
+    arrivalTime,
+  });
+  if (!gapCheck.valid) {
+    return res.status(409).json({
+      message: gapCheck.conflict.message,
+      conflictType: "SAME_DIRECTION_GAP",
+      conflict: gapCheck.conflict,
+    });
+  }
+
+  // --- [G2] Validate đường đơn: tránh tàu ngược chiều ---
+  const oppCheck = await validateOpposingDirectionConflict({
+    startStationId: route.startStationId,
+    endStationId: route.endStationId,
+    departureTime: new Date(departureTime),
+    arrivalTime,
+    proposedStops: [],
+  });
+  if (!oppCheck.valid) {
+    return res.status(409).json({
+      message: oppCheck.conflict.message,
+      conflictType: "OPPOSING_DIRECTION",
+      conflict: oppCheck.conflict,
+    });
+  }
+
+  // --- Tạo Schedule + auto-generate ScheduleStop ---
+  const schedule = await prisma.$transaction(async (tx) => {
+    const newSchedule = await tx.schedule.create({
+      data: {
+        trainId,
+        routeId,
+        startStationId: route.startStationId,
+        endStationId: route.endStationId,
+        departureTime: new Date(departureTime),
+        arrivalTime,
+        distance: route.distance,
+        duration: totalDurationMins,
+        status: "ACTIVE",
+        notes: notes || null,
+      },
+    });
+
+    // Auto-generate ScheduleStop theo distanceFromStart
+    if (route.stations && route.stations.length > 0) {
+      const sortedStations = [...route.stations].sort(
+        (a, b) => a.stopOrder - b.stopOrder,
+      );
+      await tx.scheduleStop.createMany({
+        data: sortedStations.map((stop, index) => {
+          const progress =
+            route.distance > 0
+              ? Math.min(
+                  1,
+                  Math.max(0, stop.distanceFromStart / route.distance),
+                )
+              : 0;
+          const movingTimeMs = route.estimatedDuration * progress * 60 * 1000;
+          const restingTimeMs = index * bufferMins * 60 * 1000;
+          const stopArrivalTime = new Date(
+            new Date(departureTime).getTime() + movingTimeMs + restingTimeMs,
+          );
+          const stopDepartureTime = new Date(
+            stopArrivalTime.getTime() + bufferMins * 60 * 1000,
+          );
+          return {
+            scheduleId: newSchedule.id,
+            stationId: stop.stationId,
+            stopOrder: stop.stopOrder,
+            arrivalTime: stopArrivalTime,
+            departureTime: stopDepartureTime,
+          };
+        }),
+      });
+    }
+
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "CREATE",
+        entity: "Schedule",
+        entityId: newSchedule.id,
+        description: `Tạo lịch trình đơn lẻ: Tàu ${train.trainCode} | Tuyến ${route.routeName} | Xuất phát ${new Date(departureTime).toLocaleString("vi-VN")}`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+
+    return newSchedule;
+  });
+
+  res.status(201).json({
+    message: `Đã tạo lịch trình thành công! Tàu ${train.trainCode} xuất phát lúc ${new Date(departureTime).toLocaleString("vi-VN")}.`,
+    schedule,
+  });
+});
+
+// ============================================================
+// PUT /api/v1/schedules/:id - Cập nhật lịch trình đơn lẻ (UC-27 G5)
+// ============================================================
+export const updateSchedule = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { departureTime, arrivalTime, notes } = req.body;
+
+  const schedule = await prisma.schedule.findUnique({
+    where: { id },
+    include: {
+      train: { select: { trainCode: true } },
+      route: {
+        select: { routeName: true, startStationId: true, endStationId: true },
+      },
+      scheduleStops: true,
+    },
+  });
+
+  if (!schedule)
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+
+  // Không sửa lịch đã kết thúc
+  if (
+    new Date(schedule.arrivalTime) < new Date() &&
+    schedule.status !== "DELAYED"
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Không thể sửa lịch trình đã kết thúc." });
+  }
+
+  const newDep = departureTime
+    ? new Date(departureTime)
+    : new Date(schedule.departureTime);
+  const newArr = arrivalTime
+    ? new Date(arrivalTime)
+    : new Date(schedule.arrivalTime);
+
+  if (newDep >= newArr) {
+    return res
+      .status(400)
+      .json({ message: "Giờ xuất phát phải trước giờ cập ga cuối." });
+  }
+
+  // [G1] Validate giãn cách cùng chiều
+  const gapCheck = await validateSameDirectionGap({
+    routeId: schedule.routeId,
+    departureTime: newDep,
+    arrivalTime: newArr,
+    excludeScheduleId: id,
+  });
+  if (!gapCheck.valid) {
+    return res.status(409).json({
+      message: gapCheck.conflict.message,
+      conflictType: "SAME_DIRECTION_GAP",
+      conflict: gapCheck.conflict,
+    });
+  }
+
+  // [G2] Validate tránh tàu ngược chiều
+  const oppCheck = await validateOpposingDirectionConflict({
+    startStationId: schedule.route.startStationId,
+    endStationId: schedule.route.endStationId,
+    departureTime: newDep,
+    arrivalTime: newArr,
+    excludeScheduleId: id,
+  });
+  if (!oppCheck.valid) {
+    return res.status(409).json({
+      message: oppCheck.conflict.message,
+      conflictType: "OPPOSING_DIRECTION",
+      conflict: oppCheck.conflict,
+    });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const s = await tx.schedule.update({
+      where: { id },
+      data: {
+        departureTime: newDep,
+        arrivalTime: newArr,
+        ...(notes !== undefined ? { notes } : {}),
+        status: "ACTIVE",
+        delayMinutes: 0,
+      },
+    });
+
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "UPDATE",
+        entity: "Schedule",
+        entityId: id,
+        changes: JSON.stringify({
+          oldDep: schedule.departureTime,
+          newDep,
+          oldArr: schedule.arrivalTime,
+          newArr,
+        }),
+        description: `Cập nhật lịch trình tàu ${schedule.train.trainCode} (${schedule.route.routeName}): Xuất phát mới ${newDep.toLocaleString("vi-VN")}`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+
+    return s;
+  });
+
+  // [BR-14] Gửi email nếu có booking confirmed
+  const confirmedCount = await prisma.booking.count({
+    where: { scheduleId: id, status: "CONFIRMED" },
+  });
+  if (confirmedCount > 0) {
+    notifyScheduleChange(id, "DELAYED", {
+      delayMinutes: 0,
+      originalDepartureTime: schedule.departureTime,
+      newDepartureTime: newDep,
+      notes: notes || "Cập nhật giờ xuất phát",
+    });
+  }
+
+  res.json({
+    message: `Đã cập nhật lịch trình thành công.${confirmedCount > 0 ? ` Đã thông báo ${confirmedCount} hành khách.` : ""}`,
+    schedule: updated,
+    notifiedPassengers: confirmedCount,
+  });
+});
+
+// ============================================================
+// PATCH /api/v1/schedules/:id/cancel - Hủy lịch trình đơn lẻ (UC-27 G6)
+// ============================================================
+export const cancelSchedule = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason = "Admin hủy lịch trình" } = req.body;
+
+  const schedule = await prisma.schedule.findUnique({
+    where: { id },
+    include: {
+      train: { select: { trainCode: true, trainName: true } },
+      route: {
+        include: {
+          startStation: { select: { stationName: true } },
+          endStation: { select: { stationName: true } },
+        },
+      },
+    },
+  });
+
+  if (!schedule)
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+  if (schedule.status === "CANCELLED") {
+    return res
+      .status(400)
+      .json({ message: "Lịch trình này đã bị hủy trước đó." });
+  }
+
+  // Lấy các booking bị ảnh hưởng
+  const confirmedBookings = await prisma.booking.findMany({
+    where: { scheduleId: id, status: "CONFIRMED" },
+    include: {
+      user: { select: { email: true, fullName: true } },
+      schedule: {
+        include: {
+          train: { select: { trainCode: true, trainName: true } },
+          route: {
+            include: {
+              startStation: { select: { stationName: true } },
+              endStation: { select: { stationName: true } },
+            },
+          },
+        },
+      },
+      fromStation: { select: { stationName: true } },
+      toStation: { select: { stationName: true } },
+      passengers: { select: { fullName: true, email: true } },
+    },
+  });
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Hủy lịch trình
+    await tx.schedule.update({
+      where: { id },
+      data: { status: "CANCELLED", notes: reason },
+    });
+
+    // 2. Hủy booking PENDING
+    const pendingBookings = await tx.booking.findMany({
+      where: { scheduleId: id, status: "PENDING" },
+    });
+    if (pendingBookings.length > 0) {
+      await tx.booking.updateMany({
+        where: { id: { in: pendingBookings.map((b) => b.id) } },
+        data: { status: "CANCELLED", cancelReason: reason },
+      });
+    }
+
+    // 3. Hoàn tiền booking CONFIRMED
+    for (const booking of confirmedBookings) {
+      const method = String(booking.paymentMethod || "WALLET").toUpperCase();
+      const isWallet = method === "WALLET";
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: "CANCELLED",
+          paymentStatus: isWallet ? "REFUNDED" : booking.paymentStatus,
+          refundAmount: booking.totalAmount,
+          cancelReason: reason,
+          cancelledAt: now,
+        },
+      });
+
+      await tx.refund.create({
+        data: {
+          bookingId: booking.id,
+          refundAmount: booking.totalAmount,
+          refundMethod: isWallet ? "WALLET" : "BANK_TRANSFER",
+          status: isWallet ? "COMPLETED" : "PENDING",
+          reason,
+          processedAt: isWallet ? now : null,
+        },
+      });
+
+      if (isWallet && booking.userId) {
+        const wallet = await tx.wallet.upsert({
+          where: { userId: booking.userId },
+          update: {},
+          create: { userId: booking.userId, balance: 0, currency: "VND" },
+        });
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: booking.totalAmount } },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "REFUND",
+            amount: booking.totalAmount,
+            description: `Hoàn tiền vé ${booking.bookingCode} (Hủy lịch trình)`,
+            relatedBookingId: booking.id,
+            status: "COMPLETED",
+          },
+        });
+      }
+
+      if (booking.userId) {
+        await tx.notification.create({
+          data: {
+            userId: booking.userId,
+            type: "BOOKING_CANCELLED",
+            title: "Chuyến tàu bị hủy và Hoàn tiền",
+            message: `Chuyến tàu ${schedule.train.trainCode} (${schedule.route.routeName}) xuất phát lúc ${new Date(schedule.departureTime).toLocaleString("vi-VN")} đã bị hủy. ${isWallet ? "Hệ thống đã hoàn trả 100% vào ví của bạn." : "Yêu cầu hoàn tiền đã được tạo."}`,
+            relatedBookingId: booking.id,
+            deliveryMethod: ["IN_APP"],
+            deliveryStatus: "SENT",
+          },
+        });
+      }
+    }
+
+    // 4. AdminLog
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE",
+        entity: "Schedule",
+        entityId: id,
+        description: `Hủy lịch trình: Tàu ${schedule.train.trainCode} (${schedule.route.routeName}) xuất phát ${new Date(schedule.departureTime).toLocaleString("vi-VN")}. Lý do: ${reason}. Ảnh hưởng ${confirmedBookings.length} đặt vé.`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+  });
+
+  // [BR-14] Gửi email cho hành khách (ngoài transaction)
+  if (confirmedBookings.length > 0) {
+    notifyScheduleChange(confirmedBookings, "CANCELLED", { notes: reason });
+  }
+
+  res.json({
+    message: `Đã hủy lịch trình thành công. Hoàn tiền tự động cho ${confirmedBookings.length} đặt vé.`,
+    cancelledScheduleId: id,
+    refundedBookings: confirmedBookings.length,
+  });
+});
+
+// ============================================================
+// PUT /api/v1/schedules/:scheduleId/stops/:stopId - Chỉnh sửa ScheduleStop (UC-27 G3b)
+// ?preview=true → chỉ validate, không lưu DB
+// ============================================================
+export const updateScheduleStop = asyncHandler(async (req, res) => {
+  const { scheduleId, stopId } = req.params;
+  const { arrivalTime, departureTime } = req.body;
+  const isPreview = req.query.preview === "true";
+
+  // --- Validate required fields ---
+  if (!arrivalTime || !departureTime) {
+    return res.status(400).json({
+      message:
+        "Giờ đến (arrivalTime) và giờ đi (departureTime) đều là bắt buộc.",
+    });
+  }
+
+  // --- Lấy Schedule và ScheduleStop ---
+  const schedule = await prisma.schedule.findUnique({
+    where: { id: scheduleId },
+    include: {
+      train: { select: { trainCode: true } },
+      route: {
+        select: {
+          routeName: true,
+          startStationId: true,
+          endStationId: true,
+        },
+      },
+      scheduleStops: {
+        orderBy: { stopOrder: "asc" },
+        include: { station: { select: { id: true, stationName: true } } },
+      },
+    },
+  });
+
+  if (!schedule)
+    return res.status(404).json({ message: "Không tìm thấy lịch trình." });
+
+  // [Validate 2] Không sửa lịch đã khởi hành
+  if (new Date(schedule.departureTime) < new Date()) {
+    return res.status(400).json({
+      message:
+        "Không thể chỉnh sửa ga dừng của lịch trình đã khởi hành hoặc đã qua.",
+    });
+  }
+
+  const stop = schedule.scheduleStops.find((s) => s.id === stopId);
+  if (!stop)
+    return res
+      .status(404)
+      .json({ message: "Không tìm thấy ga dừng trong lịch trình này." });
+
+  const stopIndex = schedule.scheduleStops.findIndex((s) => s.id === stopId);
+  const prevStop = stopIndex > 0 ? schedule.scheduleStops[stopIndex - 1] : null;
+  const nextStop =
+    stopIndex < schedule.scheduleStops.length - 1
+      ? schedule.scheduleStops[stopIndex + 1]
+      : null;
+
+  // [Validate 1] Tính tuần tự tại stop này
+  const seqCheck = validateSingleStopSequence({
+    arrivalTime: new Date(arrivalTime),
+    departureTime: new Date(departureTime),
+    prevStop,
+    nextStop,
+    scheduleDepartureTime: schedule.departureTime,
+    scheduleArrivalTime: schedule.arrivalTime,
+  });
+
+  if (!seqCheck.valid) {
+    return res.status(400).json({
+      message: seqCheck.errors[0],
+      errors: seqCheck.errors,
+    });
+  }
+
+  // [Validate 3 & 4] Đường đơn — kiểm tra với giờ mới
+  const warnings = [];
+  let suggestion = null;
+
+  // Xây dựng lại danh sách stops với giờ mới cho stop hiện tại
+  const updatedStops = schedule.scheduleStops.map((s) => ({
+    stationId: s.station.id,
+    stopOrder: s.stopOrder,
+    arrivalTime: s.id === stopId ? new Date(arrivalTime) : s.arrivalTime,
+    departureTime: s.id === stopId ? new Date(departureTime) : s.departureTime,
+  }));
+
+  const gapCheck = await validateSameDirectionGap({
+    routeId: schedule.routeId,
+    departureTime: schedule.departureTime,
+    arrivalTime: schedule.arrivalTime,
+    excludeScheduleId: scheduleId,
+  });
+
+  if (!gapCheck.valid) {
+    if (isPreview) {
+      warnings.push({
+        type: "SAME_DIRECTION_GAP",
+        message: gapCheck.conflict.message,
+      });
+    } else {
+      return res.status(409).json({
+        message: gapCheck.conflict.message,
+        conflictType: "SAME_DIRECTION_GAP",
+        conflict: gapCheck.conflict,
+      });
+    }
+  }
+
+  const oppCheck = await validateOpposingDirectionConflict({
+    startStationId: schedule.route.startStationId,
+    endStationId: schedule.route.endStationId,
+    departureTime: schedule.departureTime,
+    arrivalTime: schedule.arrivalTime,
+    proposedStops: updatedStops,
+    excludeScheduleId: scheduleId,
+  });
+
+  if (!oppCheck.valid) {
+    suggestion = oppCheck.conflict.suggestedDepartureTime;
+    if (isPreview) {
+      warnings.push({
+        type: "OPPOSING_DIRECTION",
+        message: oppCheck.conflict.message,
+        conflictingTrain: oppCheck.conflict.conflictingTrain,
+        suggestedDepartureTime: suggestion,
+      });
+    } else {
+      return res.status(409).json({
+        message: oppCheck.conflict.message,
+        conflictType: "OPPOSING_DIRECTION",
+        conflict: oppCheck.conflict,
+        suggestedDepartureTime: suggestion,
+      });
+    }
+  }
+
+  // === Preview mode: trả về kết quả mà không lưu DB ===
+  if (isPreview) {
+    return res.json({
+      valid: warnings.length === 0,
+      warnings,
+      suggestedDepartureTime: suggestion,
+      message:
+        warnings.length === 0
+          ? "Thời gian hợp lệ. Không có xung đột đường đơn."
+          : `Phát hiện ${warnings.length} cảnh báo đường đơn.`,
+    });
+  }
+
+  // === Lưu DB thật ===
+  const updatedStop = await prisma.$transaction(async (tx) => {
+    const s = await tx.scheduleStop.update({
+      where: { id: stopId },
+      data: {
+        arrivalTime: new Date(arrivalTime),
+        departureTime: new Date(departureTime),
+      },
+      include: { station: { select: { stationName: true } } },
+    });
+
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "UPDATE",
+        entity: "ScheduleStop",
+        entityId: stopId,
+        changes: JSON.stringify({
+          oldArrival: stop.arrivalTime,
+          newArrival: arrivalTime,
+          oldDeparture: stop.departureTime,
+          newDeparture: departureTime,
+        }),
+        description: `Điều chỉnh giờ dừng tại ga ${s.station.stationName} của lịch trình tàu ${schedule.train.trainCode} (${schedule.route.routeName}). Giờ đến mới: ${new Date(arrivalTime).toLocaleString("vi-VN")}, Giờ đi mới: ${new Date(departureTime).toLocaleString("vi-VN")}`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+
+    return s;
+  });
+
+  // [BR-14] Thông báo hành khách nếu có booking CONFIRMED
+  const confirmedCount = await prisma.booking.count({
+    where: { scheduleId, status: "CONFIRMED" },
+  });
+  if (confirmedCount > 0) {
+    notifyScheduleChange(scheduleId, "DELAYED", {
+      delayMinutes: 0,
+      originalDepartureTime: schedule.departureTime,
+      newDepartureTime: schedule.departureTime,
+      notes: `Thay đổi giờ dừng tại ga ${updatedStop.station.stationName}`,
+    });
+  }
+
+  res.json({
+    message: `Đã cập nhật giờ dừng tại ga ${updatedStop.station.stationName}.${confirmedCount > 0 ? ` Đã thông báo ${confirmedCount} hành khách.` : ""}`,
+    updatedStop,
+    notifiedPassengers: confirmedCount,
+    singleTrackStatus: warnings.length === 0 ? "CLEAR" : "WARNING",
+    warnings,
+  });
 });

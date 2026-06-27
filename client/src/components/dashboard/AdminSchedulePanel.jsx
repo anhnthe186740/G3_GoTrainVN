@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../../services/api";
 import { toast } from "sonner";
 import {
@@ -6,6 +6,7 @@ import {
   getSchedules,
   getTrains,
 } from "../../services/referenceDataApi";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 // ─── Helpers ───────────────────────────────────────────────────
 const formatDateTime = (iso) => {
@@ -206,6 +207,59 @@ export function AdminSchedulePanel() {
   });
   const [templateSubmitting, setTemplateSubmitting] = useState(false);
 
+  // ── UC-27: Create Single Schedule Modal ──────────────────────
+  const [showSingleScheduleModal, setShowSingleScheduleModal] = useState(false);
+  const [singleSchedForm, setSingleSchedForm] = useState({
+    routeId: "",
+    trainId: "",
+    departureTime: "",
+    bufferMinutes: "60",
+    notes: "",
+  });
+  const [singleSchedSubmitting, setSingleSchedSubmitting] = useState(false);
+  const [singleSchedPreview, setSingleSchedPreview] = useState(null);
+
+  // ── UC-27 G3b: Stop Edit Modal ────────────────────────────────
+  const [stopEditModal, setStopEditModal] = useState({
+    open: false,
+    scheduleId: null,
+    stop: null,
+    prevStop: null,
+    nextStop: null,
+    scheduleDep: null,
+    scheduleArr: null,
+    trainCode: "",
+    routeName: "",
+  });
+  const [stopEditForm, setStopEditForm] = useState({
+    arrivalTime: "",
+    departureTime: "",
+  });
+  const [stopValidation, setStopValidation] = useState({
+    loading: false,
+    errors: [],
+    warnings: [],
+    suggestion: null,
+  });
+  const [stopSaving, setStopSaving] = useState(false);
+  const stopValidateTimerRef = useRef(null);
+
+  // ── UC-27: Confirm Dialog (BR-33) ─────────────────────────────
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    message: "",
+    severity: "warning",
+    confirmText: "Xác nhận",
+    loading: false,
+    onConfirm: null,
+  });
+
+  const openConfirm = (opts) =>
+    setConfirmDialog({ ...opts, open: true, loading: false });
+  const closeConfirm = () =>
+    setConfirmDialog((d) => ({ ...d, open: false, loading: false }));
+
   const handleViewTimeline = async (scheduleId) => {
     setTimelineLoading(true);
     setTimelineSchedule(null);
@@ -396,14 +450,27 @@ export function AdminSchedulePanel() {
   };
 
   const handleDeleteTemplate = async (id) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa mẫu lịch chạy này?")) return;
-    try {
-      await api.delete(`/route-templates/${id}`);
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
-      toast.success("Đã xóa mẫu lịch chạy thành công.");
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Lỗi khi xóa mẫu lịch chạy.");
-    }
+    openConfirm({
+      title: "Xóa mẫu lịch chạy",
+      message:
+        "Bạn có chắc chắn muốn xóa mẫu lịch chạy này? Thao tác không thể hoàn tác.",
+      severity: "danger",
+      confirmText: "Xóa mẫu",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          await api.delete(`/route-templates/${id}`);
+          setTemplates((prev) => prev.filter((t) => t.id !== id));
+          toast.success("Đã xóa mẫu lịch chạy thành công.");
+          closeConfirm();
+        } catch (err) {
+          toast.error(
+            err.response?.data?.message || "Lỗi khi xóa mẫu lịch chạy.",
+          );
+          closeConfirm();
+        }
+      },
+    });
   };
 
   const handleToggleTemplateActive = async (id) => {
@@ -512,21 +579,232 @@ export function AdminSchedulePanel() {
     }
   };
 
-  // ── Delete Schedule ─────────────────────────────────────────────
+  // ── Delete Schedule (Legacy hard-delete) ────────────────────
   const handleDeleteSchedule = async (id, name) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa lịch trình của ${name}?`))
-      return;
+    openConfirm({
+      title: `Xóa lịch trình: ${name}`,
+      message:
+        "Thao tác này sẽ xóa vĩnh viễn lịch trình. Nếu có hành khách đặt vé, hãy dùng 'Hủy lịch' thay thế.",
+      severity: "danger",
+      confirmText: "Xóa vĩnh viễn",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          if (id.startsWith("mock-")) {
+            setSchedules((prev) => prev.filter((s) => s.id !== id));
+            toast.success("Đã xóa lịch trình (Dữ liệu mô phỏng).");
+          } else {
+            await api.delete(`/schedules/${id}`);
+            toast.success("Đã xóa lịch trình thành công.");
+            loadAll({ force: true });
+          }
+          closeConfirm();
+        } catch (err) {
+          toast.error("Không thể xóa lịch trình này.");
+          closeConfirm();
+        }
+      },
+    });
+  };
+
+  // ── UC-27 G6: Hủy lịch trình (giữ record, hoàn tiền) ────────
+  const handleCancelSchedule = (schedule) => {
+    const name = `${schedule.train?.trainCode} - ${schedule.route?.routeName}`;
+    openConfirm({
+      title: `Hủy lịch trình: ${name}`,
+      message: (
+        <>
+          <p>
+            Lịch trình <strong>{name}</strong> xuất phát lúc{" "}
+            <strong>
+              {new Date(schedule.departureTime).toLocaleString("vi-VN")}
+            </strong>{" "}
+            sẽ bị hủy.
+          </p>
+          <p className="mt-2 text-amber-700 bg-amber-50 rounded-lg p-2.5 text-xs">
+            ⚠️ Tất cả hành khách có đặt vé CONFIRMED sẽ được hoàn tiền tự động
+            và nhận email thông báo (BR-14).
+          </p>
+        </>
+      ),
+      severity: "danger",
+      confirmText: "Hủy & Hoàn tiền",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          const res = await api.patch(`/schedules/${schedule.id}/cancel`, {
+            reason: "Admin hủy lịch trình từ bảng quản lý.",
+          });
+          toast.success(res.data.message || "Đã hủy lịch trình thành công.");
+          closeConfirm();
+          loadAll({ force: true });
+        } catch (err) {
+          toast.error(
+            err.response?.data?.message || "Không thể hủy lịch trình.",
+          );
+          closeConfirm();
+        }
+      },
+    });
+  };
+
+  // ── UC-27 G4: Tạo lịch trình đơn lẻ ─────────────────────────
+  const handleCreateSingleSchedule = async (e) => {
+    e.preventDefault();
+    setSingleSchedSubmitting(true);
     try {
-      if (id.startsWith("mock-")) {
-        setSchedules((prev) => prev.filter((s) => s.id !== id));
-        toast.success("Đã xóa lịch trình (Dữ liệu mô phỏng).");
-      } else {
-        await api.delete(`/schedules/${id}`);
-        toast.success("Đã xóa lịch trình thành công.");
-        loadAll({ force: true });
-      }
+      const res = await api.post("/schedules", {
+        trainId: singleSchedForm.trainId,
+        routeId: singleSchedForm.routeId,
+        departureTime: singleSchedForm.departureTime,
+        bufferMinutes: parseInt(singleSchedForm.bufferMinutes) || 60,
+        notes: singleSchedForm.notes || undefined,
+      });
+      toast.success(res.data.message || "Đã tạo lịch trình thành công!");
+      setShowSingleScheduleModal(false);
+      setSingleSchedForm({
+        routeId: "",
+        trainId: "",
+        departureTime: "",
+        bufferMinutes: "60",
+        notes: "",
+      });
+      setSingleSchedPreview(null);
+      loadAll({ force: true });
     } catch (err) {
-      toast.error("Không thể xóa lịch trình này.");
+      toast.error(err.response?.data?.message || "Lỗi khi tạo lịch trình.");
+    } finally {
+      setSingleSchedSubmitting(false);
+    }
+  };
+
+  // ── UC-27 G3b: Mở modal chỉnh sửa ScheduleStop ───────────────
+  const handleOpenStopEdit = (schedule, stop, allStops) => {
+    const sorted = [...allStops].sort((a, b) => a.stopOrder - b.stopOrder);
+    const idx = sorted.findIndex((s) => s.id === stop.id);
+    setStopEditModal({
+      open: true,
+      scheduleId: schedule.id,
+      stop,
+      prevStop: idx > 0 ? sorted[idx - 1] : null,
+      nextStop: idx < sorted.length - 1 ? sorted[idx + 1] : null,
+      scheduleDep: schedule.departureTime,
+      scheduleArr: schedule.arrivalTime,
+      trainCode: schedule.train?.trainCode || "",
+      routeName: schedule.route?.routeName || "",
+    });
+    // Pre-fill form với giờ hiện tại, convert sang local datetime-local format
+    const toLocal = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().slice(0, 16);
+    };
+    setStopEditForm({
+      arrivalTime: toLocal(stop.arrivalTime),
+      departureTime: toLocal(stop.departureTime),
+    });
+    setStopValidation({
+      loading: false,
+      errors: [],
+      warnings: [],
+      suggestion: null,
+    });
+  };
+
+  // ── UC-27 G3b: Debounce preview khi thay đổi giờ ─────────────
+  useEffect(() => {
+    if (
+      !stopEditModal.open ||
+      !stopEditForm.arrivalTime ||
+      !stopEditForm.departureTime
+    )
+      return;
+    clearTimeout(stopValidateTimerRef.current);
+    stopValidateTimerRef.current = setTimeout(async () => {
+      setStopValidation((v) => ({ ...v, loading: true }));
+      try {
+        const res = await api.put(
+          `/schedules/${stopEditModal.scheduleId}/stops/${stopEditModal.stop?.id}?preview=true`,
+          {
+            arrivalTime: new Date(stopEditForm.arrivalTime).toISOString(),
+            departureTime: new Date(stopEditForm.departureTime).toISOString(),
+          },
+        );
+        setStopValidation({
+          loading: false,
+          errors: [],
+          warnings: res.data.warnings || [],
+          suggestion: res.data.suggestedDepartureTime || null,
+        });
+      } catch (err) {
+        const msg = err.response?.data?.message || "Lỗi validate";
+        const errs = err.response?.data?.errors || [msg];
+        setStopValidation({
+          loading: false,
+          errors: errs,
+          warnings: [],
+          suggestion: null,
+        });
+      }
+    }, 600);
+    return () => clearTimeout(stopValidateTimerRef.current);
+  }, [
+    stopEditForm.arrivalTime,
+    stopEditForm.departureTime,
+    stopEditModal.open,
+  ]);
+
+  // ── UC-27 G3b: Lưu thay đổi ScheduleStop ─────────────────────
+  const handleSaveStop = async () => {
+    if (stopValidation.errors.length > 0) return;
+    if (stopValidation.warnings.length > 0) {
+      openConfirm({
+        title: "Cảnh báo đường đơn",
+        message: (
+          <ul className="list-disc list-inside space-y-1 text-sm text-amber-800">
+            {stopValidation.warnings.map((w, i) => (
+              <li key={i}>{w.message}</li>
+            ))}
+          </ul>
+        ),
+        severity: "warning",
+        confirmText: "Vẫn lưu",
+        onConfirm: async () => {
+          setConfirmDialog((d) => ({ ...d, loading: true }));
+          await doSaveStop();
+          closeConfirm();
+        },
+      });
+      return;
+    }
+    await doSaveStop();
+  };
+
+  const doSaveStop = async () => {
+    setStopSaving(true);
+    try {
+      const res = await api.put(
+        `/schedules/${stopEditModal.scheduleId}/stops/${stopEditModal.stop?.id}`,
+        {
+          arrivalTime: new Date(stopEditForm.arrivalTime).toISOString(),
+          departureTime: new Date(stopEditForm.departureTime).toISOString(),
+        },
+      );
+      toast.success(res.data.message || "Đã cập nhật giờ dừng.");
+      setStopEditModal((m) => ({ ...m, open: false }));
+      // Refresh timeline nếu đang mở
+      if (timelineSchedule) {
+        const tRes = await api.get(
+          `/schedules/${stopEditModal.scheduleId}/timeline`,
+        );
+        setTimelineSchedule(tRes.data);
+      }
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu.");
+    } finally {
+      setStopSaving(false);
     }
   };
 
@@ -605,13 +883,26 @@ export function AdminSchedulePanel() {
             tự động.
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95 border-none cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[18px]">add</span>
-          Tạo lịch trình mới
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowSingleScheduleModal(true)}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-emerald-600/20 transition-all active:scale-95 border-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              add_circle
+            </span>
+            Tạo lịch đơn lẻ
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95 border-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              auto_schedule
+            </span>
+            Tạo hàng loạt
+          </button>
+        </div>
       </div>
 
       {/* Warning Alerts for Delays > 10 mins (BR-32) */}
@@ -2053,6 +2344,37 @@ export function AdminSchedulePanel() {
                           Ga cuối
                         </span>
                       )}
+                      {/* UC-27 G3b: Nút chỉnh sửa giờ dừng cho ga trung gian */}
+                      {point.type === "STOP" && point.stopId && (
+                        <button
+                          onClick={() =>
+                            handleOpenStopEdit(
+                              timelineSchedule.schedule,
+                              {
+                                id: point.stopId,
+                                stationName: point.stationName,
+                                arrivalTime: point.arrivalTime,
+                                departureTime: point.departureTime,
+                                stopOrder: point.stopOrder,
+                              },
+                              timelineSchedule.timeline
+                                .filter((p) => p.type === "STOP" && p.stopId)
+                                .map((p) => ({
+                                  id: p.stopId,
+                                  arrivalTime: p.arrivalTime,
+                                  departureTime: p.departureTime,
+                                  stopOrder: p.stopOrder,
+                                })),
+                            )
+                          }
+                          className="ml-1 w-6 h-6 rounded-md bg-violet-50 hover:bg-violet-100 flex items-center justify-center text-violet-600 transition-all cursor-pointer border-none"
+                          title="Điều chỉnh giờ dừng"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            edit
+                          </span>
+                        </button>
+                      )}
                     </h5>
                     <p className="text-xs text-[#3f4852]/60 mt-1">
                       {point.arrivalTime &&
@@ -2081,6 +2403,419 @@ export function AdminSchedulePanel() {
           </div>
         </div>
       )}
+
+      {/* ── UC-27: Single Schedule Create Modal ── */}
+      {showSingleScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
+              <h3 className="font-bold text-lg text-[#191c1e] flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-600">
+                  add_circle
+                </span>
+                Tạo lịch trình đơn lẻ
+              </h3>
+              <button
+                onClick={() => {
+                  setShowSingleScheduleModal(false);
+                  setSingleSchedPreview(null);
+                }}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-2">
+              <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5 shrink-0">
+                info
+              </span>
+              <p className="text-xs text-emerald-800">
+                Giờ dừng tại các ga trung gian sẽ được{" "}
+                <strong>tính tự động</strong> theo khoảng cách. Bạn có thể điều
+                chỉnh sau khi tạo qua Timeline.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateSingleSchedule} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tuyến đường *
+                </label>
+                <select
+                  required
+                  value={singleSchedForm.routeId}
+                  onChange={(e) => {
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      routeId: e.target.value,
+                    });
+                    const r = routes.find((r) => r.id === e.target.value);
+                    setSingleSchedPreview(r || null);
+                  }}
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tuyến đường --</option>
+                  {routes
+                    .filter((r) => r.isActive !== false)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.routeName} ({r.startStation?.stationName} →{" "}
+                        {r.endStation?.stationName})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Đoàn tàu *
+                </label>
+                <select
+                  required
+                  value={singleSchedForm.trainId}
+                  onChange={(e) =>
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      trainId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tàu hỏa --</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainName} ({t.trainCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ xuất phát *
+                  </label>
+                  <input
+                    required
+                    type="datetime-local"
+                    min={new Date().toISOString().slice(0, 16)}
+                    value={singleSchedForm.departureTime}
+                    onChange={(e) =>
+                      setSingleSchedForm({
+                        ...singleSchedForm,
+                        departureTime: e.target.value,
+                      })
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Buffer tại ga (phút)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={singleSchedForm.bufferMinutes}
+                    onChange={(e) =>
+                      setSingleSchedForm({
+                        ...singleSchedForm,
+                        bufferMinutes: e.target.value,
+                      })
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Preview timeline */}
+              {singleSchedPreview && singleSchedForm.departureTime && (
+                <div className="p-3 bg-[#f2f4f6] rounded-xl space-y-1.5">
+                  <p className="text-xs font-bold text-[#3f4852] flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">
+                      preview
+                    </span>
+                    Xem trước hành trình
+                  </p>
+                  <TripPreview
+                    selectedRoute={singleSchedPreview}
+                    departureTimes={
+                      singleSchedForm.departureTime
+                        .split("T")[1]
+                        ?.slice(0, 5) || ""
+                    }
+                    bufferMinutes={singleSchedForm.bufferMinutes}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Ghi chú
+                </label>
+                <input
+                  type="text"
+                  value={singleSchedForm.notes}
+                  onChange={(e) =>
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      notes: e.target.value,
+                    })
+                  }
+                  placeholder="Không bắt buộc"
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSingleScheduleModal(false);
+                    setSingleSchedPreview(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer bg-transparent"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={singleSchedSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {singleSchedSubmitting ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">
+                        progress_activity
+                      </span>
+                      Đang tạo...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">
+                        add_circle
+                      </span>
+                      Tạo lịch trình
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── UC-27 G3b: Stop Edit Modal ── */}
+      {stopEditModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
+              <div>
+                <h3 className="font-bold text-base text-[#191c1e] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-violet-600 text-[20px]">
+                    edit_calendar
+                  </span>
+                  Điều chỉnh giờ dừng — {stopEditModal.stop?.stationName}
+                </h3>
+                <p className="text-xs text-[#3f4852]/60 mt-0.5">
+                  {stopEditModal.trainCode} | {stopEditModal.routeName}
+                </p>
+              </div>
+              <button
+                onClick={() => setStopEditModal((m) => ({ ...m, open: false }))}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 text-[16px] mt-0.5 shrink-0">
+                warning
+              </span>
+              <p className="text-xs text-amber-800">
+                Thay đổi giờ dừng sẽ được kiểm tra quy tắc đường đơn tự động.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ đến ga *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={stopEditForm.arrivalTime}
+                    onChange={(e) =>
+                      setStopEditForm((f) => ({
+                        ...f,
+                        arrivalTime: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#7c4dff] outline-none cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ đi khỏi ga *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={stopEditForm.departureTime}
+                    onChange={(e) =>
+                      setStopEditForm((f) => ({
+                        ...f,
+                        departureTime: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#7c4dff] outline-none cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time validation panel */}
+              <div
+                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
+                  stopValidation.loading
+                    ? "bg-[#f2f4f6] border-[#bec7d4]/30"
+                    : stopValidation.errors.length > 0
+                      ? "bg-red-50 border-red-100"
+                      : stopValidation.warnings.length > 0
+                        ? "bg-amber-50 border-amber-100"
+                        : "bg-green-50 border-green-100"
+                }`}
+              >
+                {stopValidation.loading ? (
+                  <div className="flex items-center gap-1.5 text-[#3f4852]">
+                    <span className="material-symbols-outlined text-[14px] animate-spin">
+                      progress_activity
+                    </span>
+                    Đang kiểm tra đường đơn...
+                  </div>
+                ) : stopValidation.errors.length > 0 ? (
+                  <>
+                    <p className="font-bold text-red-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        error
+                      </span>
+                      Lỗi thời gian:
+                    </p>
+                    {stopValidation.errors.map((e, i) => (
+                      <p key={i} className="text-red-700 pl-4">
+                        • {e}
+                      </p>
+                    ))}
+                  </>
+                ) : stopValidation.warnings.length > 0 ? (
+                  <>
+                    <p className="font-bold text-amber-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        warning
+                      </span>
+                      Cảnh báo đường đơn:
+                    </p>
+                    {stopValidation.warnings.map((w, i) => (
+                      <p key={i} className="text-amber-800 pl-4">
+                        • {w.message}
+                      </p>
+                    ))}
+                    {stopValidation.suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(stopValidation.suggestion);
+                          d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                          setStopEditForm((f) => ({
+                            ...f,
+                            departureTime: d.toISOString().slice(0, 16),
+                          }));
+                        }}
+                        className="mt-1 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-semibold cursor-pointer border-none text-[11px]"
+                      >
+                        📅 Tự động điều chỉnh về{" "}
+                        {new Date(stopValidation.suggestion).toLocaleTimeString(
+                          "vi-VN",
+                        )}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold text-green-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        check_circle
+                      </span>
+                      Kiểm tra đường đơn:
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Giãn cách cùng chiều: OK
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Không xung đột tàu ngược chiều
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Tuần tự thời gian hợp lệ
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setStopEditModal((m) => ({ ...m, open: false }))
+                  }
+                  className="flex-1 py-2.5 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer bg-transparent"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveStop}
+                  disabled={
+                    stopSaving ||
+                    stopValidation.loading ||
+                    stopValidation.errors.length > 0
+                  }
+                  className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {stopSaving ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">
+                        progress_activity
+                      </span>
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">
+                        save
+                      </span>
+                      Lưu & Thông báo hành khách
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── UC-27 BR-33: Confirm Dialog ── */}
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        severity={confirmDialog.severity}
+        confirmText={confirmDialog.confirmText}
+        loading={confirmDialog.loading}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }
