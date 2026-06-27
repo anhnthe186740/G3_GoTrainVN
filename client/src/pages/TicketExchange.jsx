@@ -61,7 +61,9 @@ function minutesToDuration(minutes) {
   if (!Number.isFinite(minutes)) return "—";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (h > 0 && m > 0) return `${h} giờ ${m} phút`;
+  if (h > 0) return `${h} giờ`;
+  return `${m} phút`;
 }
 
 function getBookedTripStations(booking) {
