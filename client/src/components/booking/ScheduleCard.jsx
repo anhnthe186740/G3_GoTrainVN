@@ -24,7 +24,9 @@ export function ScheduleCard({ schedule, onSelect }) {
   const formatDuration = (mins) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return `${h}h ${m}m`;
+    if (h > 0 && m > 0) return `${h} giờ ${m} phút`;
+    if (h > 0) return `${h} giờ`;
+    return `${m} phút`;
   };
 
   const minPrice = Math.min(...schedule.pricing.map((p) => p.price));
