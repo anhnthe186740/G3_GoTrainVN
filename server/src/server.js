@@ -8,6 +8,7 @@ import {
   initializeSeatRealtime,
 } from "./realtime/seatRealtime.js";
 import { cleanupExpiredHolds } from "./services/seatSelection.service.js";
+import { cleanupExpiredBookings } from "./services/bookingCheckout.service.js";
 import { startAutoScheduleCron } from "./services/autoSchedule.service.js";
 
 const PORT = process.env.PORT || 5000;
@@ -37,6 +38,15 @@ async function startServer() {
     }
   }, 15_000);
   cleanupTimer.unref();
+
+  const bookingExpiryTimer = setInterval(async () => {
+    try {
+      await cleanupExpiredBookings();
+    } catch (error) {
+      console.error("Failed to clean expired bookings", error);
+    }
+  }, 60_000);
+  bookingExpiryTimer.unref();
 
   httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

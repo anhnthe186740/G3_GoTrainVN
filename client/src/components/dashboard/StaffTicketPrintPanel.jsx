@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { staffSearchApi } from "../../services/staffSearchApi";
+import { QRCodeSVG } from "qrcode.react";
 
 function formatDate(dateStr) {
   if (!dateStr) return "—";
@@ -196,20 +197,17 @@ function BoardingPass({ ticket, booking }) {
           </p>
         </div>
 
-        {/* Fake QR */}
-        <div className="w-28 h-28 bg-white border border-[#bec7d4] rounded-2xl p-2 relative overflow-hidden">
-          <div className="grid grid-cols-5 gap-1 w-full h-full opacity-80">
-            {Array.from({ length: 25 }).map((_, i) => (
-              <div
-                key={i}
-                className={`rounded-sm ${(i * 7 + 13) % 5 === 0 || i % 3 === 0 ? "bg-[#191c1e]" : "bg-transparent"}`}
-              />
-            ))}
-          </div>
-          <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#191c1e]" />
-          <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#191c1e]" />
-          <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#191c1e]" />
-          <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#191c1e]" />
+        {/* Dynamic QR Code */}
+        <div className="w-36 h-36 bg-white border border-[#bec7d4] rounded-2xl p-2 flex items-center justify-center relative overflow-hidden">
+          <QRCodeSVG
+            value={ticket?.ticketCode || booking?.bookingCode || ""}
+            size={128}
+            level="H"
+            includeMargin={true}
+            bgColor="#ffffff"
+            fgColor="#191c1e"
+            title="Mã QR soát vé"
+          />
         </div>
 
         <p className="text-[10px] text-center text-[#6f7883] font-bold leading-relaxed">

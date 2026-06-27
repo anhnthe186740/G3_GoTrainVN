@@ -187,6 +187,10 @@ export function getPaymentSuccessEmailTemplate(booking) {
         <div style="display: inline-block; background-color: #e0f2fe; color: #0369a1; padding: 5px 12px; border-radius: 6px; font-weight: 700; margin-top: 8px; font-size: 13px;">
           Toa ${p.carriageNumber || "—"} | Ghế số ${p.seat?.seatNumber || "—"}
         </div>
+        <div style="margin-top: 15px; text-align: center; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(p.ticketCode || "")}" alt="Mã QR soát vé" style="border: 1.5px solid #cbd5e1; padding: 6px; border-radius: 10px; background-color: #ffffff; width: 130px; height: 130px;" />
+          <p style="margin: 6px 0 0 0; font-size: 11px; color: #64748b; font-weight: 600;">Quét mã này tại ga để soát vé lên tàu</p>
+        </div>
       </div>
     </div>
   `,

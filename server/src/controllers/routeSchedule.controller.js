@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { searchJourneys } from "../services/scheduleSearch.service.js";
@@ -373,6 +374,12 @@ export const generateSchedules = asyncHandler(async (req, res) => {
   if (!route)
     return res.status(404).json({ message: "Không tìm thấy tuyến đường." });
 
+  if (!route.isActive) {
+    return res.status(400).json({
+      message: "Tuyến đường đã bị vô hiệu hóa. Không thể tạo lịch trình.",
+    });
+  }
+
   const train = await prisma.train.findUnique({
     where: { id: trainId },
     select: {
@@ -577,7 +584,8 @@ export const generateSchedules = asyncHandler(async (req, res) => {
 // ============================================================
 export const deleteRoute = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
+  
+  
   const now = new Date();
   // Safe validation (BR-30): Check if there is any active or delayed train currently running on this route
   const runningSchedule = await prisma.schedule.findFirst({
@@ -601,18 +609,244 @@ export const deleteRoute = asyncHandler(async (req, res) => {
   const route = await prisma.route.update({
     where: { id },
     data: { isActive: false },
+
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Update Route isActive status
+    const route = await tx.route.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    // 2. Fetch active/delayed future schedules for this route to cancel them
+    const futureSchedules = await tx.schedule.findMany({
+      where: {
+        routeId: id,
+        status: { in: ["ACTIVE", "DELAYED"] },
+        arrivalTime: { gte: new Date() },
+      },
+      select: { id: true },
+    });
+
+    const futureScheduleIds = futureSchedules.map((s) => s.id);
+    let confirmedBookings = [];
+
+    if (futureScheduleIds.length > 0) {
+      // 3. Update schedules status to CANCELLED
+      await tx.schedule.updateMany({
+        where: { id: { in: futureScheduleIds } },
+        data: {
+          status: "CANCELLED",
+          notes: `Hủy chuyến do tuyến đường bị vô hiệu hóa (${route.routeName})`,
+        },
+      });
+
+      // 4. Decline any pending bookings on these schedules
+      const pendingBookings = await tx.booking.findMany({
+        where: {
+          scheduleId: { in: futureScheduleIds },
+          status: "PENDING",
+        },
+      });
+
+      if (pendingBookings.length > 0) {
+        const pendingBookingIds = pendingBookings.map((b) => b.id);
+        await tx.booking.updateMany({
+          where: { id: { in: pendingBookingIds } },
+          data: {
+            status: "CANCELLED",
+            cancelReason: "Tuyến đường ngưng hoạt động",
+          },
+        });
+
+        for (const booking of pendingBookings) {
+          await tx.bookingPaymentHistory.create({
+            data: {
+              bookingId: booking.id,
+              paymentMethod: booking.paymentMethod || "UNKNOWN",
+              amount: booking.totalAmount,
+              status: "FAILED",
+              failureReason: "Tuyến đường ngưng hoạt động",
+              attemptNumber: 1,
+            },
+          });
+
+          if (booking.userId) {
+            await tx.notification.create({
+              data: {
+                userId: booking.userId,
+                type: "BOOKING_CANCELLED",
+                title: "Đơn đặt vé bị hủy bỏ",
+                message: `Rất tiếc, đơn đặt vé ${booking.bookingCode} của bạn đã bị hủy do tuyến đường ngưng hoạt động. Lý do: Dịch vụ hiện không khả dụng.`,
+                relatedBookingId: booking.id,
+                deliveryMethod: ["IN_APP"],
+                deliveryStatus: "SENT",
+              },
+            });
+          }
+        }
+      }
+
+      // 4b. Cancel and auto-refund any CONFIRMED bookings on these schedules
+      confirmedBookings = await tx.booking.findMany({
+        where: {
+          scheduleId: { in: futureScheduleIds },
+          status: "CONFIRMED",
+        },
+        include: {
+          user: {
+            select: { email: true, fullName: true },
+          },
+          schedule: {
+            include: {
+              train: { select: { trainCode: true, trainName: true } },
+              route: {
+                include: {
+                  startStation: { select: { stationName: true } },
+                  endStation: { select: { stationName: true } },
+                },
+              },
+            },
+          },
+          fromStation: { select: { stationName: true } },
+          toStation: { select: { stationName: true } },
+          passengers: {
+            select: { fullName: true, email: true },
+          },
+        },
+      });
+
+      if (confirmedBookings.length > 0) {
+        const confirmedBookingIds = confirmedBookings.map((b) => b.id);
+
+        // Update all booking details to CANCELLED
+        await tx.bookingDetail.updateMany({
+          where: {
+            bookingId: { in: confirmedBookingIds },
+            status: { in: ["CONFIRMED", "PENDING"] },
+          },
+          data: { status: "CANCELLED" },
+        });
+
+        const now = new Date();
+
+        for (const booking of confirmedBookings) {
+          const method = String(
+            booking.paymentMethod || "WALLET",
+          ).toUpperCase();
+          const isWallet = method === "WALLET";
+          const refundStatus = isWallet ? "COMPLETED" : "PENDING";
+          const paymentMethod = `REFUND_${isWallet ? "WALLET" : "BANK_TRANSFER"}`;
+
+          // Update booking status
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: {
+              status: "CANCELLED",
+              paymentStatus: isWallet ? "REFUNDED" : booking.paymentStatus,
+              refundAmount: booking.totalAmount,
+              cancelReason: "Tuyến đường ngưng hoạt động",
+              cancelledAt: now,
+            },
+          });
+
+          // Create payment history record
+          await tx.bookingPaymentHistory.create({
+            data: {
+              bookingId: booking.id,
+              paymentMethod,
+              amount: booking.totalAmount,
+              status: refundStatus === "COMPLETED" ? "SUCCESS" : "PENDING",
+              transactionId:
+                refundStatus === "COMPLETED"
+                  ? `REFUND-WALLET-AUTO-${randomUUID()}`
+                  : null,
+              attemptNumber: 1,
+            },
+          });
+
+          // Create refund tracking record
+          await tx.refund.create({
+            data: {
+              bookingId: booking.id,
+              refundAmount: booking.totalAmount,
+              refundMethod: isWallet ? "WALLET" : "BANK_TRANSFER",
+              status: refundStatus,
+              reason: "Tuyến đường ngưng hoạt động",
+              processedAt: refundStatus === "COMPLETED" ? now : null,
+            },
+          });
+
+          // If payment was via wallet, refund to customer's wallet
+          if (isWallet && booking.userId) {
+            const wallet = await tx.wallet.upsert({
+              where: { userId: booking.userId },
+              update: {},
+              create: { userId: booking.userId, balance: 0, currency: "VND" },
+            });
+            await tx.wallet.update({
+              where: { id: wallet.id },
+              data: { balance: { increment: booking.totalAmount } },
+            });
+            await tx.walletTransaction.create({
+              data: {
+                walletId: wallet.id,
+                type: "REFUND",
+                amount: booking.totalAmount,
+                description: `Hoàn tiền vé ${booking.bookingCode} (Tuyến đường bị vô hiệu hóa)`,
+                relatedBookingId: booking.id,
+                status: "COMPLETED",
+              },
+            });
+          }
+
+          // Create in-app notification
+          if (booking.userId) {
+            await tx.notification.create({
+              data: {
+                userId: booking.userId,
+                type: "BOOKING_CANCELLED",
+                title: "Chuyến tàu bị hủy khẩn cấp và Hoàn tiền",
+                message: `Chuyến tàu của đơn đặt vé ${booking.bookingCode} đã bị hủy do tuyến đường ngừng hoạt động. Hệ thống đã ${isWallet ? "hoàn trả 100% số tiền vào ví của bạn" : "tạo yêu cầu hoàn tiền chờ chuyển khoản"}.`,
+                relatedBookingId: booking.id,
+                deliveryMethod: ["IN_APP"],
+                deliveryStatus: "SENT",
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // 5. Create admin log
+    await tx.adminLog.create({
+      data: {
+        adminId: req.user.id,
+        action: "DELETE",
+        entity: "Route",
+        entityId: id,
+        description: `Vô hiệu hóa tuyến đường: ${route.routeName} và tự động hủy ${futureScheduleIds.length} lịch trình tương ứng.`,
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+      },
+    });
+
+    return { route, futureScheduleIds, confirmedBookings };
+
   });
-  await prisma.adminLog.create({
-    data: {
-      adminId: req.user.id,
-      action: "DELETE",
-      entity: "Route",
-      entityId: id,
-      description: `Vô hiệu hóa tuyến đường: ${route.routeName}`,
-      ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
-    },
+
+  // 6. Notify passengers outside transaction to avoid blocking it with email sending
+  if (result.confirmedBookings && result.confirmedBookings.length > 0) {
+    try {
+      notifyScheduleChange(result.confirmedBookings, "CANCELLED", {
+        notes: `Hủy chuyến do tuyến đường bị vô hiệu hóa (${result.route.routeName})`,
+      });
+    } catch (err) {
+      console.error("Error notifying schedule change:", err);
+    }
+  }
+
+  res.json({
+    message: `Tuyến đường đã được vô hiệu hóa và tự động hủy ${result.futureScheduleIds.length} lịch trình tương ứng.`,
   });
-  res.json({ message: "Tuyến đường đã được vô hiệu hóa." });
 });
 
 // ============================================================
@@ -792,6 +1026,16 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
     });
   }
 
+  const route = await prisma.route.findUnique({ where: { id: routeId } });
+  if (!route) {
+    return res.status(404).json({ message: "Không tìm thấy tuyến đường." });
+  }
+  if (!route.isActive) {
+    return res.status(400).json({
+      message: "Tuyến đường đã bị vô hiệu hóa. Không thể tạo mẫu lịch chạy.",
+    });
+  }
+
   // Check unique constraint: one template per (route, train)
   const existing = await prisma.routeTemplate.findUnique({
     where: {
@@ -848,6 +1092,31 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
   const { routeId, trainId, departureTimes, bufferMinutes, isActive } =
     req.body;
 
+  const current = await prisma.routeTemplate.findUnique({
+    where: { id },
+  });
+  if (!current) {
+    return res
+      .status(404)
+      .json({ message: "Không tìm thấy mẫu lịch chạy cần cập nhật." });
+  }
+
+  const nextRouteId = routeId || current.routeId;
+  const targetRoute = await prisma.route.findUnique({
+    where: { id: nextRouteId },
+  });
+  if (!targetRoute) {
+    return res.status(404).json({ message: "Không tìm thấy tuyến đường." });
+  }
+
+  const nextIsActive = isActive !== undefined ? isActive : current.isActive;
+  if (!targetRoute.isActive && nextIsActive) {
+    return res.status(400).json({
+      message:
+        "Tuyến đường đã bị vô hiệu hóa. Không thể chọn hoặc kích hoạt mẫu lịch chạy cho tuyến đường này.",
+    });
+  }
+
   const updateData = {};
   if (departureTimes !== undefined && Array.isArray(departureTimes)) {
     updateData.departureTimes = departureTimes;
@@ -861,15 +1130,6 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
 
   // Handle routeId or trainId updates with unique constraint verification
   if (routeId || trainId) {
-    const current = await prisma.routeTemplate.findUnique({
-      where: { id },
-    });
-    if (!current) {
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy mẫu lịch chạy cần cập nhật." });
-    }
-    const nextRouteId = routeId || current.routeId;
     const nextTrainId = trainId || current.trainId;
 
     if (nextRouteId !== current.routeId || nextTrainId !== current.trainId) {

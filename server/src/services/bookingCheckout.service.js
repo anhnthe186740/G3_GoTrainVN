@@ -757,22 +757,26 @@ export async function quoteBooking(
   const { findBestPromotion, validateVoucher } =
     await import("./promotion.service.js");
 
-  const { promotion: autoPromo, discountAmount: autoPromoDiscount } =
-    await findBestPromotion(scheduleInputs, beforeVoucher);
-
-  const beforeVoucherWithPromo = Math.max(0, beforeVoucher - autoPromoDiscount);
-
   let voucher = null;
   let voucherDiscount = 0;
+  let autoPromo = null;
+  let autoPromoDiscount = 0;
+
   if (voucherCode) {
     const result = await validateVoucher(
       voucherCode,
-      beforeVoucherWithPromo,
+      beforeVoucher,
       identity.userId,
     );
     voucher = result.voucher;
     voucherDiscount = result.discountAmount;
+  } else {
+    const result = await findBestPromotion(scheduleInputs, beforeVoucher);
+    autoPromo = result.promotion;
+    autoPromoDiscount = result.discountAmount;
   }
+
+  const finalDiscount = voucher ? voucherDiscount : autoPromoDiscount;
 
   return {
     session,
@@ -783,7 +787,7 @@ export async function quoteBooking(
     passengerDiscount,
     promotionDiscount: autoPromoDiscount,
     voucherDiscount,
-    totalAmount: Math.max(0, beforeVoucherWithPromo - voucherDiscount),
+    totalAmount: Math.max(0, beforeVoucher - finalDiscount),
   };
 }
 
@@ -1523,4 +1527,29 @@ async function sendBookingEmail(bookingId, type) {
   } catch (err) {
     console.error(`❌ Gửi email booking (${type}) thất bại:`, err.message);
   }
+}
+
+export async function cleanupExpiredBookings(now = new Date()) {
+  const expired = await prisma.booking.findMany({
+    where: {
+      status: "PENDING",
+      expiresAt: { lte: now },
+    },
+    select: { id: true, bookingCode: true },
+  });
+
+  if (expired.length === 0) return [];
+
+  await prisma.booking.updateMany({
+    where: { id: { in: expired.map((b) => b.id) }, status: "PENDING" },
+    data: {
+      status: "CANCELLED",
+      paymentStatus: "FAILED",
+      cancelReason: "Hết thời gian thanh toán",
+      cancelledAt: now,
+      expiresAt: null,
+    },
+  });
+
+  return expired;
 }
