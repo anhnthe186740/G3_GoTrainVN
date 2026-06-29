@@ -501,27 +501,51 @@ export async function generateSchedulesForRange(startDateStr, endDateStr) {
 }
 
 /**
- * Khởi chạy timer tự động tạo lịch trình mỗi 24 giờ
+ * Khởi chạy timer tự động tạo lịch trình định kỳ lúc 00:00 hàng ngày
  */
 export function startAutoScheduleCron() {
-  // Chạy thử lần đầu sau 10 giây khi khởi động server
+  // 1. Chạy thử lần đầu sau 10 giây khi khởi động server để bù lịch nếu có gián đoạn
   setTimeout(async () => {
     try {
       await generateSchedulesForDay30();
     } catch (e) {
-      console.error("[AutoSchedule] Lỗi chạy ngầm lần đầu:", e);
+      console.error("[AutoSchedule] Lỗi chạy ngầm lần đầu khi khởi động:", e);
     }
   }, 10_000);
 
-  // Chạy định kỳ sau mỗi 24 giờ
-  const intervalTime = 24 * 3600 * 1000;
-  const timer = setInterval(async () => {
-    try {
-      await generateSchedulesForDay30();
-    } catch (e) {
-      console.error("[AutoSchedule] Lỗi tác vụ chạy ngầm định kỳ:", e);
-    }
-  }, intervalTime);
+  // 2. Tính toán thời gian chờ đến 00:00 đêm tiếp theo
+  const now = new Date();
+  const nextMidnight = new Date(now);
+  nextMidnight.setDate(nextMidnight.getDate() + 1);
+  nextMidnight.setHours(0, 0, 0, 0);
 
-  timer.unref();
+  const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+
+  console.log(
+    `[AutoSchedule] Đã hẹn giờ tự động quét tiếp theo vào lúc 00:00 ngày ${nextMidnight.toLocaleDateString("vi-VN")} (sau ${Math.round(msUntilMidnight / 60000)} phút nữa).`,
+  );
+
+  // Đợi đến mốc 00:00 đêm
+  const startupTimer = setTimeout(() => {
+    // Chạy tác vụ lúc 00:00
+    try {
+      generateSchedulesForDay30();
+    } catch (e) {
+      console.error("[AutoSchedule] Lỗi chạy ngầm lúc 00:00:", e);
+    }
+
+    // Thiết lập chạy lặp lại định kỳ mỗi 24 giờ kể từ lúc 00:00
+    const intervalTime = 24 * 3600 * 1000;
+    const timer = setInterval(async () => {
+      try {
+        await generateSchedulesForDay30();
+      } catch (e) {
+        console.error("[AutoSchedule] Lỗi tác vụ chạy ngầm định kỳ 00:00:", e);
+      }
+    }, intervalTime);
+
+    timer.unref();
+  }, msUntilMidnight);
+
+  startupTimer.unref();
 }
