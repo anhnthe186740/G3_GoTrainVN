@@ -2258,12 +2258,29 @@ export function AdminSchedulePanel() {
                 <select
                   required
                   value={templateForm.routeId}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const selectedRouteId = e.target.value;
+                    let nextTime = "08:00";
+                    if (selectedRouteId) {
+                      const activeRouteTemplates = templates.filter(
+                        (t) =>
+                          t.routeId === selectedRouteId &&
+                          t.isActive &&
+                          (!editingTemplate || t.id !== editingTemplate.id),
+                      );
+                      if (activeRouteTemplates.length > 0) {
+                        const occupiedTimes = activeRouteTemplates.flatMap(
+                          (t) => t.departureTimes,
+                        );
+                        nextTime = findNextSafeTime("08:00", occupiedTimes, 20);
+                      }
+                    }
                     setTemplateForm({
                       ...templateForm,
-                      routeId: e.target.value,
-                    })
-                  }
+                      routeId: selectedRouteId,
+                      departureTimes: nextTime,
+                    });
+                  }}
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
                 >
                   <option value="">-- Chọn tuyến đường --</option>
