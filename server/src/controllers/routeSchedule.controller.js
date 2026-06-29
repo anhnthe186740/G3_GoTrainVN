@@ -1027,6 +1027,57 @@ export const getRouteTemplates = asyncHandler(async (req, res) => {
 });
 
 // ============================================================
+// Hỗ trợ tính toán giãn cách thời gian cho Mẫu lịch chạy
+// ============================================================
+function timeToMinutes(timeStr) {
+  if (typeof timeStr !== "string" || !timeStr.includes(":")) return 0;
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
+function minutesToTime(mins) {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function getMinutesDifference(t1, t2) {
+  const m1 = timeToMinutes(t1);
+  const m2 = timeToMinutes(t2);
+  const diff = Math.abs(m1 - m2);
+  return Math.min(diff, 1440 - diff);
+}
+
+function findNextSafeTime(proposedTime, occupiedTimesStr, gap = 20) {
+  const occupiedMins = occupiedTimesStr.map(timeToMinutes);
+  let currentMins = timeToMinutes(proposedTime);
+  let attempts = 0;
+  while (attempts < 72) {
+    let hasConflict = false;
+    for (const occ of occupiedMins) {
+      const diff = Math.min(
+        Math.abs(currentMins - occ),
+        1440 - Math.abs(currentMins - occ),
+      );
+      if (diff < gap) {
+        currentMins = (occ + gap) % 1440;
+        hasConflict = true;
+        break;
+      }
+    }
+    if (!hasConflict) {
+      return minutesToTime(currentMins);
+    }
+    attempts++;
+  }
+  return minutesToTime((timeToMinutes(proposedTime) + gap) % 1440);
+}
+
+// ============================================================
 // POST /api/v1/route-templates - Tạo template mới
 // ============================================================
 export const createRouteTemplate = asyncHandler(async (req, res) => {
@@ -1067,13 +1118,47 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
     });
   }
 
+  // Kiểm tra trùng hoặc quá gần với mẫu lịch của tàu khác trên cùng tuyến
+  const activeStatus = isActive !== undefined ? isActive : true;
+  if (activeStatus) {
+    const activeRouteTemplates = await prisma.routeTemplate.findMany({
+      where: {
+        routeId,
+        isActive: true,
+        trainId: { not: trainId },
+      },
+      include: {
+        train: true,
+      },
+    });
+
+    if (activeRouteTemplates.length > 0) {
+      const occupiedTimes = activeRouteTemplates.flatMap(
+        (t) => t.departureTimes,
+      );
+      for (const propTime of departureTimes) {
+        for (const activeTpl of activeRouteTemplates) {
+          for (const occTime of activeTpl.departureTimes) {
+            const diff = getMinutesDifference(propTime, occTime);
+            if (diff < 20) {
+              const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+              return res.status(400).json({
+                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
   const template = await prisma.routeTemplate.create({
     data: {
       routeId,
       trainId,
       departureTimes,
       bufferMinutes: bufferMinutes ? parseInt(bufferMinutes, 10) : 60,
-      isActive: isActive !== undefined ? isActive : true,
+      isActive: activeStatus,
     },
     include: {
       route: {
@@ -1147,10 +1232,45 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
     updateData.isActive = isActive;
   }
 
+  const nextTrainId = trainId || current.trainId;
+  const nextDepartureTimes =
+    departureTimes !== undefined ? departureTimes : current.departureTimes;
+
+  // Kiểm tra trùng hoặc quá gần với mẫu lịch của tàu khác trên cùng tuyến
+  if (nextIsActive) {
+    const activeRouteTemplates = await prisma.routeTemplate.findMany({
+      where: {
+        routeId: nextRouteId,
+        isActive: true,
+        id: { not: id },
+      },
+      include: {
+        train: true,
+      },
+    });
+
+    if (activeRouteTemplates.length > 0) {
+      const occupiedTimes = activeRouteTemplates.flatMap(
+        (t) => t.departureTimes,
+      );
+      for (const propTime of nextDepartureTimes) {
+        for (const activeTpl of activeRouteTemplates) {
+          for (const occTime of activeTpl.departureTimes) {
+            const diff = getMinutesDifference(propTime, occTime);
+            if (diff < 20) {
+              const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+              return res.status(400).json({
+                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Handle routeId or trainId updates with unique constraint verification
   if (routeId || trainId) {
-    const nextTrainId = trainId || current.trainId;
-
     if (nextRouteId !== current.routeId || nextTrainId !== current.trainId) {
       const existing = await prisma.routeTemplate.findUnique({
         where: {
