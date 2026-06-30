@@ -9,6 +9,52 @@ import {
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 // ─── Helpers ───────────────────────────────────────────────────
+const timeToMinutes = (timeStr) => {
+  if (typeof timeStr !== "string" || !timeStr.includes(":")) return 0;
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return 0;
+  return h * 60 + m;
+};
+
+const minutesToTime = (mins) => {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+const getMinutesDifference = (t1, t2) => {
+  const m1 = timeToMinutes(t1);
+  const m2 = timeToMinutes(t2);
+  const diff = Math.abs(m1 - m2);
+  return Math.min(diff, 1440 - diff);
+};
+
+const findNextSafeTime = (proposedTime, occupiedTimesStr, gap = 20) => {
+  const occupiedMins = occupiedTimesStr.map(timeToMinutes);
+  let currentMins = timeToMinutes(proposedTime);
+  let attempts = 0;
+  while (attempts < 72) {
+    let hasConflict = false;
+    for (const occ of occupiedMins) {
+      const diff = Math.min(
+        Math.abs(currentMins - occ),
+        1440 - Math.abs(currentMins - occ),
+      );
+      if (diff < gap) {
+        currentMins = (occ + gap) % 1440;
+        hasConflict = true;
+        break;
+      }
+    }
+    if (!hasConflict) return minutesToTime(currentMins);
+    attempts++;
+  }
+  return minutesToTime((timeToMinutes(proposedTime) + gap) % 1440);
+};
+
 const formatDateTime = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -493,6 +539,49 @@ export function AdminSchedulePanel() {
       );
     }
   };
+
+  const getTemplateConflicts = () => {
+    if (!templateForm.routeId || !templateForm.departureTimes) return [];
+
+    const activeRouteTemplates = templates.filter(
+      (t) =>
+        t.routeId === templateForm.routeId &&
+        t.isActive &&
+        (!editingTemplate || t.id !== editingTemplate.id),
+    );
+
+    if (activeRouteTemplates.length === 0) return [];
+
+    const occupiedTimes = activeRouteTemplates.flatMap((t) => t.departureTimes);
+
+    const inputTimes = templateForm.departureTimes
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+    const conflicts = [];
+
+    for (const propTime of inputTimes) {
+      for (const tpl of activeRouteTemplates) {
+        for (const occTime of tpl.departureTimes) {
+          const diff = getMinutesDifference(propTime, occTime);
+          if (diff < 20) {
+            const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+            conflicts.push({
+              proposedTime: propTime,
+              conflictingTime: occTime,
+              trainCode: tpl.train?.trainCode || "khác",
+              suggestedTime: safeTime,
+            });
+          }
+        }
+      }
+    }
+
+    return conflicts;
+  };
+
+  const templateConflicts = getTemplateConflicts();
 
   const handleSaveTemplate = async (e) => {
     e.preventDefault();
@@ -2169,12 +2258,29 @@ export function AdminSchedulePanel() {
                 <select
                   required
                   value={templateForm.routeId}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const selectedRouteId = e.target.value;
+                    let nextTime = "08:00";
+                    if (selectedRouteId) {
+                      const activeRouteTemplates = templates.filter(
+                        (t) =>
+                          t.routeId === selectedRouteId &&
+                          t.isActive &&
+                          (!editingTemplate || t.id !== editingTemplate.id),
+                      );
+                      if (activeRouteTemplates.length > 0) {
+                        const occupiedTimes = activeRouteTemplates.flatMap(
+                          (t) => t.departureTimes,
+                        );
+                        nextTime = findNextSafeTime("08:00", occupiedTimes, 20);
+                      }
+                    }
                     setTemplateForm({
                       ...templateForm,
-                      routeId: e.target.value,
-                    })
-                  }
+                      routeId: selectedRouteId,
+                      departureTimes: nextTime,
+                    });
+                  }}
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
                 >
                   <option value="">-- Chọn tuyến đường --</option>
@@ -2232,6 +2338,66 @@ export function AdminSchedulePanel() {
                   placeholder="06:00, 12:00, 20:00"
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
+
+                {templateForm.routeId &&
+                  (() => {
+                    const activeRouteTemplates = templates.filter(
+                      (t) =>
+                        t.routeId === templateForm.routeId &&
+                        t.isActive &&
+                        (!editingTemplate || t.id !== editingTemplate.id),
+                    );
+                    if (activeRouteTemplates.length > 0) {
+                      const allTimes = activeRouteTemplates.flatMap((t) =>
+                        t.departureTimes.map(
+                          (time) =>
+                            `${time} (${t.train?.trainCode || "chưa rõ"})`,
+                        ),
+                      );
+                      return (
+                        <p className="mt-1 text-[11px] text-[#3f4852]/60">
+                          Các giờ chạy đã có trên tuyến này:{" "}
+                          {allTimes.join(", ")}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                {templateConflicts.length > 0 && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
+                    {templateConflicts.map((c, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs text-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      >
+                        <span>
+                          ⚠️ Giờ <strong>{c.proposedTime}</strong> quá gần giờ
+                          chạy <strong>{c.conflictingTime}</strong> (Tàu{" "}
+                          {c.trainCode}).
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parts = templateForm.departureTimes
+                              .split(",")
+                              .map((t) => t.trim());
+                            const updatedParts = parts.map((t) =>
+                              t === c.proposedTime ? c.suggestedTime : t,
+                            );
+                            setTemplateForm({
+                              ...templateForm,
+                              departureTimes: updatedParts.join(", "),
+                            });
+                          }}
+                          className="text-[11px] font-bold text-violet-700 hover:text-violet-900 underline bg-transparent border-none cursor-pointer p-0 self-end sm:self-auto"
+                        >
+                          Sửa thành {c.suggestedTime}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
