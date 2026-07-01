@@ -90,6 +90,13 @@ export async function generateSchedulesByTemplate(targetDate) {
 
         const departure = new Date(targetDay);
         departure.setHours(hour, minute, 0, 0);
+
+        // Kiểm tra thời gian thực (Real-time Validation)
+        if (departure.getTime() <= Date.now()) {
+          skippedCount++;
+          continue;
+        }
+
         const arrival = new Date(
           departure.getTime() + totalDurationMins * 60 * 1000,
         );
@@ -340,6 +347,13 @@ export async function generateSchedulesByBaseline(targetDate) {
 
       const departure = new Date(targetDay);
       departure.setHours(pattern.hour, pattern.minute, 0, 0);
+
+      // Kiểm tra thời gian thực (Real-time Validation)
+      if (departure.getTime() <= Date.now()) {
+        skippedCount++;
+        continue;
+      }
+
       const arrival = new Date(
         departure.getTime() + totalDurationMins * 60 * 1000,
       );
