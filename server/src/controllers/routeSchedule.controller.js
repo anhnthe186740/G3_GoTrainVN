@@ -477,6 +477,16 @@ export const generateSchedules = asyncHandler(async (req, res) => {
   const valid = [];
 
   for (const trip of proposed) {
+    // Kiểm tra thời gian thực (Real-time Validation): Giờ khởi hành của lịch trình mới phải nằm ở tương lai
+    if (trip.departure.getTime() <= Date.now()) {
+      conflicts.push({
+        proposedDeparture: trip.departure.toISOString(),
+        proposedArrival: trip.arrival.toISOString(),
+        message: "Giờ khởi hành đã trôi qua so với thời điểm hiện tại.",
+      });
+      continue;
+    }
+
     // Check overlap: new trip window [departure - buffer, arrival + buffer]
     const windowStart = trip.departure.getTime() - bufferMs;
     const windowEnd = trip.arrival.getTime() + bufferMs;
