@@ -469,10 +469,14 @@ export async function generateSchedulesForDay30() {
     `[AutoSchedule] Bắt đầu tự động quét và tạo lịch trình cho 30 ngày tới: từ ${today.toLocaleDateString("vi-VN")} đến ${targetDate.toLocaleDateString("vi-VN")}`,
   );
 
-  return generateSchedulesForRange(
-    today.toISOString().split("T")[0],
-    targetDate.toISOString().split("T")[0],
-  );
+  const formatLocal = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  return generateSchedulesForRange(formatLocal(today), formatLocal(targetDate));
 }
 
 /**
