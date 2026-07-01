@@ -132,17 +132,42 @@ export function RouteScheduleMgmt({ mode }) {
   const [schedules, setSchedules] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
 
-  // Pagination states
+  // Pagination and Filter states
   const [routePage, setRoutePage] = useState(1);
   const routesPerPage = 10;
   const [schedPage, setSchedPage] = useState(1);
   const schedsPerPage = 10;
 
-  const totalRoutePages = Math.ceil(routes.length / routesPerPage);
+  const [routeSearch, setRouteSearch] = useState("");
+  const [routeStatusFilter, setRouteStatusFilter] = useState("");
+
+  const filteredRoutes = useMemo(() => {
+    return routes.filter((r) => {
+      const matchesSearch =
+        r.routeName.toLowerCase().includes(routeSearch.toLowerCase()) ||
+        (r.startStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase()) ||
+        (r.endStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase());
+
+      const matchesStatus =
+        routeStatusFilter === ""
+          ? true
+          : routeStatusFilter === "ACTIVE"
+            ? r.isActive
+            : !r.isActive;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [routes, routeSearch, routeStatusFilter]);
+
+  const totalRoutePages = Math.ceil(filteredRoutes.length / routesPerPage);
   const currentRoutes = useMemo(() => {
     const startIdx = (routePage - 1) * routesPerPage;
-    return routes.slice(startIdx, startIdx + routesPerPage);
-  }, [routes, routePage]);
+    return filteredRoutes.slice(startIdx, startIdx + routesPerPage);
+  }, [filteredRoutes, routePage]);
 
   const totalSchedPages = Math.ceil(schedules.length / schedsPerPage);
   const currentSchedules = useMemo(() => {
@@ -151,10 +176,14 @@ export function RouteScheduleMgmt({ mode }) {
   }, [schedules, schedPage]);
 
   useEffect(() => {
+    setRoutePage(1);
+  }, [routeSearch, routeStatusFilter]);
+
+  useEffect(() => {
     if (routePage > totalRoutePages && totalRoutePages > 0) {
       setRoutePage(totalRoutePages);
     }
-  }, [routes.length, totalRoutePages, routePage]);
+  }, [filteredRoutes.length, totalRoutePages, routePage]);
 
   useEffect(() => {
     if (schedPage > totalSchedPages && totalSchedPages > 0) {
@@ -861,9 +890,35 @@ export function RouteScheduleMgmt({ mode }) {
                 <span className="material-symbols-outlined text-[#00629d]">
                   route
                 </span>
-                Danh Sách Tuyến Đường ({routes.length})
+                Danh Sách Tuyến Đường ({filteredRoutes.length})
               </h3>
             </div>
+
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 px-6 py-3 bg-[#f2f4f6]/30 border-b border-[#bec7d4]/10">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#3f4852]/60 text-[18px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo tên tuyến đường, ga đi, ga đến..."
+                  value={routeSearch}
+                  onChange={(e) => setRouteSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
+                />
+              </div>
+              <select
+                value={routeStatusFilter}
+                onChange={(e) => setRouteStatusFilter(e.target.value)}
+                className="py-2 px-3 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Đã vô hiệu hóa</option>
+              </select>
+            </div>
+
             {loadingRef ? (
               <div className="flex items-center justify-center py-16 text-[#3f4852]">
                 <span className="material-symbols-outlined animate-spin mr-2">
@@ -871,12 +926,14 @@ export function RouteScheduleMgmt({ mode }) {
                 </span>
                 Đang tải...
               </div>
-            ) : routes.length === 0 ? (
+            ) : filteredRoutes.length === 0 ? (
               <div className="text-center py-16 text-[#3f4852]/60">
                 <span className="material-symbols-outlined text-5xl block mb-2">
                   route
                 </span>
-                Chưa có tuyến đường nào.
+                {routes.length === 0
+                  ? "Chưa có tuyến đường nào."
+                  : "Không tìm thấy tuyến đường phù hợp."}
               </div>
             ) : (
               <div className="overflow-x-auto">
