@@ -995,9 +995,16 @@ export const triggerAutoGenerateSchedules = asyncHandler(async (req, res) => {
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + 30);
 
+  const formatLocal = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const result = await generateSchedulesForRange(
-    startDate.toISOString().split("T")[0],
-    endDate.toISOString().split("T")[0],
+    formatLocal(startDate),
+    formatLocal(endDate),
   );
 
   await prisma.adminLog.create({
