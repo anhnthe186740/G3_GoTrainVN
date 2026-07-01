@@ -132,6 +132,36 @@ export function RouteScheduleMgmt({ mode }) {
   const [schedules, setSchedules] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
 
+  // Pagination states
+  const [routePage, setRoutePage] = useState(1);
+  const routesPerPage = 10;
+  const [schedPage, setSchedPage] = useState(1);
+  const schedsPerPage = 10;
+
+  const totalRoutePages = Math.ceil(routes.length / routesPerPage);
+  const currentRoutes = useMemo(() => {
+    const startIdx = (routePage - 1) * routesPerPage;
+    return routes.slice(startIdx, startIdx + routesPerPage);
+  }, [routes, routePage]);
+
+  const totalSchedPages = Math.ceil(schedules.length / schedsPerPage);
+  const currentSchedules = useMemo(() => {
+    const startIdx = (schedPage - 1) * schedsPerPage;
+    return schedules.slice(startIdx, startIdx + schedsPerPage);
+  }, [schedules, schedPage]);
+
+  useEffect(() => {
+    if (routePage > totalRoutePages && totalRoutePages > 0) {
+      setRoutePage(totalRoutePages);
+    }
+  }, [routes.length, totalRoutePages, routePage]);
+
+  useEffect(() => {
+    if (schedPage > totalSchedPages && totalSchedPages > 0) {
+      setSchedPage(totalSchedPages);
+    }
+  }, [schedules.length, totalSchedPages, schedPage]);
+
   // Route form state
   const [routeForm, setRouteForm] = useState({
     routeName: "",
@@ -871,7 +901,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {routes.map((r) => (
+                    {currentRoutes.map((r) => (
                       <tr
                         key={r.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -967,6 +997,66 @@ export function RouteScheduleMgmt({ mode }) {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {totalRoutePages > 1 && (
+              <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                <p className="text-xs text-[#3f4852]">
+                  Trang <span className="font-semibold">{routePage}</span> /{" "}
+                  <span className="font-semibold">{totalRoutePages}</span> (Tổng{" "}
+                  {routes.length} tuyến)
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={routePage === 1}
+                    onClick={() => setRoutePage((p) => Math.max(p - 1, 1))}
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalRoutePages }, (_, idx) => idx + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalRoutePages ||
+                        Math.abs(p - routePage) <= 1,
+                    )
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore =
+                        idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                              ...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setRoutePage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                              routePage === p
+                                ? "bg-[#00629d] text-white"
+                                : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    disabled={routePage === totalRoutePages}
+                    onClick={() =>
+                      setRoutePage((p) => Math.min(p + 1, totalRoutePages))
+                    }
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Sau
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1205,7 +1295,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {schedules.slice(0, 30).map((s) => (
+                    {currentSchedules.map((s) => (
                       <tr
                         key={s.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -1242,10 +1332,68 @@ export function RouteScheduleMgmt({ mode }) {
                     ))}
                   </tbody>
                 </table>
-                {schedules.length > 30 && (
-                  <p className="text-center text-xs text-[#3f4852]/60 py-3 border-t border-[#bec7d4]/10">
-                    Hiển thị 30/{schedules.length} lịch trình gần nhất.
-                  </p>
+                {totalSchedPages > 1 && (
+                  <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                    <p className="text-xs text-[#3f4852]">
+                      Trang <span className="font-semibold">{schedPage}</span> /{" "}
+                      <span className="font-semibold">{totalSchedPages}</span>{" "}
+                      (Tổng {schedules.length} lịch trình)
+                    </p>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={schedPage === 1}
+                        onClick={() => setSchedPage((p) => Math.max(p - 1, 1))}
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Trước
+                      </button>
+                      {Array.from(
+                        { length: totalSchedPages },
+                        (_, idx) => idx + 1,
+                      )
+                        .filter(
+                          (p) =>
+                            p === 1 ||
+                            p === totalSchedPages ||
+                            Math.abs(p - schedPage) <= 1,
+                        )
+                        .map((p, idx, arr) => {
+                          const showEllipsisBefore =
+                            idx > 0 && p - arr[idx - 1] > 1;
+                          return (
+                            <Fragment key={p}>
+                              {showEllipsisBefore && (
+                                <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                                  ...
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSchedPage(p)}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                                  schedPage === p
+                                    ? "bg-[#00629d] text-white"
+                                    : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </Fragment>
+                          );
+                        })}
+                      <button
+                        type="button"
+                        disabled={schedPage === totalSchedPages}
+                        onClick={() =>
+                          setSchedPage((p) => Math.min(p + 1, totalSchedPages))
+                        }
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
