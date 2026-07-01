@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
 import { getTrains } from "../../services/referenceDataApi";
@@ -47,6 +47,12 @@ export function AdminTrainPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+
+  // Pagination states
+  const [trainPage, setTrainPage] = useState(1);
+  const trainsPerPage = 10;
+  const [maintPage, setMaintPage] = useState(1);
+  const maintsPerPage = 10;
 
   // Create Train modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -451,10 +457,39 @@ export function AdminTrainPanel() {
     return matchesSearch && matchesType && matchesStatus;
   });
 
-  const totalCapacityAll = trains.reduce((sum, t) => sum + t.totalCapacity, 0);
   const maintenanceCount = trains.filter(
     (t) => getTrainStatus(t).isMaintenance,
   ).length;
+
+  const totalCapacityAll = trains.reduce((sum, t) => sum + t.totalCapacity, 0);
+
+  const totalTrainPages = Math.ceil(filteredTrains.length / trainsPerPage);
+  const currentTrains = useMemo(() => {
+    const startIdx = (trainPage - 1) * trainsPerPage;
+    return filteredTrains.slice(startIdx, startIdx + trainsPerPage);
+  }, [filteredTrains, trainPage]);
+
+  const totalMaintPages = Math.ceil(maintenanceList.length / maintsPerPage);
+  const currentMaints = useMemo(() => {
+    const startIdx = (maintPage - 1) * maintsPerPage;
+    return maintenanceList.slice(startIdx, startIdx + maintsPerPage);
+  }, [maintenanceList, maintPage]);
+
+  useEffect(() => {
+    setTrainPage(1);
+  }, [searchQuery, filterType, filterStatus]);
+
+  useEffect(() => {
+    if (trainPage > totalTrainPages && totalTrainPages > 0) {
+      setTrainPage(totalTrainPages);
+    }
+  }, [filteredTrains.length, totalTrainPages, trainPage]);
+
+  useEffect(() => {
+    if (maintPage > totalMaintPages && totalMaintPages > 0) {
+      setMaintPage(totalMaintPages);
+    }
+  }, [maintenanceList.length, totalMaintPages, maintPage]);
 
   // Render Seat Layout for details view
   const renderSeatsMatrix = (carriage) => {
@@ -818,7 +853,7 @@ export function AdminTrainPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/60">
-                    {filteredTrains.map((train) => {
+                    {currentTrains.map((train) => {
                       const status = getTrainStatus(train);
                       const trainTypeInfo = TRAIN_TYPES[train.trainType] || {
                         name: train.trainType,
@@ -916,6 +951,66 @@ export function AdminTrainPanel() {
                 </table>
               </div>
             )}
+            {totalTrainPages > 1 && (
+              <div className="px-6 py-4 bg-white border-t border-outline-variant/60 flex items-center justify-between">
+                <p className="text-xs text-on-surface-variant">
+                  Trang <span className="font-semibold">{trainPage}</span> /{" "}
+                  <span className="font-semibold">{totalTrainPages}</span> (Tổng{" "}
+                  {filteredTrains.length} tàu)
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={trainPage === 1}
+                    onClick={() => setTrainPage((p) => Math.max(p - 1, 1))}
+                    className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-on-surface-variant transition-colors border-none cursor-pointer"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalTrainPages }, (_, idx) => idx + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalTrainPages ||
+                        Math.abs(p - trainPage) <= 1,
+                    )
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore =
+                        idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-outline px-1 text-xs self-center">
+                              ...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setTrainPage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${
+                              trainPage === p
+                                ? "bg-primary text-white"
+                                : "bg-transparent text-on-surface hover:bg-slate-100"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    disabled={trainPage === totalTrainPages}
+                    onClick={() =>
+                      setTrainPage((p) => Math.min(p + 1, totalTrainPages))
+                    }
+                    className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-on-surface-variant transition-colors border-none cursor-pointer"
+                  >
+                    Sau
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -992,7 +1087,7 @@ export function AdminTrainPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/60">
-                    {maintenanceList.map((vm) => {
+                    {currentMaints.map((vm) => {
                       return (
                         <tr
                           key={vm.id}
@@ -1098,6 +1193,66 @@ export function AdminTrainPanel() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {totalMaintPages > 1 && (
+              <div className="px-6 py-4 bg-white border-t border-outline-variant/60 flex items-center justify-between">
+                <p className="text-xs text-on-surface-variant">
+                  Trang <span className="font-semibold">{maintPage}</span> /{" "}
+                  <span className="font-semibold">{totalMaintPages}</span> (Tổng{" "}
+                  {maintenanceList.length} lịch bảo trì)
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={maintPage === 1}
+                    onClick={() => setMaintPage((p) => Math.max(p - 1, 1))}
+                    className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-on-surface-variant transition-colors border-none cursor-pointer"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalMaintPages }, (_, idx) => idx + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalMaintPages ||
+                        Math.abs(p - maintPage) <= 1,
+                    )
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore =
+                        idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-outline px-1 text-xs self-center">
+                              ...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setMaintPage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${
+                              maintPage === p
+                                ? "bg-primary text-white"
+                                : "bg-transparent text-on-surface hover:bg-slate-100"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    disabled={maintPage === totalMaintPages}
+                    onClick={() =>
+                      setMaintPage((p) => Math.min(p + 1, totalMaintPages))
+                    }
+                    className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-on-surface-variant transition-colors border-none cursor-pointer"
+                  >
+                    Sau
+                  </button>
+                </div>
               </div>
             )}
           </div>

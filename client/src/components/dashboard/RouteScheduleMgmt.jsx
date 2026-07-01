@@ -132,6 +132,65 @@ export function RouteScheduleMgmt({ mode }) {
   const [schedules, setSchedules] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
 
+  // Pagination and Filter states
+  const [routePage, setRoutePage] = useState(1);
+  const routesPerPage = 10;
+  const [schedPage, setSchedPage] = useState(1);
+  const schedsPerPage = 10;
+
+  const [routeSearch, setRouteSearch] = useState("");
+  const [routeStatusFilter, setRouteStatusFilter] = useState("");
+
+  const filteredRoutes = useMemo(() => {
+    return routes.filter((r) => {
+      const matchesSearch =
+        r.routeName.toLowerCase().includes(routeSearch.toLowerCase()) ||
+        (r.startStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase()) ||
+        (r.endStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase());
+
+      const matchesStatus =
+        routeStatusFilter === ""
+          ? true
+          : routeStatusFilter === "ACTIVE"
+            ? r.isActive
+            : !r.isActive;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [routes, routeSearch, routeStatusFilter]);
+
+  const totalRoutePages = Math.ceil(filteredRoutes.length / routesPerPage);
+  const currentRoutes = useMemo(() => {
+    const startIdx = (routePage - 1) * routesPerPage;
+    return filteredRoutes.slice(startIdx, startIdx + routesPerPage);
+  }, [filteredRoutes, routePage]);
+
+  const totalSchedPages = Math.ceil(schedules.length / schedsPerPage);
+  const currentSchedules = useMemo(() => {
+    const startIdx = (schedPage - 1) * schedsPerPage;
+    return schedules.slice(startIdx, startIdx + schedsPerPage);
+  }, [schedules, schedPage]);
+
+  useEffect(() => {
+    setRoutePage(1);
+  }, [routeSearch, routeStatusFilter]);
+
+  useEffect(() => {
+    if (routePage > totalRoutePages && totalRoutePages > 0) {
+      setRoutePage(totalRoutePages);
+    }
+  }, [filteredRoutes.length, totalRoutePages, routePage]);
+
+  useEffect(() => {
+    if (schedPage > totalSchedPages && totalSchedPages > 0) {
+      setSchedPage(totalSchedPages);
+    }
+  }, [schedules.length, totalSchedPages, schedPage]);
+
   // Route form state
   const [routeForm, setRouteForm] = useState({
     routeName: "",
@@ -831,9 +890,35 @@ export function RouteScheduleMgmt({ mode }) {
                 <span className="material-symbols-outlined text-[#00629d]">
                   route
                 </span>
-                Danh Sách Tuyến Đường ({routes.length})
+                Danh Sách Tuyến Đường ({filteredRoutes.length})
               </h3>
             </div>
+
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 px-6 py-3 bg-[#f2f4f6]/30 border-b border-[#bec7d4]/10">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#3f4852]/60 text-[18px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo tên tuyến đường, ga đi, ga đến..."
+                  value={routeSearch}
+                  onChange={(e) => setRouteSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
+                />
+              </div>
+              <select
+                value={routeStatusFilter}
+                onChange={(e) => setRouteStatusFilter(e.target.value)}
+                className="py-2 px-3 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Đã vô hiệu hóa</option>
+              </select>
+            </div>
+
             {loadingRef ? (
               <div className="flex items-center justify-center py-16 text-[#3f4852]">
                 <span className="material-symbols-outlined animate-spin mr-2">
@@ -841,12 +926,14 @@ export function RouteScheduleMgmt({ mode }) {
                 </span>
                 Đang tải...
               </div>
-            ) : routes.length === 0 ? (
+            ) : filteredRoutes.length === 0 ? (
               <div className="text-center py-16 text-[#3f4852]/60">
                 <span className="material-symbols-outlined text-5xl block mb-2">
                   route
                 </span>
-                Chưa có tuyến đường nào.
+                {routes.length === 0
+                  ? "Chưa có tuyến đường nào."
+                  : "Không tìm thấy tuyến đường phù hợp."}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -871,7 +958,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {routes.map((r) => (
+                    {currentRoutes.map((r) => (
                       <tr
                         key={r.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -967,6 +1054,66 @@ export function RouteScheduleMgmt({ mode }) {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {totalRoutePages > 1 && (
+              <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                <p className="text-xs text-[#3f4852]">
+                  Trang <span className="font-semibold">{routePage}</span> /{" "}
+                  <span className="font-semibold">{totalRoutePages}</span> (Tổng{" "}
+                  {routes.length} tuyến)
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={routePage === 1}
+                    onClick={() => setRoutePage((p) => Math.max(p - 1, 1))}
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalRoutePages }, (_, idx) => idx + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalRoutePages ||
+                        Math.abs(p - routePage) <= 1,
+                    )
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore =
+                        idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                              ...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setRoutePage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                              routePage === p
+                                ? "bg-[#00629d] text-white"
+                                : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    disabled={routePage === totalRoutePages}
+                    onClick={() =>
+                      setRoutePage((p) => Math.min(p + 1, totalRoutePages))
+                    }
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Sau
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1205,7 +1352,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {schedules.slice(0, 30).map((s) => (
+                    {currentSchedules.map((s) => (
                       <tr
                         key={s.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -1242,10 +1389,68 @@ export function RouteScheduleMgmt({ mode }) {
                     ))}
                   </tbody>
                 </table>
-                {schedules.length > 30 && (
-                  <p className="text-center text-xs text-[#3f4852]/60 py-3 border-t border-[#bec7d4]/10">
-                    Hiển thị 30/{schedules.length} lịch trình gần nhất.
-                  </p>
+                {totalSchedPages > 1 && (
+                  <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                    <p className="text-xs text-[#3f4852]">
+                      Trang <span className="font-semibold">{schedPage}</span> /{" "}
+                      <span className="font-semibold">{totalSchedPages}</span>{" "}
+                      (Tổng {schedules.length} lịch trình)
+                    </p>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={schedPage === 1}
+                        onClick={() => setSchedPage((p) => Math.max(p - 1, 1))}
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Trước
+                      </button>
+                      {Array.from(
+                        { length: totalSchedPages },
+                        (_, idx) => idx + 1,
+                      )
+                        .filter(
+                          (p) =>
+                            p === 1 ||
+                            p === totalSchedPages ||
+                            Math.abs(p - schedPage) <= 1,
+                        )
+                        .map((p, idx, arr) => {
+                          const showEllipsisBefore =
+                            idx > 0 && p - arr[idx - 1] > 1;
+                          return (
+                            <Fragment key={p}>
+                              {showEllipsisBefore && (
+                                <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                                  ...
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSchedPage(p)}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                                  schedPage === p
+                                    ? "bg-[#00629d] text-white"
+                                    : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </Fragment>
+                          );
+                        })}
+                      <button
+                        type="button"
+                        disabled={schedPage === totalSchedPages}
+                        onClick={() =>
+                          setSchedPage((p) => Math.min(p + 1, totalSchedPages))
+                        }
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
