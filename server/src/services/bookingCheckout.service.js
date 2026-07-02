@@ -703,6 +703,8 @@ export async function quoteBooking(
         taxAmount,
         finalPrice,
         upgradeSavings,
+        fromStopOrder: hold.fromStopOrder, // P1
+        toStopOrder: hold.toStopOrder, // P1
       };
     });
     return {
@@ -1128,6 +1130,8 @@ export async function checkoutBooking(identity, payload) {
             discountAmount: leg.discountAmount,
             finalPrice: leg.finalPrice,
             status: immediatePayment ? "CONFIRMED" : "PENDING",
+            fromStopOrder: leg.fromStopOrder, // P1
+            toStopOrder: leg.toStopOrder, // P1
           },
         });
       }

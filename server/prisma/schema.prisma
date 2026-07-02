@@ -216,7 +216,8 @@ model Route {
   endStationId      String          @db.ObjectId
   endStation        Station         @relation("routeEnd", fields: [endStationId], references: [id])
   distance          Int // km
-  estimatedDuration Int // minutes
+  estimatedDuration Int // minutes — thời gian di chuyển THUẦN (không bao gồm thời gian dừng ga)
+  direction         String?        // NORTHBOUND (Nam→Bắc, số chẵn) | SOUTHBOUND (Bắc→Nam, số lẻ) | OTHER
   stations          RouteStation[] // Embedded array of intermediate stops
   schedules         Schedule[]
   routeTemplates    RouteTemplate[] @relation("routeTemplates")
@@ -548,6 +549,10 @@ model BookingDetail {
   finalPrice     Float  @db.Double
   status         String @default("CONFIRMED")
 
+  // P1 — Bán vé theo chặng: lưu thứ tự ga đi/đến để check overlap
+  fromStopOrder  Int?   // Thứ tự ga đi trong hành trình (buildSchedulePoints order)
+  toStopOrder    Int?   // Thứ tự ga đến trong hành trình
+
   @@index([bookingId])
   @@index([scheduleId])
   @@index([seatId])
@@ -690,7 +695,12 @@ model SeatHold {
   expiresAt     DateTime
   createdAt     DateTime        @default(now())
 
-  @@unique([scheduleId, seatId])
+  // P1 — Bán vé theo chặng: @@unique([scheduleId, seatId]) ĐÃ XOÁ
+  // Cùng ghế có thể được hold bởi nhiều người trên các chặng không trùng nhau
+  fromStopOrder Int?  // Thứ tự ga đi (segment start)
+  toStopOrder   Int?  // Thứ tự ga đến (segment end)
+
+  @@index([scheduleId, seatId])
   @@index([sessionId])
   @@index([userId])
   @@index([guestToken])
@@ -848,10 +858,11 @@ model RevenueReport {
 }
 
 type RouteStation {
-  stationId         String @db.ObjectId
-  stationName       String
-  stopOrder         Int // Sequential order (1, 2, 3...)
-  distanceFromStart Int // Cumulative km from the start station
+  stationId             String @db.ObjectId
+  stationName           String
+  stopOrder             Int    // Sequential order (1, 2, 3...)
+  distanceFromStart     Int    // Cumulative km from the start station
+  stopDurationMinutes   Int    @default(3) // P3 — Thời gian dừng tại ga (phút), mặc định 3 phút
 }
 
 // ============================================

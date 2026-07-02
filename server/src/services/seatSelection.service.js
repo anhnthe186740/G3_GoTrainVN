@@ -58,29 +58,60 @@ function assertObjectId(value, fieldName) {
   }
 }
 
-function activeBookingWhere(scheduleId, seatId, now) {
-  return {
-    status: { in: ACTIVE_BOOKING_STATUSES },
-    OR: [
-      { status: "CONFIRMED" },
-      { status: "PENDING", expiresAt: null },
-      { status: "PENDING", expiresAt: { gt: now } },
-    ],
-    AND: [
-      {
-        OR: [{ scheduleId }, { returnScheduleId: scheduleId }],
-      },
-      {
-        bookingDetails: {
-          some: {
-            seatId,
-            status: { not: "CANCELLED" },
-            OR: [{ scheduleId }, { scheduleId: null }],
-          },
+// ─── P1: Segment-aware seat conflict helpers ─────────────────────────────────
+
+/**
+ * Kiểm tra 2 chặng có trùng nhau không.
+ * Overlap xảy ra khi: reqFrom < existingTo AND reqTo > existingFrom
+ */
+export function isSegmentConflict(reqFrom, reqTo, segments) {
+  if (!segments || segments.length === 0) return false;
+  return segments.some(({ fromStopOrder, toStopOrder }) => {
+    const from = fromStopOrder ?? 0;
+    const to = toStopOrder ?? 9999;
+    return reqFrom < to && reqTo > from;
+  });
+}
+
+/**
+ * Lấy danh sách BookingDetail (chặng đã bán) của ghế trên chuyến.
+ * Trả về Array<{fromStopOrder, toStopOrder}>
+ */
+async function getBookedSegmentsForSeat(scheduleId, seatId, now) {
+  const bookings = await prisma.booking.findMany({
+    where: {
+      status: { in: ACTIVE_BOOKING_STATUSES },
+      OR: [
+        { status: "CONFIRMED" },
+        { status: "PENDING", expiresAt: null },
+        { status: "PENDING", expiresAt: { gt: now } },
+      ],
+      AND: [{ OR: [{ scheduleId }, { returnScheduleId: scheduleId }] }],
+    },
+    select: {
+      bookingDetails: {
+        where: {
+          seatId,
+          status: { not: "CANCELLED" },
+          OR: [{ scheduleId }, { scheduleId: null }],
         },
+        select: { fromStopOrder: true, toStopOrder: true },
       },
-    ],
-  };
+    },
+  });
+  return bookings.flatMap((b) => b.bookingDetails);
+}
+
+/**
+ * Lấy danh sách chặng đang bị hold của ghế trên chuyến.
+ * Trả về Array<{fromStopOrder, toStopOrder}>
+ */
+async function getHeldSegmentsForSeat(scheduleId, seatId, now) {
+  const holds = await prisma.seatHold.findMany({
+    where: { scheduleId, seatId, expiresAt: { gt: now } },
+    select: { fromStopOrder: true, toStopOrder: true },
+  });
+  return holds;
 }
 
 function journeySelect() {
@@ -199,7 +230,11 @@ function isPhysicallyBlocked(seat, now) {
   );
 }
 
-async function bookedSeatIds(scheduleId, now) {
+/**
+ * P1 — Trả về Map<seatId, [{fromStopOrder, toStopOrder}]> cho tất cả ghế đã bán
+ * trên schedule (kể cả return). Dùng để kiểm tra overlap chặng.
+ */
+async function bookedSeatsBySegment(scheduleId, now) {
   const bookings = await prisma.booking.findMany({
     where: {
       status: { in: ACTIVE_BOOKING_STATUSES },
@@ -216,16 +251,22 @@ async function bookedSeatIds(scheduleId, now) {
           status: { not: "CANCELLED" },
           OR: [{ scheduleId }, { scheduleId: null }],
         },
-        select: { seatId: true },
+        select: { seatId: true, fromStopOrder: true, toStopOrder: true },
       },
     },
   });
 
-  return new Set(
-    bookings.flatMap((booking) =>
-      booking.bookingDetails.map((detail) => detail.seatId),
-    ),
-  );
+  const result = new Map();
+  for (const booking of bookings) {
+    for (const detail of booking.bookingDetails) {
+      if (!result.has(detail.seatId)) result.set(detail.seatId, []);
+      result.get(detail.seatId).push({
+        fromStopOrder: detail.fromStopOrder ?? 0,
+        toStopOrder: detail.toStopOrder ?? 9999,
+      });
+    }
+  }
+  return result;
 }
 
 export async function cleanupExpiredHolds(now = new Date()) {
@@ -330,6 +371,10 @@ async function prepareLegSelection(leg, now) {
   const seats = new Map(flattenSeats(schedule).map((seat) => [seat.id, seat]));
   const prices = await pricingByCarriage(schedule, segment);
 
+  // P1: lấy stopOrder của chặng yêu cầu từ buildSchedulePoints output
+  const fromStopOrder = segment.origin.order;
+  const toStopOrder = segment.destination.order;
+
   return leg.seatIds.map((seatId) => {
     const seat = seats.get(seatId);
     if (!seat) {
@@ -352,24 +397,27 @@ async function prepareLegSelection(leg, now) {
       seatId,
       carriageType: seat.carriageType,
       priceSnapshot: price,
+      fromStopOrder, // P1: chặng ga đi
+      toStopOrder, // P1: chặng ga đến
     };
   });
 }
 
+/**
+ * P1: Kiểm tra xung đột chặng cho từng ghế yêu cầu.
+ * Trả về mảng seatId bị xung đột (hold hoặc booking trùng chặng).
+ */
 async function findConflictSeatIds(requests, now) {
   const conflicts = await Promise.all(
-    requests.map(async ({ scheduleId, seatId }) => {
-      const [hold, booking] = await Promise.all([
-        prisma.seatHold.findFirst({
-          where: { scheduleId, seatId, expiresAt: { gt: now } },
-          select: { id: true },
-        }),
-        prisma.booking.findFirst({
-          where: activeBookingWhere(scheduleId, seatId, now),
-          select: { id: true },
-        }),
+    requests.map(async ({ scheduleId, seatId, fromStopOrder, toStopOrder }) => {
+      const [heldSegments, bookedSegments] = await Promise.all([
+        getHeldSegmentsForSeat(scheduleId, seatId, now),
+        getBookedSegmentsForSeat(scheduleId, seatId, now),
       ]);
-      return hold || booking ? seatId : null;
+      const allSegments = [...heldSegments, ...bookedSegments];
+      return isSegmentConflict(fromStopOrder, toStopOrder, allSegments)
+        ? seatId
+        : null;
     }),
   );
   return conflicts.filter(Boolean);
@@ -412,15 +460,42 @@ export async function confirmSeatSelection(identity, payload) {
 
   try {
     const sessionId = await prisma.$transaction(async (tx) => {
+      // P1: Kiểm tra chặng overlap trong transaction (double-check)
       for (const request of requests) {
-        const sold = await tx.booking.findFirst({
-          where: activeBookingWhere(request.scheduleId, request.seatId, now),
-          select: { id: true },
+        const bookedDetails = await tx.bookingDetail.findMany({
+          where: {
+            seatId: request.seatId,
+            status: { not: "CANCELLED" },
+            OR: [{ scheduleId: request.scheduleId }, { scheduleId: null }],
+            booking: {
+              status: { in: ACTIVE_BOOKING_STATUSES },
+              OR: [
+                { status: "CONFIRMED" },
+                { status: "PENDING", expiresAt: null },
+                { status: "PENDING", expiresAt: { gt: now } },
+              ],
+              AND: [
+                {
+                  OR: [
+                    { scheduleId: request.scheduleId },
+                    { returnScheduleId: request.scheduleId },
+                  ],
+                },
+              ],
+            },
+          },
+          select: { fromStopOrder: true, toStopOrder: true },
         });
-        if (sold) {
+        if (
+          isSegmentConflict(
+            request.fromStopOrder,
+            request.toStopOrder,
+            bookedDetails,
+          )
+        ) {
           throw httpError(
             409,
-            "Một hoặc nhiều ghế đã được bán. Vui lòng chọn lại.",
+            "Một hoặc nhiều ghế đã được bán cho chặng này. Vui lòng chọn lại.",
             { conflictSeatIds: [request.seatId] },
           );
         }
@@ -456,7 +531,12 @@ export async function confirmSeatSelection(identity, payload) {
           data: {
             sessionId: session.id,
             ...ownerData(identity),
-            ...request,
+            scheduleId: request.scheduleId,
+            seatId: request.seatId,
+            carriageType: request.carriageType,
+            priceSnapshot: request.priceSnapshot,
+            fromStopOrder: request.fromStopOrder, // P1
+            toStopOrder: request.toStopOrder, // P1
             expiresAt,
           },
         });
@@ -523,22 +603,43 @@ export async function getSeatMap({
 }) {
   const now = new Date();
   await cleanupExpiredHolds(now);
-  const [{ schedule, segment }, bookedSeats, activeHolds] = await Promise.all([
-    getJourney(scheduleId, fromStationId, toStationId),
-    bookedSeatIds(scheduleId, now),
-    prisma.seatHold.findMany({
-      where: { scheduleId, expiresAt: { gt: now } },
-      select: {
-        seatId: true,
-        sessionId: true,
-        userId: true,
-        guestToken: true,
-        expiresAt: true,
-      },
-    }),
-  ]);
+  const [{ schedule, segment }, bookedBySegment, activeHolds] =
+    await Promise.all([
+      getJourney(scheduleId, fromStationId, toStationId),
+      bookedSeatsBySegment(scheduleId, now), // P1: Map<seatId, [{from,to}]>
+      prisma.seatHold.findMany({
+        where: { scheduleId, expiresAt: { gt: now } },
+        select: {
+          seatId: true,
+          sessionId: true,
+          userId: true,
+          guestToken: true,
+          expiresAt: true,
+          fromStopOrder: true, // P1
+          toStopOrder: true, // P1
+        },
+      }),
+    ]);
+
+  // P1: stopOrder của chặng khách đang xem
+  const reqFrom = segment.origin.order;
+  const reqTo = segment.destination.order;
+
   const prices = await pricingByCarriage(schedule, segment);
-  const holdBySeat = new Map(activeHolds.map((hold) => [hold.seatId, hold]));
+
+  // P1: Chỉ giữ lại hold trùng chặng với request
+  const conflictingHolds = activeHolds.filter((h) =>
+    isSegmentConflict(reqFrom, reqTo, [
+      {
+        fromStopOrder: h.fromStopOrder ?? 0,
+        toStopOrder: h.toStopOrder ?? 9999,
+      },
+    ]),
+  );
+  // Map<seatId, hold> — chỉ chứa hold trùng chặng
+  const holdBySeat = new Map(
+    conflictingHolds.map((hold) => [hold.seatId, hold]),
+  );
 
   const carriages = schedule.train.carriages.map((carriage) => {
     const price = prices.get(carriage.carriageType);
@@ -552,8 +653,13 @@ export async function getSeatMap({
         const hold = holdBySeat.get(seat.id);
         let state = "AVAILABLE";
         if (isPhysicallyBlocked(seat, now)) state = "BLOCKED";
-        else if (bookedSeats.has(seat.id)) state = "SOLD";
-        else if (hold) {
+        // P1: chỉ SOLD khi chặng đã bán trùng với chặng đang xem
+        else if (
+          bookedBySegment.has(seat.id) &&
+          isSegmentConflict(reqFrom, reqTo, bookedBySegment.get(seat.id))
+        ) {
+          state = "SOLD";
+        } else if (hold) {
           state =
             hold.sessionId === sessionId && isOwnedHold(hold, identity)
               ? "SELECTED"

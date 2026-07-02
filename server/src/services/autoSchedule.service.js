@@ -84,9 +84,12 @@ export async function generateSchedulesByTemplate(targetDate) {
         const minute = parseInt(minStr, 10);
 
         const bufferMins = template.bufferMinutes || 60;
-        const numStops = route.stations ? route.stations.length : 0;
+        const totalStopDurationMins = (route.stations || []).reduce(
+          (sum, stop) => sum + (stop.stopDurationMinutes ?? 3),
+          0,
+        );
         const totalDurationMins =
-          route.estimatedDuration + numStops * bufferMins;
+          route.estimatedDuration + totalStopDurationMins;
 
         const departure = new Date(targetDay);
         departure.setHours(hour, minute, 0, 0);
@@ -159,33 +162,39 @@ export async function generateSchedulesByTemplate(targetDate) {
             const sortedStations = [...route.stations].sort(
               (a, b) => a.stopOrder - b.stopOrder,
             );
-            await tx.scheduleStop.createMany({
-              data: sortedStations.map((stop, index) => {
-                const progress =
-                  route.distance > 0
-                    ? Math.min(
-                        1,
-                        Math.max(0, stop.distanceFromStart / route.distance),
-                      )
-                    : 0;
-                const movingTimeMs =
-                  route.estimatedDuration * progress * 60 * 1000;
-                const restingTimeMs = index * bufferMins * 60 * 1000;
-                const stopArrivalTime = new Date(
-                  departure.getTime() + movingTimeMs + restingTimeMs,
-                );
-                const stopDepartureTime = new Date(
-                  stopArrivalTime.getTime() + bufferMins * 60 * 1000,
-                );
+            let accumulatedRestingTimeMs = 0;
+            const stopData = sortedStations.map((stop, index) => {
+              const progress =
+                route.distance > 0
+                  ? Math.min(
+                      1,
+                      Math.max(0, stop.distanceFromStart / route.distance),
+                    )
+                  : 0;
+              const movingTimeMs =
+                route.estimatedDuration * progress * 60 * 1000;
+              const stopDuration = stop.stopDurationMinutes ?? 3;
+              const stopArrivalTime = new Date(
+                departure.getTime() + movingTimeMs + accumulatedRestingTimeMs,
+              );
+              const stopDepartureTime = new Date(
+                stopArrivalTime.getTime() + stopDuration * 60 * 1000,
+              );
 
-                return {
-                  scheduleId: schedule.id,
-                  stationId: stop.stationId,
-                  stopOrder: stop.stopOrder,
-                  arrivalTime: stopArrivalTime,
-                  departureTime: stopDepartureTime,
-                };
-              }),
+              // Tăng thời gian dừng tích lũy cho ga tiếp theo
+              accumulatedRestingTimeMs += stopDuration * 60 * 1000;
+
+              return {
+                scheduleId: schedule.id,
+                stationId: stop.stationId,
+                stopOrder: stop.stopOrder,
+                arrivalTime: stopArrivalTime,
+                departureTime: stopDepartureTime,
+              };
+            });
+
+            await tx.scheduleStop.createMany({
+              data: stopData,
             });
           }
         });

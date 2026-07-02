@@ -19,6 +19,27 @@ import {
   validateSingleStopSequence,
 } from "../utils/singleTrackValidator.js";
 
+// --- P2: Train code parity validation (mác tàu chẵn/lẻ) ---
+function validateTrainCodeParity(trainCode, direction) {
+  if (!direction || direction === "OTHER") return;
+  const match = trainCode.match(/\d+/);
+  if (!match) return; // Không có số trong mác tàu, bỏ qua
+
+  const num = parseInt(match[0], 10);
+  const isOdd = num % 2 !== 0;
+
+  if (direction === "SOUTHBOUND" && !isOdd) {
+    throw new Error(
+      `Mác tàu số chẵn (${trainCode}) không thể chạy chiều Bắc → Nam (SOUTHBOUND). Chiều này chỉ dành cho mác tàu số lẻ (ví dụ: SE1, SE3, SE19, SP1).`,
+    );
+  }
+  if (direction === "NORTHBOUND" && isOdd) {
+    throw new Error(
+      `Mác tàu số lẻ (${trainCode}) không thể chạy chiều Nam → Bắc (NORTHBOUND). Chiều này chỉ dành cho mác tàu số chẵn (ví dụ: SE2, SE4, SE20, SP2).`,
+    );
+  }
+}
+
 // ============================================================
 // GET /api/v1/stations - Lấy danh sách tất cả ga tàu
 // ============================================================
@@ -107,14 +128,47 @@ export const getTrainById = asyncHandler(async (req, res) => {
 export const getRoutes = asyncHandler(async (_req, res) => {
   const routes = await prisma.route.findMany({
     include: {
-      startStation: { select: { stationName: true, city: true } },
-      endStation: { select: { stationName: true, city: true } },
+      startStation: {
+        select: {
+          stationName: true,
+          city: true,
+          latitude: true,
+          longitude: true,
+        },
+      },
+      endStation: {
+        select: {
+          stationName: true,
+          city: true,
+          latitude: true,
+          longitude: true,
+        },
+      },
       stations: true,
       _count: { select: { schedules: true } },
     },
     orderBy: { createdAt: "desc" },
   });
-  res.json({ routes });
+
+  // Tự động bổ sung direction cho các tuyến đường cũ trong DB chưa có direction
+  const processedRoutes = routes.map((r) => {
+    if (!r.direction) {
+      let computedDirection = "OTHER";
+      const startLat = r.startStation?.latitude;
+      const endLat = r.endStation?.latitude;
+      if (startLat != null && endLat != null) {
+        if (startLat > endLat) {
+          computedDirection = "SOUTHBOUND"; // Bắc -> Nam
+        } else if (startLat < endLat) {
+          computedDirection = "NORTHBOUND"; // Nam -> Bắc
+        }
+      }
+      return { ...r, direction: computedDirection };
+    }
+    return r;
+  });
+
+  res.json({ routes: processedRoutes });
 });
 
 // ============================================================
@@ -308,7 +362,15 @@ export const generateRoute = asyncHandler(async (req, res) => {
     });
   }
 
-  // 5. Sort intermediate stops and create route
+  let direction = "OTHER";
+  if (startStation.latitude != null && endStation.latitude != null) {
+    if (startStation.latitude > endStation.latitude) {
+      direction = "SOUTHBOUND"; // Từ Bắc vào Nam (vĩ độ giảm dần)
+    } else if (startStation.latitude < endStation.latitude) {
+      direction = "NORTHBOUND"; // Từ Nam ra Bắc (vĩ độ tăng dần)
+    }
+  }
+
   const sortedStations = [...stations].sort(
     (a, b) => a.stopOrder - b.stopOrder,
   );
@@ -320,11 +382,13 @@ export const generateRoute = asyncHandler(async (req, res) => {
       endStationId,
       distance: parseInt(distance),
       estimatedDuration: parseInt(estimatedDuration),
+      direction,
       stations: sortedStations.map((s) => ({
         stationId: s.stationId,
         stationName: s.stationName,
         stopOrder: parseInt(s.stopOrder),
         distanceFromStart: parseInt(s.distanceFromStart),
+        stopDurationMinutes: parseInt(s.stopDurationMinutes ?? 3), // P3: lưu thời gian dừng riêng biệt
       })),
     },
     include: {
@@ -426,6 +490,13 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
   }
 
+  // --- Validate train code parity (mác tàu chẵn/lẻ) ---
+  try {
+    validateTrainCodeParity(train.trainCode, route.direction);
+  } catch (err) {
+    return res.status(422).json({ message: err.message });
+  }
+
   const sellableSeatCount = train.carriages.reduce(
     (total, carriage) =>
       total +
@@ -439,8 +510,11 @@ export const generateSchedules = asyncHandler(async (req, res) => {
   }
 
   const bufferMins = parseInt(bufferMinutes) || 60;
-  const numStops = route.stations ? route.stations.length : 0;
-  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+  const totalStopDurationMins = (route.stations || []).reduce(
+    (sum, stop) => sum + (stop.stopDurationMinutes ?? 3),
+    0,
+  );
+  const totalDurationMins = route.estimatedDuration + totalStopDurationMins;
 
   const durationMs = totalDurationMins * 60 * 1000;
   const bufferMs = bufferMins * 60 * 1000;
@@ -550,36 +624,44 @@ export const generateSchedules = asyncHandler(async (req, res) => {
           const sortedStations = [...routeWithStations.stations].sort(
             (a, b) => a.stopOrder - b.stopOrder,
           );
-          await tx.scheduleStop.createMany({
-            data: sortedStations.map((stop, index) => {
-              const progress =
-                routeWithStations.distance > 0
-                  ? Math.min(
-                      1,
-                      Math.max(
-                        0,
-                        stop.distanceFromStart / routeWithStations.distance,
-                      ),
-                    )
-                  : 0;
-              const movingTimeMs =
-                routeWithStations.estimatedDuration * progress * 60 * 1000;
-              const restingTimeMs = index * bufferMins * 60 * 1000;
-              const stopArrivalTime = new Date(
-                trip.departure.getTime() + movingTimeMs + restingTimeMs,
-              );
-              const stopDepartureTime = new Date(
-                stopArrivalTime.getTime() + bufferMins * 60 * 1000,
-              );
+          let accumulatedRestingTimeMs = 0;
+          const stopData = sortedStations.map((stop, index) => {
+            const progress =
+              routeWithStations.distance > 0
+                ? Math.min(
+                    1,
+                    Math.max(
+                      0,
+                      stop.distanceFromStart / routeWithStations.distance,
+                    ),
+                  )
+                : 0;
+            const movingTimeMs =
+              routeWithStations.estimatedDuration * progress * 60 * 1000;
+            const stopDuration = stop.stopDurationMinutes ?? 3;
+            const stopArrivalTime = new Date(
+              trip.departure.getTime() +
+                movingTimeMs +
+                accumulatedRestingTimeMs,
+            );
+            const stopDepartureTime = new Date(
+              stopArrivalTime.getTime() + stopDuration * 60 * 1000,
+            );
 
-              return {
-                scheduleId: schedule.id,
-                stationId: stop.stationId,
-                stopOrder: stop.stopOrder,
-                arrivalTime: stopArrivalTime,
-                departureTime: stopDepartureTime,
-              };
-            }),
+            // Tăng thời gian dừng tích lũy cho ga tiếp theo
+            accumulatedRestingTimeMs += stopDuration * 60 * 1000;
+
+            return {
+              scheduleId: schedule.id,
+              stationId: stop.stationId,
+              stopOrder: stop.stopOrder,
+              arrivalTime: stopArrivalTime,
+              departureTime: stopDepartureTime,
+            };
+          });
+
+          await tx.scheduleStop.createMany({
+            data: stopData,
           });
         }
       });
@@ -1123,6 +1205,18 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
     });
   }
 
+  const train = await prisma.train.findUnique({ where: { id: trainId } });
+  if (!train) {
+    return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+  }
+
+  // --- Validate train code parity (mác tàu chẵn/lẻ) ---
+  try {
+    validateTrainCodeParity(train.trainCode, route.direction);
+  } catch (err) {
+    return res.status(422).json({ message: err.message });
+  }
+
   // Check unique constraint: one template per (route, train)
   const existing = await prisma.routeTemplate.findUnique({
     where: {
@@ -1288,6 +1382,18 @@ export const updateRouteTemplate = asyncHandler(async (req, res) => {
 
   // Handle routeId or trainId updates with unique constraint verification
   if (routeId || trainId) {
+    const nextTrain = await prisma.train.findUnique({
+      where: { id: nextTrainId },
+    });
+    if (!nextTrain) {
+      return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
+    }
+    try {
+      validateTrainCodeParity(nextTrain.trainCode, targetRoute.direction);
+    } catch (err) {
+      return res.status(422).json({ message: err.message });
+    }
+
     if (nextRouteId !== current.routeId || nextTrainId !== current.trainId) {
       const existing = await prisma.routeTemplate.findUnique({
         where: {
@@ -2132,6 +2238,13 @@ export const createSchedule = asyncHandler(async (req, res) => {
   if (!train)
     return res.status(404).json({ message: "Không tìm thấy đoàn tàu." });
 
+  // --- Validate train code parity (mác tàu chẵn/lẻ) ---
+  try {
+    validateTrainCodeParity(train.trainCode, route.direction);
+  } catch (err) {
+    return res.status(422).json({ message: err.message });
+  }
+
   // --- [G12] Validate tàu không trong bảo trì ---
   const activeMaintenance = await prisma.vehicleMaintenance.findFirst({
     where: {
@@ -2149,8 +2262,11 @@ export const createSchedule = asyncHandler(async (req, res) => {
 
   // --- Tính arrivalTime từ route.estimatedDuration + bufferMinutes ---
   const bufferMins = parseInt(bufferMinutes) || 60;
-  const numStops = route.stations ? route.stations.length : 0;
-  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+  const totalStopDurationMins = (route.stations || []).reduce(
+    (sum, stop) => sum + (stop.stopDurationMinutes ?? 3),
+    0,
+  );
+  const totalDurationMins = route.estimatedDuration + totalStopDurationMins;
   const arrivalTime = new Date(
     new Date(departureTime).getTime() + totalDurationMins * 60 * 1000,
   );
@@ -2222,31 +2338,37 @@ export const createSchedule = asyncHandler(async (req, res) => {
       const sortedStations = [...route.stations].sort(
         (a, b) => a.stopOrder - b.stopOrder,
       );
+      let accumulatedRestingTimeMs = 0;
+      const stopData = sortedStations.map((stop, index) => {
+        const progress =
+          route.distance > 0
+            ? Math.min(1, Math.max(0, stop.distanceFromStart / route.distance))
+            : 0;
+        const movingTimeMs = route.estimatedDuration * progress * 60 * 1000;
+        const stopDuration = stop.stopDurationMinutes ?? 3;
+        const stopArrivalTime = new Date(
+          new Date(departureTime).getTime() +
+            movingTimeMs +
+            accumulatedRestingTimeMs,
+        );
+        const stopDepartureTime = new Date(
+          stopArrivalTime.getTime() + stopDuration * 60 * 1000,
+        );
+
+        // Tăng thời gian dừng tích lũy cho ga tiếp theo
+        accumulatedRestingTimeMs += stopDuration * 60 * 1000;
+
+        return {
+          scheduleId: newSchedule.id,
+          stationId: stop.stationId,
+          stopOrder: stop.stopOrder,
+          arrivalTime: stopArrivalTime,
+          departureTime: stopDepartureTime,
+        };
+      });
+
       await tx.scheduleStop.createMany({
-        data: sortedStations.map((stop, index) => {
-          const progress =
-            route.distance > 0
-              ? Math.min(
-                  1,
-                  Math.max(0, stop.distanceFromStart / route.distance),
-                )
-              : 0;
-          const movingTimeMs = route.estimatedDuration * progress * 60 * 1000;
-          const restingTimeMs = index * bufferMins * 60 * 1000;
-          const stopArrivalTime = new Date(
-            new Date(departureTime).getTime() + movingTimeMs + restingTimeMs,
-          );
-          const stopDepartureTime = new Date(
-            stopArrivalTime.getTime() + bufferMins * 60 * 1000,
-          );
-          return {
-            scheduleId: newSchedule.id,
-            stationId: stop.stationId,
-            stopOrder: stop.stopOrder,
-            arrivalTime: stopArrivalTime,
-            departureTime: stopDepartureTime,
-          };
-        }),
+        data: stopData,
       });
     }
 

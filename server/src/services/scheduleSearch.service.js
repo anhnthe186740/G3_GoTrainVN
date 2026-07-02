@@ -164,8 +164,19 @@ async function getCandidateSchedules(range) {
   });
 }
 
-async function getBookedSeatsBySchedule(scheduleIds, now) {
-  if (scheduleIds.length === 0) return new Map();
+/**
+ * P1 — Lấy các ghế đã bán theo chặng cho từng schedule.
+ * scheduleSegments: Array<{scheduleId, fromStopOrder, toStopOrder}>
+ * Trả về: Map<scheduleId, Map<carriageType, Set<seatId>>> —
+ *   chỉ gồm các ghế có chặng đã bán OVERLAP với chặng được yêu cầu.
+ */
+async function getBookedSeatsBySchedule(scheduleSegments, now) {
+  if (scheduleSegments.length === 0) return new Map();
+
+  const scheduleIds = scheduleSegments.map((s) => s.scheduleId);
+  const segmentBySchedule = new Map(
+    scheduleSegments.map((s) => [s.scheduleId, s]),
+  );
 
   const [bookings, activeHolds] = await Promise.all([
     prisma.booking.findMany({
@@ -181,6 +192,8 @@ async function getBookedSeatsBySchedule(scheduleIds, now) {
           where: { status: { not: "CANCELLED" } },
           select: {
             seatId: true,
+            fromStopOrder: true, // P1
+            toStopOrder: true, // P1
             seat: {
               select: {
                 carriage: { select: { carriageType: true } },
@@ -199,11 +212,14 @@ async function getBookedSeatsBySchedule(scheduleIds, now) {
         scheduleId: true,
         seatId: true,
         carriageType: true,
+        fromStopOrder: true, // P1
+        toStopOrder: true, // P1
       },
     }),
   ]);
 
   const bookedBySchedule = new Map();
+
   for (const booking of bookings) {
     if (
       booking.status === "PENDING" &&
@@ -213,12 +229,22 @@ async function getBookedSeatsBySchedule(scheduleIds, now) {
       continue;
     }
 
+    const reqSeg = segmentBySchedule.get(booking.scheduleId);
+    if (!reqSeg) continue;
+
     if (!bookedBySchedule.has(booking.scheduleId)) {
       bookedBySchedule.set(booking.scheduleId, new Map());
     }
     const byType = bookedBySchedule.get(booking.scheduleId);
 
     for (const detail of booking.bookingDetails) {
+      // P1: chỉ đếm ghế này nếu chặng đã bán OVERLAP với chặng đang tìm kiếm
+      const detailFrom = detail.fromStopOrder ?? 0;
+      const detailTo = detail.toStopOrder ?? 9999;
+      const overlapWithRequest =
+        reqSeg.fromStopOrder < detailTo && reqSeg.toStopOrder > detailFrom;
+      if (!overlapWithRequest) continue;
+
       const carriageType = detail.seat.carriage.carriageType;
       if (!byType.has(carriageType)) byType.set(carriageType, new Set());
       byType.get(carriageType).add(detail.seatId);
@@ -226,6 +252,16 @@ async function getBookedSeatsBySchedule(scheduleIds, now) {
   }
 
   for (const hold of activeHolds) {
+    const reqSeg = segmentBySchedule.get(hold.scheduleId);
+    if (!reqSeg) continue;
+
+    // P1: chỉ tính hold trùng chặng
+    const holdFrom = hold.fromStopOrder ?? 0;
+    const holdTo = hold.toStopOrder ?? 9999;
+    const overlapWithRequest =
+      reqSeg.fromStopOrder < holdTo && reqSeg.toStopOrder > holdFrom;
+    if (!overlapWithRequest) continue;
+
     if (!bookedBySchedule.has(hold.scheduleId)) {
       bookedBySchedule.set(hold.scheduleId, new Map());
     }
@@ -309,7 +345,12 @@ async function searchLeg({ fromStationId, toStationId, range, now }) {
     );
 
   const bookedSeats = await getBookedSeatsBySchedule(
-    matched.map(({ schedule }) => schedule.id),
+    // P1: truyền segment của từng schedule để đếm ghế trùng chặng
+    matched.map(({ schedule, segment }) => ({
+      scheduleId: schedule.id,
+      fromStopOrder: segment.origin.order,
+      toStopOrder: segment.destination.order,
+    })),
     now,
   );
 
