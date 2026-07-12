@@ -261,6 +261,47 @@ test("BR-06 rejects more than four passengers", () => {
   );
 });
 
+test("BR-06 only counts seated passengers toward the four-seat limit, so a lap child under 6 still fits alongside four seated adults", () => {
+  const seatedAdults = [
+    normalizePassenger(adult(), 0, TODAY),
+    normalizePassenger(
+      adult({
+        fullName: "Nguyen Van B",
+        nationalId: "012345678902",
+        email: "b@example.com",
+      }),
+      1,
+      TODAY,
+    ),
+    normalizePassenger(
+      adult({
+        fullName: "Nguyen Van C",
+        nationalId: "012345678903",
+        email: "c@example.com",
+      }),
+      2,
+      TODAY,
+    ),
+    normalizePassenger(
+      adult({
+        fullName: "Nguyen Van D",
+        nationalId: "012345678904",
+        email: "d@example.com",
+      }),
+      3,
+      TODAY,
+    ),
+  ];
+  const lapChild = normalizePassenger(
+    { fullName: "Be Ut", dateOfBirth: "2022-01-01", seatRequired: false },
+    4,
+    TODAY,
+  );
+  assert.doesNotThrow(() =>
+    validatePassengerBusinessRules([...seatedAdults, lapChild]),
+  );
+});
+
 test("identity documents must be unique inside one booking session", () => {
   assert.throws(
     () =>
