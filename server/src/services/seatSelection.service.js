@@ -1,5 +1,6 @@
 import { prisma } from "../config/database.js";
 import { calculateFare, getConfiguration } from "./pricing.service.js";
+import { getTrainTypePriceFactor } from "../config/trainTypes.js";
 import { resolveJourneySegment } from "../utils/journey.js";
 
 export const HOLD_DURATION_MS = 10 * 60 * 1000;
@@ -182,12 +183,15 @@ async function pricingByCarriage(schedule, segment) {
     at: segment.departureTime.toISOString(),
   });
 
+  const priceFactor = getTrainTypePriceFactor(schedule.train.trainType);
+
   return new Map(
     configuration.effectiveRules
       .filter((rule) => rule.passengerType === "ADULT")
       .map((rule) => [
         rule.carriageType,
-        calculateFare(rule, segment.distance, rule.taxPercentage).finalPrice,
+        calculateFare(rule, segment.distance, rule.taxPercentage, priceFactor)
+          .finalPrice,
       ]),
   );
 }

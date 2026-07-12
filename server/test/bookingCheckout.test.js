@@ -7,6 +7,7 @@ import {
   validateAccountHolderSelection,
   validatePassengerBusinessRules,
 } from "../src/services/bookingCheckout.service.js";
+import { calculateFare } from "../src/services/pricing.service.js";
 
 const TODAY = new Date("2026-06-16T12:00:00+07:00");
 
@@ -349,4 +350,36 @@ test("only one ticket can be assigned to the account holder", () => {
       { userId: "user-1" },
     ),
   );
+});
+
+test("calculateFare respects train type price factor", () => {
+  const rule = {
+    basePrice: 50000,
+    pricePerKm: 1000,
+    classSurcharge: 10000,
+    minPrice: null,
+    maxPrice: null,
+    discountPercentage: 0,
+    scopeType: "SYSTEM",
+  };
+
+  // Default price factor (1.0): 50k + 10k + 10 * 1k = 70k
+  const fareDefault = calculateFare(rule, 10, 0);
+  assert.equal(fareDefault.finalPrice, 70000);
+
+  // TN train type factor (0.85): 70k * 0.85 = 59.5k
+  const fareTN = calculateFare(rule, 10, 0, 0.85);
+  assert.equal(fareTN.finalPrice, 59500);
+
+  // HL train type factor (1.30): 70k * 1.30 = 91k
+  const fareHL = calculateFare(rule, 10, 0, 1.3);
+  assert.equal(fareHL.finalPrice, 91000);
+
+  // Direct schedule policy (scopeType = SCHEDULE) ignores the train-type priceFactor
+  const scheduleRule = {
+    ...rule,
+    scopeType: "SCHEDULE",
+  };
+  const fareScheduleTN = calculateFare(scheduleRule, 10, 0, 0.85);
+  assert.equal(fareScheduleTN.finalPrice, 70000);
 });

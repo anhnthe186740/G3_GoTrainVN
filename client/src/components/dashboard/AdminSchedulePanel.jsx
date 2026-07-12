@@ -93,10 +93,25 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
-const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
+const TripPreview = ({
+  selectedRoute,
+  departureTimes,
+  bufferMinutes,
+  trainType = "SE",
+}) => {
   if (!selectedRoute || !departureTimes) return null;
 
-  const durationMins = selectedRoute.estimatedDuration || 0;
+  const SPEED_FACTORS = {
+    SE: 1.0,
+    TN: 1.3,
+    SP: 1.15,
+    QN: 1.1,
+  };
+  const speedFactor = SPEED_FACTORS[trainType] || 1.0;
+
+  const durationMins = Math.round(
+    (selectedRoute.estimatedDuration || 0) * speedFactor,
+  );
   if (durationMins <= 0) return null;
 
   const bufferMins = parseInt(bufferMinutes) || 0;
@@ -2394,6 +2409,10 @@ export function AdminSchedulePanel() {
                         ?.slice(0, 5) || ""
                     }
                     bufferMinutes={singleSchedForm.bufferMinutes}
+                    trainType={
+                      trains.find((t) => t.id === singleSchedForm.trainId)
+                        ?.trainType
+                    }
                   />
                 </div>
               )}
