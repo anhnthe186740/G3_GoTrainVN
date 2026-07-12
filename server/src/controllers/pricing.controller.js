@@ -100,6 +100,7 @@ export const previewFare = asyncHandler(async (req, res) => {
     req.body.rule,
     req.body.distance,
     req.body.taxPercentage,
+    req.body.priceFactor,
   );
   res.json({ preview: result });
 });
