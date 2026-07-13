@@ -5,6 +5,7 @@ import {
   getConfiguration,
   getEffectiveTicketTypes,
 } from "./pricing.service.js";
+import { getTrainTypePriceFactor } from "../config/trainTypes.js";
 import { getJourney, getSession } from "./seatSelection.service.js";
 import {
   createPayosPaymentRequest,
@@ -399,7 +400,12 @@ async function fareRulesForLeg(session, leg) {
     leg === "outbound"
       ? session.outboundToStationId
       : session.returnToStationId;
-  const { segment } = await getJourney(scheduleId, fromStationId, toStationId);
+  const { schedule, segment } = await getJourney(
+    scheduleId,
+    fromStationId,
+    toStationId,
+  );
+  const priceFactor = getTrainTypePriceFactor(schedule.train.trainType);
   const configuration = await getConfiguration({
     scopeType: "SCHEDULE",
     scopeId: scheduleId,
@@ -407,6 +413,7 @@ async function fareRulesForLeg(session, leg) {
   });
   return {
     distance: segment.distance,
+    priceFactor,
     rules: new Map(
       configuration.effectiveRules.map((rule) => [
         `${rule.passengerType}:${rule.carriageType}`,
@@ -646,6 +653,7 @@ export async function quoteBooking(
         { ...rule, discountPercentage: 0 },
         pricing.distance,
         rule.taxPercentage,
+        pricing.priceFactor,
       );
       const discountAmount = Math.round(
         passenger.discountType === "FIXED_AMOUNT"
@@ -670,6 +678,7 @@ export async function quoteBooking(
             { ...upgradedRule, discountPercentage: 0 },
             pricing.distance,
             upgradedRule.taxPercentage,
+            pricing.priceFactor,
           );
           const upgradedDiscountAmount = Math.round(
             passenger.discountType === "FIXED_AMOUNT"
