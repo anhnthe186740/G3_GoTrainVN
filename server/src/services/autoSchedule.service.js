@@ -552,10 +552,10 @@ export function startAutoScheduleCron() {
   );
 
   // Đợi đến mốc 00:00 đêm
-  const startupTimer = setTimeout(() => {
+  const startupTimer = setTimeout(async () => {
     // Chạy tác vụ lúc 00:00
     try {
-      generateSchedulesForDay30();
+      await generateSchedulesForDay30();
     } catch (e) {
       console.error("[AutoSchedule] Lỗi chạy ngầm lúc 00:00:", e);
     }

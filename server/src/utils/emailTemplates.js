@@ -1,7 +1,7 @@
 // UTILS FOR EMAIL TEMPLATES (HTML RESPONSIVE)
 
 const formatPrice = (amount) => {
-  return amount != null
+  return amount != null && !isNaN(amount)
     ? `${Math.round(amount).toLocaleString("vi-VN")}đ`
     : "0đ";
 };
@@ -253,17 +253,21 @@ export function getCancelBookingEmailTemplate(
   refundPercentage,
   refundMethod,
 ) {
-  const schedule = booking.schedule;
+  const schedule = booking?.schedule;
   const trainName = schedule?.train?.trainName || "Tàu hỏa";
-  const startStation = booking.fromStation?.stationName || "Ga đi";
-  const endStation = booking.toStation?.stationName || "Ga đến";
+  const startStation = booking?.fromStation?.stationName || "Ga đi";
+  const endStation = booking?.toStation?.stationName || "Ga đến";
   const departureTime = formatDate(schedule?.departureTime);
 
-  const passengerNames = (booking.passengers || [])
+  const passengerNames = (booking?.passengers || [])
     .map((p) => p.fullName)
     .join(", ");
   const methodLabel =
     refundMethod === "WALLET" ? "Hoàn vào Ví GoTrain VN" : "Liên hệ quầy vé ga";
+
+  const totalAmount = booking?.totalAmount || 0;
+  const refundAmt = refundAmount || 0;
+  const cancellationFee = Math.max(0, totalAmount - refundAmt);
 
   return `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fca5a5; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
@@ -292,11 +296,11 @@ export function getCancelBookingEmailTemplate(
       <!-- Refund Details -->
       <div style="background-color: #fef2f2; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; border: 1px solid #fee2e2; font-size: 14px;">
         <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">Thông tin hoàn tiền</h3>
-        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Giá trị đơn vé:</span> <strong>${formatPrice(booking.totalAmount)}</strong></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Giá trị đơn vé:</span> <strong>${formatPrice(totalAmount)}</strong></p>
         <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Tỷ lệ hoàn tiền:</span> <strong>${refundPercentage}%</strong></p>
-        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Lệ phí hủy vé:</span> <strong>${formatPrice(booking.totalAmount - refundAmount)}</strong></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Lệ phí hủy vé:</span> <strong>${formatPrice(cancellationFee)}</strong></p>
         <hr style="border: 0; border-top: 1px solid #fee2e2; margin: 10px 0;" />
-        <p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span>Số tiền hoàn lại:</span> <span style="color: #b91c1c;">${formatPrice(refundAmount)}</span></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span>Số tiền hoàn lại:</span> <span style="color: #b91c1c;">${formatPrice(refundAmt)}</span></p>
         <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Hình thức hoàn tiền:</span> <strong>${methodLabel}</strong></p>
       </div>
 
