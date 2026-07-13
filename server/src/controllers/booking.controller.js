@@ -1136,7 +1136,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({
-    message: "Đã gửi yêu cầu hủy vé. Vui lòng chờ Admin phê duyệt.",
+    message: "Đã hủy vé và ghi nhận hoàn tiền tự động.",
     cancellationStatus: result.cancellationRequest.status,
     cancellationRequestId: result.cancellationRequest.id,
     refundAmount: result.refundAmount,
