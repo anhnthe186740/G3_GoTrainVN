@@ -38,6 +38,16 @@ export async function validateSameDirectionGap({
   const depTime = new Date(departureTime).getTime();
   const arrTime = new Date(arrivalTime).getTime();
 
+  if (isNaN(depTime) || isNaN(arrTime)) {
+    return {
+      valid: false,
+      conflict: {
+        type: "INVALID_INPUT",
+        message: "Thời gian xuất phát hoặc thời gian đến không hợp lệ.",
+      },
+    };
+  }
+
   // Tìm tất cả lịch chạy cùng tuyến (cùng routeId = cùng chiều), chưa bị hủy
   const sameDirectionSchedules = await prisma.schedule.findMany({
     where: {
@@ -318,22 +328,45 @@ export function validateStopTimeSequence({
       ? new Date(stop.departureTime).getTime()
       : null;
 
+    if (stop.arrivalTime && isNaN(arrMs)) {
+      errors.push(`Ga dừng #${stop.stopOrder}: Giờ đến không hợp lệ.`);
+    }
+    if (stop.departureTime && isNaN(depMs)) {
+      errors.push(`Ga dừng #${stop.stopOrder}: Giờ đi không hợp lệ.`);
+    }
+
     // Quy tắc: arrivalTime ≤ departureTime tại cùng ga
-    if (arrMs !== null && depMs !== null && arrMs > depMs) {
+    if (
+      arrMs !== null &&
+      !isNaN(arrMs) &&
+      depMs !== null &&
+      !isNaN(depMs) &&
+      arrMs > depMs
+    ) {
       errors.push(
         `Ga dừng #${stop.stopOrder}: Giờ đến (${new Date(stop.arrivalTime).toLocaleString("vi-VN")}) phải nhỏ hơn hoặc bằng giờ đi (${new Date(stop.departureTime).toLocaleString("vi-VN")}).`,
       );
     }
 
     // Quy tắc: Không được sớm hơn giờ xuất phát ga đầu
-    if (arrMs !== null && arrMs < schedDepMs) {
+    if (
+      arrMs !== null &&
+      !isNaN(arrMs) &&
+      !isNaN(schedDepMs) &&
+      arrMs < schedDepMs
+    ) {
       errors.push(
         `Ga dừng #${stop.stopOrder}: Giờ đến (${new Date(stop.arrivalTime).toLocaleString("vi-VN")}) không được trước giờ xuất phát ga đầu (${new Date(scheduleDepartureTime).toLocaleString("vi-VN")}).`,
       );
     }
 
     // Quy tắc: Không được muộn hơn giờ cập ga cuối
-    if (depMs !== null && depMs > schedArrMs) {
+    if (
+      depMs !== null &&
+      !isNaN(depMs) &&
+      !isNaN(schedArrMs) &&
+      depMs > schedArrMs
+    ) {
       errors.push(
         `Ga dừng #${stop.stopOrder}: Giờ đi (${new Date(stop.departureTime).toLocaleString("vi-VN")}) không được sau giờ cập ga cuối (${new Date(scheduleArrivalTime).toLocaleString("vi-VN")}).`,
       );
@@ -346,7 +379,13 @@ export function validateStopTimeSequence({
         ? new Date(nextStop.arrivalTime).getTime()
         : null;
 
-      if (depMs !== null && nextArrMs !== null && depMs >= nextArrMs) {
+      if (
+        depMs !== null &&
+        !isNaN(depMs) &&
+        nextArrMs !== null &&
+        !isNaN(nextArrMs) &&
+        depMs >= nextArrMs
+      ) {
         errors.push(
           `Ga dừng #${stop.stopOrder} → #${nextStop.stopOrder}: Giờ đi khỏi ga #${stop.stopOrder} (${new Date(stop.departureTime).toLocaleString("vi-VN")}) phải trước giờ đến ga #${nextStop.stopOrder} (${new Date(nextStop.arrivalTime).toLocaleString("vi-VN")}).`,
         );
@@ -387,33 +426,40 @@ export function validateSingleStopSequence({
   const schedDepMs = new Date(scheduleDepartureTime).getTime();
   const schedArrMs = new Date(scheduleArrivalTime).getTime();
 
+  if (isNaN(arrMs)) {
+    errors.push("Giờ đến không hợp lệ.");
+  }
+  if (isNaN(depMs)) {
+    errors.push("Giờ đi không hợp lệ.");
+  }
+
   // 1. arrivalTime ≤ departureTime tại cùng ga
-  if (arrMs > depMs) {
+  if (!isNaN(arrMs) && !isNaN(depMs) && arrMs > depMs) {
     errors.push(
       `Giờ đến (${new Date(arrivalTime).toLocaleString("vi-VN")}) phải nhỏ hơn hoặc bằng giờ đi (${new Date(departureTime).toLocaleString("vi-VN")}).`,
     );
   }
 
   // 2. Không được sớm hơn giờ xuất phát ga đầu
-  if (arrMs < schedDepMs) {
+  if (!isNaN(arrMs) && !isNaN(schedDepMs) && arrMs < schedDepMs) {
     errors.push(
       `Giờ đến không được trước giờ xuất phát ga đầu (${new Date(scheduleDepartureTime).toLocaleString("vi-VN")}).`,
     );
   }
 
   // 3. Không được muộn hơn giờ cập ga cuối
-  if (depMs > schedArrMs) {
+  if (!isNaN(depMs) && !isNaN(schedArrMs) && depMs > schedArrMs) {
     errors.push(
       `Giờ đi không được sau giờ cập ga cuối (${new Date(scheduleArrivalTime).toLocaleString("vi-VN")}).`,
     );
   }
 
   // 4. Phải sau stop trước
-  if (prevStop) {
+  if (prevStop && !isNaN(arrMs)) {
     const prevDepMs = prevStop.departureTime
       ? new Date(prevStop.departureTime).getTime()
       : schedDepMs;
-    if (arrMs <= prevDepMs) {
+    if (!isNaN(prevDepMs) && arrMs <= prevDepMs) {
       errors.push(
         `Giờ đến (${new Date(arrivalTime).toLocaleString("vi-VN")}) phải sau giờ đi của ga dừng trước đó (${new Date(prevStop.departureTime || scheduleDepartureTime).toLocaleString("vi-VN")}).`,
       );
@@ -421,11 +467,11 @@ export function validateSingleStopSequence({
   }
 
   // 5. Phải trước stop sau
-  if (nextStop) {
+  if (nextStop && !isNaN(depMs)) {
     const nextArrMs = nextStop.arrivalTime
       ? new Date(nextStop.arrivalTime).getTime()
       : schedArrMs;
-    if (depMs >= nextArrMs) {
+    if (!isNaN(nextArrMs) && depMs >= nextArrMs) {
       errors.push(
         `Giờ đi (${new Date(departureTime).toLocaleString("vi-VN")}) phải trước giờ đến của ga dừng tiếp theo (${new Date(nextStop.arrivalTime || scheduleArrivalTime).toLocaleString("vi-VN")}).`,
       );
