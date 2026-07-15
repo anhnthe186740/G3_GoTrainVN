@@ -124,17 +124,70 @@ function buildCancellationPrismaMock(overrides = {}) {
     ],
   };
 
+  let currentBooking = { ...defaultBooking, ...overrides.booking };
+  let currentRequest = overrides.cancellationRequest ?? null;
+
   return {
     booking: {
       findUnique: async () => {
         if (overrides.booking === null) return null;
-        return { ...defaultBooking, ...overrides.booking };
+        return currentBooking;
       },
     },
     cancellationRequest: {
-      findUnique: async () => overrides.cancellationRequest ?? null,
-      update: async ({ data }) => ({ id: "request-1", ...data }),
-      create: async ({ data }) => ({ id: "request-1", ...data }),
+      findUnique: async () => currentRequest,
+      update: async ({ data }) => {
+        currentRequest = { ...currentRequest, ...data };
+        return currentRequest;
+      },
+      create: async ({ data }) => {
+        currentRequest = { id: "request-1", ...data };
+        return currentRequest;
+      },
+    },
+    $transaction: async (fn) => {
+      const mockTx = {
+        booking: {
+          update: async ({ data }) => {
+            currentBooking = { ...currentBooking, ...data };
+            return currentBooking;
+          },
+        },
+        bookingDetail: {
+          updateMany: async () => ({ count: 1 }),
+          count: async () => 0,
+        },
+        seat: {
+          updateMany: async () => ({ count: 1 }),
+        },
+        bookingPaymentHistory: {
+          create: async () => ({ id: "pay-hist-1" }),
+        },
+        refund: {
+          upsert: async () => ({ id: "refund-1" }),
+        },
+        wallet: {
+          upsert: async () => ({ id: "w-1", balance: 0 }),
+          update: async () => ({ id: "w-1", balance: 100000 }),
+        },
+        walletTransaction: {
+          create: async () => ({ id: "w-txn-1" }),
+        },
+        user: {
+          findUnique: async () => ({ id: "user-1", loyaltyPoints: 100 }),
+          update: async () => ({ id: "user-1" }),
+        },
+        loyaltyPoint: {
+          create: async () => ({ id: "lp-1" }),
+        },
+        cancellationRequest: {
+          update: async ({ data }) => {
+            currentRequest = { ...currentRequest, ...data };
+            return currentRequest;
+          },
+        },
+      };
+      return fn(mockTx);
     },
   };
 }
@@ -155,7 +208,7 @@ test("cancelBookingTickets - UTCID01: Booking CONFIRMED/COMPLETED, departure +30
     refundMethod: "WALLET",
     identity: { userId: "user-1" },
   });
-  assert.equal(result.refundStatus, "PENDING_APPROVAL");
+  assert.equal(result.refundStatus, "COMPLETED");
   assert.equal(result.refundAmount, 80000);
   assert.equal(result.refundPercentage, 80);
   assert.deepEqual(result.requestedPassengerIds, ["passenger-1"]);
@@ -237,7 +290,7 @@ test('cancelBookingTickets - UTCID04: existingRequest={id:"request-old",status:"
     refundMethod: "WALLET",
     identity: { userId: "user-1" },
   });
-  assert.equal(result.cancellationRequest.status, "PENDING");
+  assert.equal(result.cancellationRequest.status, "APPROVED");
 });
 
 test("cancelBookingTickets - UTCID05: booking=null (findUnique returns null) throws 404", async (t) => {
@@ -284,7 +337,7 @@ test('cancelBookingTickets - UTCID06: existingRequest={id:"request-old",status:"
       }),
     (err) => {
       assert.equal(err.statusCode, 409);
-      assert.match(err.message, /đang chờ Admin duyệt/);
+      assert.match(err.message, /đang được hệ thống xử lý/);
       return true;
     },
   );
@@ -507,7 +560,7 @@ test('cancelBookingTickets - UTCID14: booking.userId="someone-else" (not caller)
     refundMethod: "WALLET",
     identity: { role: "STAFF", userId: "staff-1" },
   });
-  assert.equal(result.cancellationRequest.status, "PENDING");
+  assert.equal(result.cancellationRequest.status, "APPROVED");
 });
 
 test('cancelBookingTickets - UTCID15: booking.userId="primary-owner", passenger.userId="co-passenger-user" differs from booking owner', async (t) => {
@@ -537,7 +590,7 @@ test('cancelBookingTickets - UTCID15: booking.userId="primary-owner", passenger.
     refundMethod: "WALLET",
     identity: { userId: "co-passenger-user" },
   });
-  assert.equal(result.cancellationRequest.status, "PENDING");
+  assert.equal(result.cancellationRequest.status, "APPROVED");
 });
 
 test('cancelBookingTickets - UTCID16: booking.userId="someone-else", passenger phone matches contact', async (t) => {
@@ -575,7 +628,7 @@ test('cancelBookingTickets - UTCID16: booking.userId="someone-else", passenger p
       accountHolder: "NGUYEN VAN A",
     },
   });
-  assert.equal(result.cancellationRequest.status, "PENDING");
+  assert.equal(result.cancellationRequest.status, "APPROVED");
 });
 
 test('cancelBookingTickets - UTCID17: booking.userId="someone-else", verification contact does not match any passenger throws 403', async (t) => {
