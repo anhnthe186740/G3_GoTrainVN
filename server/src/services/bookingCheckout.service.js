@@ -10,6 +10,7 @@ import { getJourney, getSession } from "./seatSelection.service.js";
 import {
   createPayosPaymentRequest,
   verifyPayosSignature,
+  getPayosPaymentRequest,
 } from "./payos.service.js";
 import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
 import { sendEmail } from "./email.service.js";
@@ -1348,6 +1349,34 @@ export async function getBookingPaymentStatus(identity, bookingId) {
     include: { passengers: true },
   });
   if (!booking) throw httpError(404, "Không tìm thấy đơn đặt vé.");
+
+  if (
+    booking.paymentMethod === "BANK_QR" &&
+    booking.paymentStatus === "PENDING" &&
+    booking.payosPaymentLinkId
+  ) {
+    try {
+      const payosData = await getPayosPaymentRequest(
+        booking.payosPaymentLinkId,
+      );
+      if (payosData && payosData.status === "PAID") {
+        const completed = await prisma.$transaction((tx) =>
+          completePayosBooking(tx, booking, {
+            paymentLinkId: payosData.id,
+            reference: payosData.transactions?.[0]?.reference || payosData.id,
+          }),
+        );
+        sendBookingEmail(completed.id, "SUCCESS");
+        return completed;
+      }
+    } catch (error) {
+      console.error(
+        "Failed to sync PayOS status in getBookingPaymentStatus:",
+        error,
+      );
+    }
+  }
+
   return booking;
 }
 
