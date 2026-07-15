@@ -378,7 +378,7 @@ export function TicketLookup() {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <Clock className="h-3.5 w-3.5" />
-          Chờ hủy vé
+          Đã ghi nhận hủy
         </span>
       );
     }
@@ -585,7 +585,7 @@ export function TicketLookup() {
       }
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.message || "Lỗi khi gửi yêu cầu hủy vé.");
+      toast.error(err.response?.data?.message || "Lỗi khi hủy vé.");
     } finally {
       setRefundLoading(false);
     }
@@ -1146,7 +1146,7 @@ export function TicketLookup() {
                     }`}
                   >
                     <AlertTriangle className="h-4.5 w-4.5" />
-                    <span>Yêu cầu hoàn vé & Hủy</span>
+                    <span>Hủy vé & Hoàn tiền</span>
                   </button>
                 )}
 
@@ -1154,7 +1154,7 @@ export function TicketLookup() {
                   "PENDING" && (
                   <span className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700">
                     <Clock className="h-4.5 w-4.5" />
-                    Yêu cầu hủy đang chờ Admin duyệt
+                    Vé đang được xử lý hủy và hoàn tiền
                   </span>
                 )}
 
@@ -1413,7 +1413,7 @@ export function TicketLookup() {
                       Chuyển khoản ngân hàng
                     </span>
                     <span className="mt-1 block text-[10px] text-blue-600">
-                      Admin sẽ kiểm tra trước khi hệ thống xử lý hoàn tiền
+                      Hệ thống sẽ ghi nhận hoàn tiền về tài khoản ngân hàng
                     </span>
                   </div>
                 ) : (

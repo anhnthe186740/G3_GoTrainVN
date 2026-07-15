@@ -1072,7 +1072,7 @@ export function Profile() {
 
                       {booking.cancellationRequest?.status === "PENDING" ? (
                         <span className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700">
-                          Yêu cầu hủy đang chờ Admin duyệt
+                          Vé đang được xử lý hủy và hoàn tiền
                         </span>
                       ) : canCancel ? (
                         <button

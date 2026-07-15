@@ -220,209 +220,7 @@ async function adjustLoyaltyPoints(tx, userId, amount, bookingId) {
   });
 }
 
-export async function cancelBookingTickets({
-  bookingId,
-  passengerIds,
-  refundMethod,
-  reason,
-  identity,
-  verification,
-  bankInfo,
-}) {
-  let method = normalizeRefundMethod(refundMethod);
-
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    include: {
-      schedule: true,
-      passengers: {
-        include: {
-          bookingDetails: true,
-        },
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
-
-  if (!booking) throw httpError(404, "Không tìm thấy giao dịch đặt vé.");
-  assertCancellationAccess(booking, identity, verification);
-
-  if (!bookingIsPaidAndCancelable(booking)) {
-    throw httpError(
-      409,
-      "Chỉ có thể hủy vé đã xác nhận và đã thanh toán thành công.",
-    );
-  }
-
-  const policy = refundPolicy(booking.schedule.departureTime);
-  if (!policy.allowed) throw httpError(400, policy.message);
-
-  const selectedPassengers = selectedPassengersForCancellation(
-    booking,
-    passengerIds,
-  );
-  const selectedPassengerIds = selectedPassengers.map(
-    (passenger) => passenger.id,
-  );
-  const totalOriginalAmount = selectedPassengers.reduce(
-    (sum, passenger) => sum + ticketAmount(passenger),
-    0,
-  );
-  const totalRefundAmount = Math.round(totalOriginalAmount * policy.rate);
-  if (totalRefundAmount < 0) {
-    throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
-  }
-
-  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
-  const isGuestRequest = requesterType === "GUEST";
-  const normalizedBankInfo = isGuestRequest
-    ? normalizeGuestBankInfo(bankInfo)
-    : {
-        bankName: bankInfo?.bankName?.trim() || null,
-        bankAccount:
-          String(bankInfo?.bankAccount || "").replace(/\s/g, "") || null,
-        accountHolder: bankInfo?.accountHolder?.trim() || null,
-      };
-  if (isGuestRequest) {
-    method = "BANK_TRANSFER";
-  }
-
-  const requestReason = reason || "Yêu cầu hủy vé trực tuyến";
-
-  const existingRequest = await prisma.cancellationRequest.findUnique({
-    where: { bookingId },
-  });
-  if (existingRequest?.status === "PENDING") {
-    throw httpError(409, "Yêu cầu hủy vé này đang chờ Admin duyệt.");
-  }
-
-  const requestData = {
-    passengerId: selectedPassengerIds[0],
-    passengerIds: selectedPassengerIds,
-    status: "PENDING",
-    requesterType,
-    requestReason,
-    refundAmount: totalRefundAmount,
-    refundMethod: method,
-    refundBankName: normalizedBankInfo.bankName,
-    refundBankAccount: normalizedBankInfo.bankAccount,
-    refundAccountHolder: normalizedBankInfo.accountHolder,
-    rejectionReason: null,
-    approvedBy: null,
-    approvedAt: null,
-  };
-  const request = existingRequest
-    ? await prisma.cancellationRequest.update({
-        where: { id: existingRequest.id },
-        data: requestData,
-      })
-    : await prisma.cancellationRequest.create({
-        data: { bookingId, ...requestData },
-      });
-
-  return {
-    booking,
-    cancellationRequest: request,
-    requestedPassengerIds: selectedPassengerIds,
-    refundMethod: method,
-    refundStatus: "PENDING_APPROVAL",
-    refundAmount: totalRefundAmount,
-    refundPercentage: Math.round(policy.rate * 100),
-    totalOriginalAmount,
-  };
-}
-
-export async function getAdminCancellationRequests({ status, audience } = {}) {
-  const allowedStatuses = ["PENDING", "APPROVED", "REJECTED"];
-  const normalizedStatus = String(status || "").toUpperCase();
-  const where = allowedStatuses.includes(normalizedStatus)
-    ? { status: normalizedStatus }
-    : {};
-
-  const requests = await prisma.cancellationRequest.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      passenger: true,
-      approvedByAdmin: {
-        select: { id: true, fullName: true, email: true },
-      },
-      booking: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              phoneNumber: true,
-            },
-          },
-          schedule: {
-            include: { startStation: true, endStation: true, train: true },
-          },
-          fromStation: true,
-          toStation: true,
-          passengers: { include: { bookingDetails: true } },
-        },
-      },
-    },
-  });
-
-  const normalizedAudience = String(audience || "").toUpperCase();
-  if (normalizedAudience === "REGISTERED") {
-    return requests.filter(
-      (request) => cancellationRequesterType(request) === "REGISTERED",
-    );
-  }
-  if (normalizedAudience === "GUEST") {
-    return requests.filter(
-      (request) => cancellationRequesterType(request) === "GUEST",
-    );
-  }
-  return requests;
-}
-
-export async function reviewCancellationRequest({
-  requestId,
-  action,
-  adminId,
-  rejectionReason,
-}) {
-  const decision = String(action || "").toUpperCase();
-  if (!["APPROVE", "REJECT"].includes(decision)) {
-    throw httpError(400, "Quyết định duyệt không hợp lệ.");
-  }
-
-  const request = await prisma.cancellationRequest.findUnique({
-    where: { id: requestId },
-    include: {
-      booking: {
-        include: {
-          schedule: true,
-          passengers: {
-            include: { bookingDetails: true },
-            orderBy: { createdAt: "asc" },
-          },
-        },
-      },
-    },
-  });
-  if (!request) throw httpError(404, "Không tìm thấy yêu cầu hủy vé.");
-  if (request.status !== "PENDING") {
-    throw httpError(409, "Yêu cầu này đã được xử lý trước đó.");
-  }
-
-  if (decision === "REJECT") {
-    return prisma.cancellationRequest.update({
-      where: { id: requestId },
-      data: {
-        status: "REJECTED",
-        rejectionReason: rejectionReason?.trim() || "Không đủ điều kiện hủy vé",
-      },
-      include: { booking: true },
-    });
-  }
-
+async function processApprovedCancellation(request, { adminId = null } = {}) {
   const booking = request.booking;
   if (!bookingIsPaidAndCancelable(booking)) {
     throw httpError(409, "Đặt vé không còn ở trạng thái có thể hủy.");
@@ -477,6 +275,26 @@ export async function reviewCancellationRequest({
       },
       data: { status: "CANCELLED" },
     });
+
+    const releasedSeatIds = [
+      ...new Set(
+        selectedPassengers.flatMap((passenger) => [
+          passenger.seatId,
+          ...activeDetails(passenger).map((detail) => detail.seatId),
+        ]),
+      ),
+    ].filter(Boolean);
+    if (releasedSeatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: { id: { in: releasedSeatIds } },
+        data: {
+          status: "AVAILABLE",
+          selectedBy: null,
+          selectedAt: null,
+          selectionExpiry: null,
+        },
+      });
+    }
 
     const remainingActiveDetails = await tx.bookingDetail.count({
       where: {
@@ -573,4 +391,212 @@ export async function reviewCancellationRequest({
       cancelledPassengerIds: selectedPassengerIds,
     };
   });
+}
+
+export async function cancelBookingTickets({
+  bookingId,
+  passengerIds,
+  refundMethod,
+  reason,
+  identity,
+  verification,
+  bankInfo,
+}) {
+  let method = normalizeRefundMethod(refundMethod);
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: {
+      schedule: true,
+      passengers: {
+        include: {
+          bookingDetails: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!booking) throw httpError(404, "Không tìm thấy giao dịch đặt vé.");
+  assertCancellationAccess(booking, identity, verification);
+
+  if (!bookingIsPaidAndCancelable(booking)) {
+    throw httpError(
+      409,
+      "Chỉ có thể hủy vé đã xác nhận và đã thanh toán thành công.",
+    );
+  }
+
+  const policy = refundPolicy(booking.schedule.departureTime);
+  if (!policy.allowed) throw httpError(400, policy.message);
+
+  const selectedPassengers = selectedPassengersForCancellation(
+    booking,
+    passengerIds,
+  );
+  const selectedPassengerIds = selectedPassengers.map(
+    (passenger) => passenger.id,
+  );
+  const totalOriginalAmount = selectedPassengers.reduce(
+    (sum, passenger) => sum + ticketAmount(passenger),
+    0,
+  );
+  const totalRefundAmount = Math.round(totalOriginalAmount * policy.rate);
+  if (totalRefundAmount < 0) {
+    throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
+  }
+
+  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
+  const isGuestRequest = requesterType === "GUEST";
+  const normalizedBankInfo = isGuestRequest
+    ? normalizeGuestBankInfo(bankInfo)
+    : {
+        bankName: bankInfo?.bankName?.trim() || null,
+        bankAccount:
+          String(bankInfo?.bankAccount || "").replace(/\s/g, "") || null,
+        accountHolder: bankInfo?.accountHolder?.trim() || null,
+      };
+  if (isGuestRequest) {
+    method = "BANK_TRANSFER";
+  }
+
+  const requestReason = reason || "Yêu cầu hủy vé trực tuyến";
+
+  const existingRequest = await prisma.cancellationRequest.findUnique({
+    where: { bookingId },
+  });
+  if (existingRequest?.status === "PENDING") {
+    throw httpError(409, "Yêu cầu hủy vé này đang được hệ thống xử lý.");
+  }
+
+  const requestData = {
+    passengerId: selectedPassengerIds[0],
+    passengerIds: selectedPassengerIds,
+    status: "PENDING",
+    requesterType,
+    requestReason,
+    refundAmount: totalRefundAmount,
+    refundMethod: method,
+    refundBankName: normalizedBankInfo.bankName,
+    refundBankAccount: normalizedBankInfo.bankAccount,
+    refundAccountHolder: normalizedBankInfo.accountHolder,
+    rejectionReason: null,
+    approvedBy: null,
+    approvedAt: null,
+  };
+  const request = existingRequest
+    ? await prisma.cancellationRequest.update({
+        where: { id: existingRequest.id },
+        data: requestData,
+      })
+    : await prisma.cancellationRequest.create({
+        data: { bookingId, ...requestData },
+      });
+
+  const approvedResult = await processApprovedCancellation(request);
+
+  return {
+    booking: approvedResult.booking,
+    cancellationRequest: approvedResult.cancellationRequest,
+    requestedPassengerIds: selectedPassengerIds,
+    refundMethod: approvedResult.refundMethod,
+    refundStatus: approvedResult.refundStatus,
+    refundAmount: approvedResult.refundAmount,
+    refundPercentage: Math.round(policy.rate * 100),
+    totalOriginalAmount,
+  };
+}
+
+export async function getAdminCancellationRequests({ status, audience } = {}) {
+  const allowedStatuses = ["PENDING", "APPROVED", "REJECTED"];
+  const normalizedStatus = String(status || "").toUpperCase();
+  const where = allowedStatuses.includes(normalizedStatus)
+    ? { status: normalizedStatus }
+    : {};
+
+  const requests = await prisma.cancellationRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: {
+      passenger: true,
+      approvedByAdmin: {
+        select: { id: true, fullName: true, email: true },
+      },
+      booking: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
+          schedule: {
+            include: { startStation: true, endStation: true, train: true },
+          },
+          fromStation: true,
+          toStation: true,
+          passengers: { include: { bookingDetails: true } },
+        },
+      },
+    },
+  });
+
+  const normalizedAudience = String(audience || "").toUpperCase();
+  if (normalizedAudience === "REGISTERED") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "REGISTERED",
+    );
+  }
+  if (normalizedAudience === "GUEST") {
+    return requests.filter(
+      (request) => cancellationRequesterType(request) === "GUEST",
+    );
+  }
+  return requests;
+}
+
+export async function reviewCancellationRequest({
+  requestId,
+  action,
+  adminId,
+  rejectionReason,
+}) {
+  const decision = String(action || "").toUpperCase();
+  if (!["APPROVE", "REJECT"].includes(decision)) {
+    throw httpError(400, "Quyết định duyệt không hợp lệ.");
+  }
+
+  const request = await prisma.cancellationRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      booking: {
+        include: {
+          schedule: true,
+          passengers: {
+            include: { bookingDetails: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      },
+    },
+  });
+  if (!request) throw httpError(404, "Không tìm thấy yêu cầu hủy vé.");
+  if (request.status !== "PENDING") {
+    throw httpError(409, "Yêu cầu này đã được xử lý trước đó.");
+  }
+
+  if (decision === "REJECT") {
+    return prisma.cancellationRequest.update({
+      where: { id: requestId },
+      data: {
+        status: "REJECTED",
+        rejectionReason: rejectionReason?.trim() || "Không đủ điều kiện hủy vé",
+      },
+      include: { booking: true },
+    });
+  }
+
+  return processApprovedCancellation(request, { adminId });
 }

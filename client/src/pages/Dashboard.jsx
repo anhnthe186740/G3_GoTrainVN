@@ -415,7 +415,7 @@ function CustomerDashboard({ user }) {
                         )}
                       {next.cancellationRequest?.status === "PENDING" ? (
                         <span className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs font-bold text-amber-700">
-                          Chờ Admin duyệt hủy
+                          Đang xử lý hủy vé
                         </span>
                       ) : (
                         next.status !== "CANCELLED" &&
@@ -597,7 +597,7 @@ function CustomerDashboard({ user }) {
                             "PENDING" ? (
                               <span
                                 className="material-symbols-outlined p-1.5 text-amber-600"
-                                title="Yêu cầu hủy đang chờ Admin duyệt"
+                                title="Vé đang được xử lý hủy và hoàn tiền"
                               >
                                 pending_actions
                               </span>
