@@ -5,6 +5,10 @@ import { searchJourneys } from "../services/scheduleSearch.service.js";
 import { notifyScheduleChange } from "../services/scheduleNotification.service.js";
 import { emitLiveTrackingUpdate } from "../realtime/seatRealtime.js";
 import {
+  getTrainTypeSpeedFactor,
+  getTrainTypePriceFactor,
+} from "../config/trainTypes.js";
+import {
   buildCarriageConfigs,
   createTrainInventory,
 } from "../utils/trainInventory.js";
@@ -391,6 +395,7 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     select: {
       id: true,
       trainCode: true,
+      trainType: true,
       status: true,
       carriages: {
         select: {
@@ -438,9 +443,11 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     });
   }
 
+  const speedFactor = getTrainTypeSpeedFactor(train.trainType);
   const bufferMins = parseInt(bufferMinutes) || 60;
   const numStops = route.stations ? route.stations.length : 0;
-  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+  const totalDurationMins =
+    Math.round(route.estimatedDuration * speedFactor) + numStops * bufferMins;
 
   const durationMs = totalDurationMins * 60 * 1000;
   const bufferMs = bufferMins * 60 * 1000;
@@ -563,7 +570,11 @@ export const generateSchedules = asyncHandler(async (req, res) => {
                     )
                   : 0;
               const movingTimeMs =
-                routeWithStations.estimatedDuration * progress * 60 * 1000;
+                routeWithStations.estimatedDuration *
+                speedFactor *
+                progress *
+                60 *
+                1000;
               const restingTimeMs = index * bufferMins * 60 * 1000;
               const stopArrivalTime = new Date(
                 trip.departure.getTime() + movingTimeMs + restingTimeMs,
@@ -2117,6 +2128,7 @@ export const createSchedule = asyncHandler(async (req, res) => {
     select: {
       id: true,
       trainCode: true,
+      trainType: true,
       carriages: {
         select: {
           id: true,
@@ -2148,9 +2160,11 @@ export const createSchedule = asyncHandler(async (req, res) => {
   }
 
   // --- Tính arrivalTime từ route.estimatedDuration + bufferMinutes ---
+  const speedFactor = getTrainTypeSpeedFactor(train.trainType);
   const bufferMins = parseInt(bufferMinutes) || 60;
   const numStops = route.stations ? route.stations.length : 0;
-  const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+  const totalDurationMins =
+    Math.round(route.estimatedDuration * speedFactor) + numStops * bufferMins;
   const arrivalTime = new Date(
     new Date(departureTime).getTime() + totalDurationMins * 60 * 1000,
   );
@@ -2231,7 +2245,8 @@ export const createSchedule = asyncHandler(async (req, res) => {
                   Math.max(0, stop.distanceFromStart / route.distance),
                 )
               : 0;
-          const movingTimeMs = route.estimatedDuration * progress * 60 * 1000;
+          const movingTimeMs =
+            route.estimatedDuration * speedFactor * progress * 60 * 1000;
           const restingTimeMs = index * bufferMins * 60 * 1000;
           const stopArrivalTime = new Date(
             new Date(departureTime).getTime() + movingTimeMs + restingTimeMs,

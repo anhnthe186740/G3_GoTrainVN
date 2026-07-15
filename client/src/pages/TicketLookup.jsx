@@ -1046,10 +1046,15 @@ export function TicketLookup() {
                         Toa tàu
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
-                        Toa {activeTicket.carriageNumber || "0"}
+                        {activeTicket.seat || activeTicket.carriageNumber
+                          ? `Toa ${activeTicket.carriageNumber || "—"}`
+                          : "Không ghế riêng"}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
-                        {activeTicket.seat?.carriage?.carriageType || "AC SEAT"}
+                        {activeTicket.seat?.carriage?.carriageType ||
+                          (activeTicket.seat || activeTicket.carriageNumber
+                            ? ""
+                            : "Đi kèm người lớn")}
                       </span>
                     </div>
                     <div>
@@ -1057,12 +1062,14 @@ export function TicketLookup() {
                         Ghế ngồi
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
-                        {activeTicket.seat?.seatNumber}
+                        {activeTicket.seat?.seatNumber || "—"}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
-                        {activeTicket.seat?.seatType === "WINDOW"
-                          ? "Cửa sổ"
-                          : "Lối đi"}
+                        {activeTicket.seat?.seatType
+                          ? activeTicket.seat.seatType === "WINDOW"
+                            ? "Cửa sổ"
+                            : "Lối đi"
+                          : ""}
                       </span>
                     </div>
                   </div>

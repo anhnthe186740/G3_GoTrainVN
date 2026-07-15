@@ -16,6 +16,10 @@ export async function notifyScheduleChange(
   type,
   details,
 ) {
+  if (type !== "DELAYED" && type !== "CANCELLED") {
+    console.error(`[Notification] Loại thông báo không hợp lệ: ${type}`);
+    return;
+  }
   try {
     let bookings = [];
     if (Array.isArray(scheduleIdOrBookings)) {

@@ -313,8 +313,14 @@ function validatePassengerList(passengers, options) {
 }
 
 function passengerRuleError(passengers) {
-  if (passengers.length === 0 || passengers.length > 4) {
-    return "Mỗi giao dịch chỉ được đặt từ 1 đến 4 hành khách.";
+  if (passengers.length === 0) {
+    return "Mỗi giao dịch phải có ít nhất một hành khách.";
+  }
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  if (seatedPassengerCount > 4) {
+    return "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách có ghế.";
   }
   const hasChild = passengers.some((passenger) => {
     const age = ageFromDateOfBirth(passenger.dateOfBirth);
@@ -334,12 +340,7 @@ function passengerRuleError(passengers) {
   ) {
     return "Trẻ dưới 6 tuổi phải đi kèm người lớn và không chọn ghế riêng.";
   }
-  const lapChildCount = passengers.filter(
-    (passenger) => passenger.seatRequired === false,
-  ).length;
-  const seatedPassengerCount = passengers.filter(
-    (passenger) => passenger.seatRequired !== false,
-  ).length;
+  const lapChildCount = passengers.length - seatedPassengerCount;
   if (lapChildCount > seatedPassengerCount) {
     return "Mỗi ghế chỉ được xếp tối đa 1 hành khách có ghế và 1 trẻ dưới 6 tuổi.";
   }
@@ -733,7 +734,7 @@ export function PassengerDetailsPage({
           setError(
             isAnyExchangeMode
               ? "Phiên giữ ghế không hợp lệ."
-              : "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.",
+              : "Mỗi giao dịch chỉ được giữ tối đa 4 ghế.",
           );
           return;
         }
@@ -818,6 +819,11 @@ export function PassengerDetailsPage({
       return: inbound[index] || null,
     }));
   }, [session]);
+
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  const lapChildCount = passengers.length - seatedPassengerCount;
 
   const quotePassengers = passengers.map((passenger) => ({
     dateOfBirth: passenger.dateOfBirth,
@@ -1112,8 +1118,10 @@ export function PassengerDetailsPage({
   };
 
   const addLapChild = () => {
-    if (passengers.length >= 4) {
-      toast.error("Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.");
+    if (lapChildCount >= seatedPassengerCount) {
+      toast.error(
+        "Số trẻ dưới 6 tuổi đi kèm không được vượt quá số hành khách có ghế.",
+      );
       return;
     }
     setPassengers((current) => [...current, { ...EMPTY_LAP_CHILD }]);
@@ -1637,7 +1645,7 @@ export function PassengerDetailsPage({
                 <button
                   type="button"
                   onClick={addLapChild}
-                  disabled={passengers.length >= 4}
+                  disabled={lapChildCount >= seatedPassengerCount}
                   className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-amber-800 shadow-sm disabled:opacity-50"
                 >
                   <Plus className="h-3.5 w-3.5" />

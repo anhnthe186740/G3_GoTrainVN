@@ -5,6 +5,7 @@ import {
   getConfiguration,
   getEffectiveTicketTypes,
 } from "./pricing.service.js";
+import { getTrainTypePriceFactor } from "../config/trainTypes.js";
 import { getJourney, getSession } from "./seatSelection.service.js";
 import {
   createPayosPaymentRequest,
@@ -320,8 +321,14 @@ export function validatePassengerBusinessRules(passengers) {
   if (!Array.isArray(passengers) || passengers.length < 1) {
     throw httpError(400, "Đơn hàng phải có ít nhất một hành khách.");
   }
-  if (passengers.length > 4) {
-    throw httpError(400, "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách.");
+  const seatedPassengerCount = passengers.filter(
+    (passenger) => passenger.seatRequired !== false,
+  ).length;
+  if (seatedPassengerCount > 4) {
+    throw httpError(
+      400,
+      "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách có ghế.",
+    );
   }
   const hasChild = passengers.some(
     (passenger) =>
@@ -341,9 +348,6 @@ export function validatePassengerBusinessRules(passengers) {
 
   const lapChildCount = passengers.filter(
     (passenger) => passenger.seatRequired === false,
-  ).length;
-  const seatedPassengerCount = passengers.filter(
-    (passenger) => passenger.seatRequired !== false,
   ).length;
   if (lapChildCount > seatedPassengerCount) {
     throw httpError(
@@ -396,7 +400,12 @@ async function fareRulesForLeg(session, leg) {
     leg === "outbound"
       ? session.outboundToStationId
       : session.returnToStationId;
-  const { segment } = await getJourney(scheduleId, fromStationId, toStationId);
+  const { schedule, segment } = await getJourney(
+    scheduleId,
+    fromStationId,
+    toStationId,
+  );
+  const priceFactor = getTrainTypePriceFactor(schedule.train.trainType);
   const configuration = await getConfiguration({
     scopeType: "SCHEDULE",
     scopeId: scheduleId,
@@ -404,6 +413,7 @@ async function fareRulesForLeg(session, leg) {
   });
   return {
     distance: segment.distance,
+    priceFactor,
     rules: new Map(
       configuration.effectiveRules.map((rule) => [
         `${rule.passengerType}:${rule.carriageType}`,
@@ -643,6 +653,7 @@ export async function quoteBooking(
         { ...rule, discountPercentage: 0 },
         pricing.distance,
         rule.taxPercentage,
+        pricing.priceFactor,
       );
       const discountAmount = Math.round(
         passenger.discountType === "FIXED_AMOUNT"
@@ -667,6 +678,7 @@ export async function quoteBooking(
             { ...upgradedRule, discountPercentage: 0 },
             pricing.distance,
             upgradedRule.taxPercentage,
+            pricing.priceFactor,
           );
           const upgradedDiscountAmount = Math.round(
             passenger.discountType === "FIXED_AMOUNT"
@@ -916,14 +928,18 @@ async function matchCustomerUsers(passengers) {
   );
 }
 
+// Tối đa 4 hành khách có ghế + tối đa 4 trẻ dưới 6 tuổi đi kèm (mỗi trẻ ngồi
+// chung với một hành khách có ghế), xem validatePassengerBusinessRules().
+const MAX_TOTAL_PASSENGERS = 8;
+
 export async function checkoutBooking(identity, payload) {
   const isStaffCounter = payload.salesChannel === "STAFF_COUNTER";
   if (
     !Array.isArray(payload.passengers) ||
     payload.passengers.length < 1 ||
-    payload.passengers.length > 4
+    payload.passengers.length > MAX_TOTAL_PASSENGERS
   ) {
-    throw httpError(400, "Mỗi giao dịch chỉ được đặt từ 1 đến 4 hành khách.");
+    throw httpError(400, "Danh sách hành khách không hợp lệ.");
   }
   validateAccountHolderSelection(payload.passengers, identity);
   const session = await getSession(identity, payload.sessionId);
@@ -931,10 +947,7 @@ export async function checkoutBooking(identity, payload) {
     session.status !== "ACTIVE" ||
     new Date(session.expiresAt).getTime() <= Date.now()
   ) {
-    throw httpError(
-      409,
-      "PhiÃªn giá»¯ gháº¿ Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng chá»n láº¡i gháº¿.",
-    );
+    throw httpError(409, "Phiên giữ ghế đã hết hạn. Vui lòng chọn lại ghế.");
   }
   const departureReference = await departureReferenceForSession(session);
   const ticketTypes = await getEffectiveTicketTypes(departureReference);

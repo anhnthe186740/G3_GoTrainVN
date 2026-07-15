@@ -1,5 +1,6 @@
 import { prisma } from "../config/database.js";
 import { calculateFare, getConfiguration } from "./pricing.service.js";
+import { getTrainTypePriceFactor } from "../config/trainTypes.js";
 import {
   isDepartureWithinRange,
   parseVietnamDateRange,
@@ -283,6 +284,8 @@ async function buildPricing(schedule, distance, at, availability) {
       .map((entry) => entry.carriageType),
   );
 
+  const priceFactor = getTrainTypePriceFactor(schedule.train.trainType);
+
   return configuration.effectiveRules
     .filter(
       (rule) =>
@@ -291,7 +294,8 @@ async function buildPricing(schedule, distance, at, availability) {
     .map((rule) => ({
       carriageType: rule.carriageType,
       carriageTypeName: CARRIAGE_NAMES[rule.carriageType] || rule.carriageType,
-      price: calculateFare(rule, distance, rule.taxPercentage).finalPrice,
+      price: calculateFare(rule, distance, rule.taxPercentage, priceFactor)
+        .finalPrice,
     }))
     .sort((a, b) => a.price - b.price);
 }

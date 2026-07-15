@@ -1,4 +1,5 @@
 import { prisma } from "../config/database.js";
+import { getTrainTypeSpeedFactor } from "../config/trainTypes.js";
 
 /**
  * Tự động tạo lịch trình từ các RouteTemplate hoạt động cho một ngày chỉ định
@@ -47,6 +48,7 @@ export async function generateSchedulesByTemplate(targetDate) {
         select: {
           id: true,
           trainCode: true,
+          trainType: true,
           carriages: {
             select: {
               id: true,
@@ -83,10 +85,12 @@ export async function generateSchedulesByTemplate(targetDate) {
         const hour = parseInt(hourStr, 10);
         const minute = parseInt(minStr, 10);
 
+        const speedFactor = getTrainTypeSpeedFactor(train.trainType);
         const bufferMins = template.bufferMinutes || 60;
         const numStops = route.stations ? route.stations.length : 0;
         const totalDurationMins =
-          route.estimatedDuration + numStops * bufferMins;
+          Math.round(route.estimatedDuration * speedFactor) +
+          numStops * bufferMins;
 
         const departure = new Date(targetDay);
         departure.setHours(hour, minute, 0, 0);
@@ -169,7 +173,7 @@ export async function generateSchedulesByTemplate(targetDate) {
                       )
                     : 0;
                 const movingTimeMs =
-                  route.estimatedDuration * progress * 60 * 1000;
+                  route.estimatedDuration * speedFactor * progress * 60 * 1000;
                 const restingTimeMs = index * bufferMins * 60 * 1000;
                 const stopArrivalTime = new Date(
                   departure.getTime() + movingTimeMs + restingTimeMs,
@@ -303,6 +307,7 @@ export async function generateSchedulesByBaseline(targetDate) {
         select: {
           id: true,
           trainCode: true,
+          trainType: true,
           carriages: {
             select: {
               id: true,
@@ -341,9 +346,12 @@ export async function generateSchedulesByBaseline(targetDate) {
           },
         },
       });
+      const speedFactor = getTrainTypeSpeedFactor(train.trainType);
       const bufferMins = template ? (template.bufferMinutes ?? 60) : 60;
       const numStops = route.stations ? route.stations.length : 0;
-      const totalDurationMins = route.estimatedDuration + numStops * bufferMins;
+      const totalDurationMins =
+        Math.round(route.estimatedDuration * speedFactor) +
+        numStops * bufferMins;
 
       const departure = new Date(targetDay);
       departure.setHours(pattern.hour, pattern.minute, 0, 0);
@@ -422,7 +430,7 @@ export async function generateSchedulesByBaseline(targetDate) {
                     )
                   : 0;
               const movingTimeMs =
-                route.estimatedDuration * progress * 60 * 1000;
+                route.estimatedDuration * speedFactor * progress * 60 * 1000;
               const restingTimeMs = index * bufferMins * 60 * 1000;
               const stopArrivalTime = new Date(
                 departure.getTime() + movingTimeMs + restingTimeMs,
@@ -544,10 +552,10 @@ export function startAutoScheduleCron() {
   );
 
   // Đợi đến mốc 00:00 đêm
-  const startupTimer = setTimeout(() => {
+  const startupTimer = setTimeout(async () => {
     // Chạy tác vụ lúc 00:00
     try {
-      generateSchedulesForDay30();
+      await generateSchedulesForDay30();
     } catch (e) {
       console.error("[AutoSchedule] Lỗi chạy ngầm lúc 00:00:", e);
     }
