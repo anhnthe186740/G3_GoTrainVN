@@ -493,6 +493,7 @@ export async function cancelBookingTickets({
         data: { bookingId, ...requestData },
       });
 
+  request.booking = booking;
   const approvedResult = await processApprovedCancellation(request);
 
   return {
