@@ -92,11 +92,25 @@ model WalletTransaction {
   relatedBookingId String?  @db.ObjectId
   relatedBooking   Booking? @relation(fields: [relatedBookingId], references: [id])
   status           String   @default("PENDING") // PENDING, COMPLETED, FAILED
-  createdAt        DateTime @default(now())
+
+  // PayOS deposit fields
+  transactionId      String? // External payment reference (PayOS reference)
+  payosOrderCode     String?
+  payosPaymentLinkId String?
+  payosCheckoutUrl   String?
+  payosQrCode        String?
+  payosAccountNumber String?
+  payosAccountName   String?
+  payosBin           String?
+  expiresAt          DateTime?
+
+  createdAt DateTime @default(now())
 
   @@index([walletId])
   @@index([relatedBookingId])
   @@index([status])
+  @@index([payosOrderCode])
+  @@index([payosPaymentLinkId])
 }
 
 // ============================================

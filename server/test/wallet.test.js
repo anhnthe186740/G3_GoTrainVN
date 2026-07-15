@@ -1,9 +1,5 @@
 import { test as originalTest } from "node:test";
-const test = (name, ...args) => {
-  if (name.includes("requestWithdrawal")) {
-    return originalTest(name, ...args);
-  }
-};
+const test = originalTest;
 
 import assert from "node:assert/strict";
 
@@ -159,88 +155,140 @@ test("UTCID03: getWallet auto-creates a wallet when none exists yet", async (t) 
 // deposit
 // ------------------------------------------------------------------
 
-function makeTxMock({ balanceIncrement = 100000 } = {}) {
-  return async (fn) =>
-    fn({
-      wallet: {
-        update: async (args) => ({
-          id: args.where.id,
-          balance: balanceIncrement,
-        }),
-      },
-      walletTransaction: {
-        create: async (args) => ({ id: "txn-1", ...args.data }),
-      },
-      notification: {
-        create: async () => ({ id: "notif-1" }),
-      },
-    });
+// deposit
+// ------------------------------------------------------------------
+
+function mockPayos(t) {
+  t.mock.module("../src/services/payos.service.js", {
+    namedExports: {
+      createPayosPaymentRequest: async () => ({
+        paymentLinkId: "pl-mock-1",
+        checkoutUrl: "https://pay.payos.vn/checkout/123",
+        qrCode: "0002010102123858...",
+        accountNumber: "123456",
+        accountName: "GOTRAIN VN",
+        bin: "970415",
+      }),
+      getPayosPaymentRequest: async () => ({
+        id: "pl-mock-1",
+        status: "PAID",
+        transactions: [{ reference: "ref-123" }],
+      }),
+    },
+  });
 }
 
-test("UTCID01: deposit credits the wallet and records a COMPLETED transaction", async (t) => {
+test("UTCID01: deposit creates a PENDING transaction and returns PayOS link info", async (t) => {
+  mockPayos(t);
   t.mock.module("../src/config/database.js", {
     namedExports: {
       prisma: {
         wallet: {
           upsert: async () => ({ id: "w1", userId: "user-1", balance: 0 }),
+          findUnique: async () => ({ id: "w1", userId: "user-1", balance: 0 }),
         },
-        $transaction: makeTxMock({ balanceIncrement: 100000 }),
+        walletTransaction: {
+          findFirst: async () => null,
+          create: async (args) => ({ id: "txn-1", ...args.data }),
+        },
+        user: {
+          findUnique: async () => ({
+            fullName: "User One",
+            email: "user@example.com",
+            phoneNumber: "0900000000",
+          }),
+        },
       },
     },
   });
+
   const { deposit } = await import(
     `../src/services/wallet.service.js?case=${Date.now()}-${Math.random()}`
   );
   const result = await deposit("user-1", 100000);
-  assert.equal(result.wallet.balance, 100000);
   assert.equal(result.transaction.type, "DEPOSIT");
-  assert.equal(result.transaction.status, "COMPLETED");
-  assert.equal(result.transaction.description, "Nạp tiền vào ví");
+  assert.equal(result.transaction.status, "PENDING");
+  assert.equal(result.payos.paymentLinkId, "pl-mock-1");
+  assert.equal(result.payos.checkoutUrl, "https://pay.payos.vn/checkout/123");
 });
 
-test("UTCID02: deposit accepts a boundary amount of 0 (service performs no positivity check)", async (t) => {
+test("UTCID02: deposit blocks concurrent pending deposits", async (t) => {
+  mockPayos(t);
   t.mock.module("../src/config/database.js", {
     namedExports: {
       prisma: {
         wallet: {
           upsert: async () => ({ id: "w1", userId: "user-1", balance: 0 }),
         },
-        $transaction: makeTxMock({ balanceIncrement: 0 }),
-      },
-    },
-  });
-  const { deposit } = await import(
-    `../src/services/wallet.service.js?case=${Date.now()}-${Math.random()}`
-  );
-  const result = await deposit("user-1", 0, "Nạp 0 đồng");
-  assert.equal(result.wallet.balance, 0);
-  assert.equal(result.transaction.amount, 0);
-});
-
-test("UTCID03: deposit rejects when the transaction write fails", async (t) => {
-  t.mock.module("../src/config/database.js", {
-    namedExports: {
-      prisma: {
-        wallet: {
-          upsert: async () => ({ id: "w1", userId: "user-1", balance: 0 }),
-        },
-        $transaction: async (fn) =>
-          fn({
-            wallet: {
-              update: async () => {
-                throw new Error("Write conflict");
-              },
-            },
-            walletTransaction: { create: async () => ({}) },
-            notification: { create: async () => ({}) },
+        walletTransaction: {
+          findFirst: async () => ({
+            id: "existing-txn",
+            status: "PENDING",
+            expiresAt: new Date(Date.now() + 10000),
           }),
+        },
       },
     },
   });
+
   const { deposit } = await import(
     `../src/services/wallet.service.js?case=${Date.now()}-${Math.random()}`
   );
-  await assert.rejects(() => deposit("user-1", 50000), /Write conflict/);
+  await assert.rejects(
+    () => deposit("user-1", 100000),
+    /Bạn đang có một lệnh nạp tiền chưa hoàn tất/,
+  );
+});
+
+test("UTCID03: getDepositStatus syncs with PayOS if PENDING", async (t) => {
+  mockPayos(t);
+  let walletUpdated = false;
+  let transactionUpdated = false;
+  const mockPrisma = {
+    wallet: {
+      findUnique: async () => ({ id: "w1", userId: "user-1", balance: 0 }),
+      update: async () => {
+        walletUpdated = true;
+        return { id: "w1", balance: 100000 };
+      },
+    },
+    walletTransaction: {
+      findFirst: async () => ({
+        id: "txn-1",
+        walletId: "w1",
+        type: "DEPOSIT",
+        status: "PENDING",
+        amount: 100000,
+        payosPaymentLinkId: "pl-mock-1",
+      }),
+      updateMany: async () => {
+        transactionUpdated = true;
+        return { count: 1 };
+      },
+      findUnique: async () => ({
+        id: "txn-1",
+        status: "COMPLETED",
+      }),
+    },
+    notification: {
+      create: async () => ({ id: "notif-1" }),
+    },
+    $transaction: async (fn) => fn(mockPrisma),
+  };
+
+  t.mock.module("../src/config/database.js", {
+    namedExports: {
+      prisma: mockPrisma,
+    },
+  });
+
+  const { getDepositStatus } = await import(
+    `../src/services/wallet.service.js?case=${Date.now()}-${Math.random()}`
+  );
+  const result = await getDepositStatus("user-1", "txn-1");
+  assert.equal(result.status, "COMPLETED");
+  assert.ok(walletUpdated);
+  assert.ok(transactionUpdated);
 });
 
 // ------------------------------------------------------------------
