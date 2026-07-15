@@ -1481,7 +1481,9 @@ export async function handlePayosWebhook(payload) {
   });
 
   if (!booking) {
-    return { ignored: true, reason: "booking_not_found", data };
+    // Fallback: try finding a matching wallet deposit transaction
+    const { handleWalletDepositWebhook } = await import("./wallet.service.js");
+    return handleWalletDepositWebhook(data);
   }
   if (booking.paymentStatus === "COMPLETED") {
     return { ignored: false, duplicate: true, booking };
