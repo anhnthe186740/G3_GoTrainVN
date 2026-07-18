@@ -42,6 +42,7 @@ model User {
   seatHoldSessions      SeatHoldSession[]
   seatHolds             SeatHold[]
   approvedCancellations CancellationRequest[]
+  blogPosts             BlogPost[]
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   isActive              Boolean               @default(true)
@@ -860,6 +861,21 @@ model RevenueReport {
   @@unique([period, periodStart])
   @@index([periodStart])
 }
+
+model BlogPost {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  summary   String
+  content   String
+  authorId  String   @db.ObjectId
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
 
 type RouteStation {
   stationId         String @db.ObjectId

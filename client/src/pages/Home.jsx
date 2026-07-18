@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   MapPin,
   Navigation,
@@ -110,6 +110,24 @@ export function Home() {
       .catch((err) => {
         console.error("Lỗi khi tải danh sách ga từ API:", err);
         toast.error("Không thể tải danh sách ga đang hoạt động.");
+      });
+  }, []);
+
+  const [blogs, setBlogs] = useState([]);
+  const [loadingBlogs, setLoadingBlogs] = useState(true);
+  const [selectedBlog, setSelectedBlog] = useState(null);
+
+  useEffect(() => {
+    api
+      .get("/blogs")
+      .then(({ data }) => {
+        setBlogs(data.posts || []);
+      })
+      .catch((err) => {
+        console.error("Lỗi khi tải bài viết chia sẻ:", err);
+      })
+      .finally(() => {
+        setLoadingBlogs(false);
       });
   }, []);
 
@@ -1051,116 +1069,244 @@ export function Home() {
         </div>
       </section>
 
-      {/* 6. Testimonials Section */}
-      <section className="py-xl bg-[#f7f9fb]">
+      {/* 6. Travel Blogs Section */}
+      <section className="py-xl bg-[#f7f9fb] border-t border-slate-100">
         <div className="max-w-[1200px] mx-auto px-container-margin">
           <div className="text-center mb-12">
             <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800">
-              Khách hàng nói gì về GoTrain
+              Cẩm Nang & Trải Nghiệm Hành Trình
             </h2>
+            <p className="text-slate-500 text-sm mt-2 max-w-xl mx-auto">
+              Những bài viết chia sẻ kinh nghiệm đi tàu hỏa, cẩm nang du lịch và
+              câu chuyện hành trình từ cộng đồng khách hàng GoTrain VN.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Testimonial 1 */}
-            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
-              <div>
-                <div className="flex gap-1 text-[#007aff] mb-4">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className="h-4 w-4 fill-current" />
-                  ))}
+          {loadingBlogs ? (
+            <div className="py-12 flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-3 border-[#00629d] border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs text-slate-500">Đang tải các bài viết...</p>
+            </div>
+          ) : blogs.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {blogs.slice(0, 3).map((post) => (
+                <div
+                  key={post.id}
+                  onClick={() => setSelectedBlog(post)}
+                  className="bg-white p-8 rounded-3xl shadow-sm hover:shadow-md border border-slate-100 hover:border-primary/20 transition-all duration-300 text-left relative flex flex-col justify-between cursor-pointer group min-h-[260px]"
+                >
+                  <div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#cfe5ff]/40 text-[#00629d] mb-3">
+                      Bài viết chia sẻ
+                    </span>
+                    <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
+                      {post.title}
+                    </h3>
+                    <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
+                      {post.summary || post.content}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-sm shrink-0">
+                      {(post.author?.fullName || "HK")
+                        .substring(0, 2)
+                        .toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-800">
+                        {post.author?.fullName || "Hành khách"}
+                      </h4>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(post.createdAt).toLocaleDateString("vi-VN", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
-                  "Ứng dụng tuyệt vời, giao diện rất dễ sử dụng và đặt vé chỉ
-                  mất chưa đầy 3 phút. Tôi rất hài lòng với dịch vụ chăm sóc
-                  khách hàng."
-                </p>
-              </div>
-              <div className="flex items-center gap-3 mt-auto">
-                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                  <img
-                    src="https://i.pravatar.cc/150?img=1"
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Mock Travel Blog 1 */}
+              <div
+                onClick={() =>
+                  setSelectedBlog({
+                    title: "Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội",
+                    content:
+                      "Sa Pa luôn là điểm đến hấp dẫn với sương mù huyền ảo và cảnh sắc núi rừng trùng điệp. Thay vì đi xe khách giường nằm, trải nghiệm di chuyển bằng tàu hỏa đến ga Lào Cai rồi bắt xe bus lên Sa Pa mang lại một góc nhìn hoàn toàn khác biệt.\n\nTàu hỏa chạy êm ái qua các tỉnh trung du, bạn có thể chọn khoang giường nằm điều hòa để nghỉ ngơi thoải mái qua đêm. Sáng sớm thức dậy tại ga Lào Cai, không khí trong lành mát mẻ sẽ chào đón bạn.\n\nMột số lưu ý khi đi tàu hỏa Hà Nội - Lào Cai:\n1. Nên đặt vé sớm vào các dịp cuối tuần để chọn được giường tầng 1 dễ di chuyển.\n2. Chuẩn bị sẵn một chiếc áo khoác mỏng vì điều hòa trên tàu khá lạnh về đêm.\n3. Đừng quên thử món phở nóng hổi ngay tại ga Lào Cai trước khi lên Sa Pa du hí nhé!",
+                    createdAt: new Date(),
+                    author: { fullName: "Trần Thu Thủy" },
+                  })
+                }
+                className="bg-white p-8 rounded-3xl shadow-sm hover:shadow-md border border-slate-100 hover:border-primary/20 transition-all duration-300 text-left relative flex flex-col justify-between cursor-pointer group min-h-[260px]"
+              >
                 <div>
-                  <h4 className="font-bold text-sm text-slate-800">
-                    Nguyễn Minh Anh
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Nhân viên văn phòng
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 mb-3">
+                    Cẩm nang du lịch
+                  </span>
+                  <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
+                    Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội
+                  </h3>
+                  <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
+                    Sa Pa luôn là điểm đến hấp dẫn. Cùng khám phá hành trình di
+                    chuyển bằng tàu hỏa leo núi đầy thú vị và những lưu ý để có
+                    chuyến đi trọn vẹn nhất.
                   </p>
+                </div>
+                <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center font-bold text-amber-700 text-sm shrink-0">
+                    TT
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">
+                      Trần Thu Thủy
+                    </h4>
+                    <p className="text-[10px] text-slate-400">18/07/2026</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mock Travel Blog 2 */}
+              <div
+                onClick={() =>
+                  setSelectedBlog({
+                    title:
+                      "Trải nghiệm tàu di sản Huế - Đà Nẵng qua đèo Hải Vân",
+                    content:
+                      "Cung đường sắt Hải Vân nối liền Thừa Thiên Huế và Đà Nẵng được vinh danh là một trong những tuyến đường sắt đẹp nhất hành tinh. Khi đoàn tàu uốn lượn quanh sườn núi, bạn sẽ được chiêm ngưỡng bức tranh thiên nhiên tuyệt mỹ: một bên là vách đá dựng đứng, một bên là vịnh Lăng Cô xanh ngắt với bãi cát vàng trải dài.\n\nHệ thống tàu di sản 'Kết nối di sản miền Trung' mới được đưa vào hoạt động có khoang nội thất sang trọng, cửa sổ kính rộng và có cả khoang sinh hoạt cộng đồng phục vụ ca Huế trực tiếp.\n\nKinh nghiệm săn ảnh đẹp trên tàu:\n- Hãy chọn ghế ngồi bên phía cửa sổ nhìn ra hướng biển (phía tay trái nếu đi từ Huế vào, và phía tay phải nếu đi từ Đà Nẵng ra).\n- Chuẩn bị máy ảnh/điện thoại ở chế độ quay chuyển động chậm (Slow-motion) để bắt trọn khoảnh khắc tàu đi qua các cung đèo uốn cong ấn tượng.",
+                    createdAt: new Date(),
+                    author: { fullName: "Nguyễn Văn Hải" },
+                  })
+                }
+                className="bg-white p-8 rounded-3xl shadow-sm hover:shadow-md border border-slate-100 hover:border-primary/20 transition-all duration-300 text-left relative flex flex-col justify-between cursor-pointer group min-h-[260px]"
+              >
+                <div>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 mb-3">
+                    Khám phá di sản
+                  </span>
+                  <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
+                    Trải nghiệm tàu Huế - Đà Nẵng qua đèo Hải Vân
+                  </h3>
+                  <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
+                    Tuyến đường sắt kết nối Huế và Đà Nẵng qua đèo Hải Vân được
+                    mệnh danh là một trong những cung đường sắt đẹp nhất thế
+                    giới. Cùng ngắm nhìn biển xanh.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center font-bold text-emerald-700 text-sm shrink-0">
+                    VH
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">
+                      Nguyễn Văn Hải
+                    </h4>
+                    <p className="text-[10px] text-slate-400">17/07/2026</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mock Travel Blog 3 */}
+              <div
+                onClick={() =>
+                  setSelectedBlog({
+                    title: "5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài",
+                    content:
+                      "Những chuyến đi tàu dài từ Bắc vào Nam kéo dài hơn 24 tiếng sẽ vô cùng thú vị nếu bạn chuẩn bị chu đáo. Dưới đây là 5 mẹo nhỏ bỏ túi giúp hành trình của bạn êm ái hơn nhiều:\n\n1. Chọn vali kéo cỡ vừa hoặc balo lớn để dễ dàng cất dưới gầm ghế hoặc trên giá để hành lý phía trên đầu.\n2. Chuẩn bị một túi nhỏ đựng đồ vệ sinh cá nhân, khăn giấy ướt, bàn chải đánh răng để tiện dùng ngay trong toa toilet của tàu.\n3. Mang theo sạc dự phòng dung lượng lớn và dây sạc dài. Mặc dù các toa tàu thế hệ mới có cổng sạc USB tại giường, sạc dự phòng vẫn giúp bạn chủ động hơn.\n4. Đồ ăn nhẹ như hạt, hoa quả sấy, sữa hộp và nước suối là vị cứu tinh tuyệt vời giữa đêm khuya khi căn tin tàu đã đóng cửa.\n5. Tải sẵn phim offline hoặc mang theo một cuốn sách yêu thích để giải trí khi tàu đi qua các khu vực sóng điện thoại yếu.",
+                    createdAt: new Date(),
+                    author: { fullName: "Phạm Minh Hoàng" },
+                  })
+                }
+                className="bg-white p-8 rounded-3xl shadow-sm hover:shadow-md border border-slate-100 hover:border-primary/20 transition-all duration-300 text-left relative flex flex-col justify-between cursor-pointer group min-h-[260px]"
+              >
+                <div>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 mb-3">
+                    Mẹo đi tàu
+                  </span>
+                  <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
+                    5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài
+                  </h3>
+                  <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
+                    Để chuyến đi tàu dài ngày thoải mái nhất, việc chuẩn bị hành
+                    lý gọn nhẹ, các vật dụng cá nhân cần thiết và đồ ăn nhẹ là
+                    vô cùng quan trọng.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
+                  <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center font-bold text-purple-700 text-sm shrink-0">
+                    MH
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">
+                      Phạm Minh Hoàng
+                    </h4>
+                    <p className="text-[10px] text-slate-400">15/07/2026</p>
+                  </div>
                 </div>
               </div>
             </div>
+          )}
+        </div>
+      </section>
 
-            {/* Testimonial 2 */}
-            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
-              <div>
-                <div className="flex gap-1 text-[#007aff] mb-4">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className="h-4 w-4 fill-current" />
-                  ))}
+      {/* Modal đọc chi tiết blog trên trang chủ */}
+      {selectedBlog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#cfe5ff]/40 text-[#00629d]">
+                  Cẩm nang & Chia sẻ
+                </span>
+                <h3 className="font-extrabold text-[#191c1e] text-lg leading-snug mt-1 text-left">
+                  {selectedBlog.title}
+                </h3>
+                <div className="flex items-center gap-3 text-xs text-[#6f7883] mt-1 font-medium font-sans">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary/20 flex items-center justify-center" />
+                    {selectedBlog.author?.fullName || "Hành khách"}
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {new Date(selectedBlog.createdAt).toLocaleString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                    })}
+                  </span>
                 </div>
-                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
-                  "GoTrain giúp việc đi du lịch bằng tàu hỏa trở nên sang trọng
-                  và tiện lợi hơn bao giờ hết. Lịch trình rõ ràng, thanh toán an
-                  toàn."
-                </p>
               </div>
-              <div className="flex items-center gap-3 mt-auto">
-                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                  <img
-                    src="https://i.pravatar.cc/150?img=11"
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800">
-                    Trần Hoàng Nam
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Nhiếp ảnh gia tự do
-                  </p>
-                </div>
-              </div>
+              <button
+                onClick={() => setSelectedBlog(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors text-[#6f7883] shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Testimonial 3 */}
-            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
-              <div>
-                <div className="flex gap-1 text-[#007aff] mb-4">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className="h-4 w-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
-                  "Rất ấn tượng với tính năng hoàn tiền qua ví điện tử. Tiết
-                  kiệm được một khoản kha khá cho các chuyến đi thường xuyên."
-                </p>
-              </div>
-              <div className="flex items-center gap-3 mt-auto">
-                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                  <img
-                    src="https://i.pravatar.cc/150?img=5"
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800">
-                    Lê Thu Trang
-                  </h4>
-                  <p className="text-[10px] text-slate-400">
-                    Sinh viên đại học
-                  </p>
-                </div>
-              </div>
+            {/* Content Body */}
+            <div className="p-6 overflow-y-auto space-y-4 text-slate-700 text-left leading-relaxed text-sm whitespace-pre-wrap max-h-[50vh] font-sans">
+              {selectedBlog.content}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setSelectedBlog(null)}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-5 py-2 rounded-xl font-bold text-xs transition-all"
+              >
+                Đóng bài viết
+              </button>
             </div>
           </div>
         </div>
-      </section>
+      )}
 
       {/* 7. Footer */}
       <footer className="w-full bg-[#f7f9fb] py-16 text-left border-t border-slate-200">
@@ -1192,18 +1338,18 @@ export function Home() {
             <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
               Khám phá
             </h4>
-            <a
+            <Link
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
-              href="#"
+              to="/privacy"
             >
               Chính sách bảo mật
-            </a>
-            <a
+            </Link>
+            <Link
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
-              href="#"
+              to="/terms"
             >
               Điều khoản sử dụng
-            </a>
+            </Link>
           </div>
 
           <div className="flex flex-col gap-3">
