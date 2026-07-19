@@ -366,6 +366,16 @@ export function PassengerDetailsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, isHydrating } = useAuthStore();
+
+  useEffect(() => {
+    if (user && user.isActive === false) {
+      toast.error(
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Không xác định"}. Bạn không thể thực hiện đặt vé.`,
+      );
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+
   const sessionId = searchParams.get("sessionId");
   const [session, setSession] = useState(null);
   const [passengers, setPassengers] = useState([]);

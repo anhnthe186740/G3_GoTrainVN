@@ -23,6 +23,8 @@ export async function loginUser(email, password) {
       name: user.fullName,
       email: user.email,
       role: user.userType,
+      isActive: user.isActive,
+      lockReason: user.lockReason,
     },
     token,
   };
