@@ -900,8 +900,13 @@ function LegacySeatSelectionPage() {
 }
 */
 
-
-export function SeatSelectionPage() {
+export function SeatSelectionPage({
+  embedded = false,
+  journeyOverride = null,
+  restoredSessionIdOverride = "",
+  onBack,
+  onSessionReady,
+}) {
   const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -914,22 +919,6 @@ export function SeatSelectionPage() {
       navigate("/dashboard");
     }
   }, [user, navigate]);
-  const outboundScheduleId = searchParams.get("outboundScheduleId");
-  const outboundFromStationId = searchParams.get("outboundFromStationId");
-  const outboundToStationId = searchParams.get("outboundToStationId");
-  const returnScheduleId = searchParams.get("returnScheduleId");
-  const returnFromStationId = searchParams.get("returnFromStationId");
-  const returnToStationId = searchParams.get("returnToStationId");
-  const restoredSessionId = searchParams.get("sessionId");
-export function SeatSelectionPage({
-  embedded = false,
-  journeyOverride = null,
-  restoredSessionIdOverride = "",
-  onBack,
-  onSessionReady,
-}) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const outboundScheduleId =
     journeyOverride?.outbound?.scheduleId ||
     searchParams.get("outboundScheduleId");
@@ -960,7 +949,6 @@ export function SeatSelectionPage({
   const isExchangeMode =
     (mode === "exchange" || mode === "staff-exchange") &&
     Boolean(exchangeBookingId);
-
 
   const journeyPayload = useMemo(
     () => ({

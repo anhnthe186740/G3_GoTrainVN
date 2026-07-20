@@ -658,7 +658,6 @@ export function PassengerDetailsPage({
   const navigate = useNavigate();
   const { user, isHydrating } = useAuthStore();
 
-
   useEffect(() => {
     if (user && user.isActive === false) {
       toast.error(
@@ -667,8 +666,6 @@ export function PassengerDetailsPage({
       navigate("/dashboard");
     }
   }, [user, navigate]);
-
-  const sessionId = searchParams.get("sessionId");
 
   const urlMode = searchParams.get("mode");
   const currentMode = urlMode || mode;
