@@ -313,6 +313,15 @@ export function TicketLookup() {
     );
 
     if (journeyState === "CANCELLED") return "CANCELLED";
+
+    // Trễ tàu/Quá hạn check-in (Tàu đã chạy/đang chạy nhưng khách chưa check-in)
+    const isMissed =
+      !ticket?.boardingAt &&
+      ["IN_PROGRESS", "COMPLETED"].includes(journeyState) &&
+      booking?.status !== "CANCELLED";
+
+    if (isMissed) return "EXPIRED";
+
     if (
       ticket?.boardingAt ||
       booking?.status === "COMPLETED" ||
@@ -324,8 +333,9 @@ export function TicketLookup() {
   };
 
   const selectInitialTicket = (tickets = []) => {
-    const initialCategory = ["UPCOMING", "USED", "CANCELLED"].find((category) =>
-      tickets.some((ticket) => getTicketCategory(ticket) === category),
+    const initialCategory = ["UPCOMING", "USED", "EXPIRED", "CANCELLED"].find(
+      (category) =>
+        tickets.some((ticket) => getTicketCategory(ticket) === category),
     );
     const category = initialCategory || "UPCOMING";
     setTicketCategory(category);
@@ -379,6 +389,15 @@ export function TicketLookup() {
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <Clock className="h-3.5 w-3.5" />
           Đã ghi nhận hủy
+        </span>
+      );
+    }
+
+    if (category === "EXPIRED") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Trễ tàu (Quá hạn soát vé)
         </span>
       );
     }
@@ -474,7 +493,7 @@ export function TicketLookup() {
       counts[getTicketCategory(ticket)] += 1;
       return counts;
     },
-    { UPCOMING: 0, USED: 0, CANCELLED: 0 },
+    { UPCOMING: 0, USED: 0, EXPIRED: 0, CANCELLED: 0 },
   );
   const visibleTickets = listTickets.filter(
     (ticket) => getTicketCategory(ticket) === ticketCategory,
@@ -482,6 +501,7 @@ export function TicketLookup() {
   const ticketTabs = [
     { value: "UPCOMING", label: "Chưa chạy", icon: Clock },
     { value: "USED", label: "Đã sử dụng", icon: CheckCircle },
+    { value: "EXPIRED", label: "Trễ tàu / Quá hạn", icon: AlertTriangle },
     { value: "CANCELLED", label: "Đã hủy", icon: X },
   ];
 
@@ -886,6 +906,7 @@ export function TicketLookup() {
                             t.booking?.status || "CONFIRMED",
                             t.booking?.cancellationRequest?.status,
                             getTicketCategory(t),
+                            t,
                           )}
                         </div>
 
@@ -976,6 +997,7 @@ export function TicketLookup() {
                       activeTicket.booking?.status || "CONFIRMED",
                       activeTicket.booking?.cancellationRequest?.status,
                       getTicketCategory(activeTicket),
+                      activeTicket,
                     )}
                   </div>
 

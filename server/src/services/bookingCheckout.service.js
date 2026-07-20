@@ -934,7 +934,23 @@ async function matchCustomerUsers(passengers) {
 const MAX_TOTAL_PASSENGERS = 8;
 
 export async function checkoutBooking(identity, payload) {
+
+  if (identity.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: identity.userId },
+      select: { isActive: true, lockReason: true },
+    });
+    if (user && user.isActive === false) {
+      throw httpError(
+        403,
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Vi phạm điều khoản dịch vụ"}. Bạn không thể thực hiện đặt vé.`,
+      );
+    }
+  }
+
+
   const isStaffCounter = payload.salesChannel === "STAFF_COUNTER";
+
   if (
     !Array.isArray(payload.passengers) ||
     payload.passengers.length < 1 ||

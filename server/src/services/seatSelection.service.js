@@ -380,6 +380,19 @@ async function findConflictSeatIds(requests, now) {
 }
 
 export async function confirmSeatSelection(identity, payload) {
+  if (identity.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: identity.userId },
+      select: { isActive: true, lockReason: true },
+    });
+    if (user && user.isActive === false) {
+      throw httpError(
+        403,
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Vi phạm điều khoản dịch vụ"}. Bạn không thể thực hiện đặt vé.`,
+      );
+    }
+  }
+
   const { outbound, inbound } = normalizeSelectionPayload(payload);
   const now = new Date();
   await cleanupExpiredHolds(now);

@@ -45,6 +45,8 @@ export default function App() {
             email: u.email,
             role: u.userType,
             loyaltyPoints: u.loyaltyPoints || 0,
+            isActive: u.isActive,
+            lockReason: u.lockReason,
           },
           token: "session",
         });

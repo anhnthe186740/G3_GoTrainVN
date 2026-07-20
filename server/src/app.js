@@ -16,6 +16,9 @@ import { staffRoutes } from "./routes/staff.routes.js";
 import { maintenanceRoutes } from "./routes/maintenance.routes.js";
 import { blogRoutes } from "./routes/blog.routes.js";
 
+import chatbotRoutes from "./routes/chatbot.routes.js";
+
+
 const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
@@ -34,7 +37,11 @@ app.use("/api/v1/pricing", pricingRoutes);
 app.use("/api/v1", seatSelectionRoutes);
 app.use("/api/v1/promotions", promotionRoutes);
 app.use("/api/v1/maintenance", maintenanceRoutes);
+
 app.use("/api/v1/blogs", blogRoutes);
+
+app.use("/api/v1/chatbot", chatbotRoutes);
+
 
 app.use(notFound);
 app.use(errorHandler);
