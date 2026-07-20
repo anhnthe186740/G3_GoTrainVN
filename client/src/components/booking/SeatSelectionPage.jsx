@@ -24,6 +24,7 @@ import {
   createSeatSocket,
   seatSelectionApi,
 } from "../../services/seatSelectionApi";
+import { useAuthStore } from "../../store/authStore";
 import "./seatBlueprint.css";
 
 const STATE_META = {
@@ -899,6 +900,27 @@ function LegacySeatSelectionPage() {
 }
 */
 
+
+export function SeatSelectionPage() {
+  const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && user.isActive === false) {
+      toast.error(
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Không xác định"}. Bạn không thể thực hiện đặt vé.`,
+      );
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+  const outboundScheduleId = searchParams.get("outboundScheduleId");
+  const outboundFromStationId = searchParams.get("outboundFromStationId");
+  const outboundToStationId = searchParams.get("outboundToStationId");
+  const returnScheduleId = searchParams.get("returnScheduleId");
+  const returnFromStationId = searchParams.get("returnFromStationId");
+  const returnToStationId = searchParams.get("returnToStationId");
+  const restoredSessionId = searchParams.get("sessionId");
 export function SeatSelectionPage({
   embedded = false,
   journeyOverride = null,
@@ -938,6 +960,7 @@ export function SeatSelectionPage({
   const isExchangeMode =
     (mode === "exchange" || mode === "staff-exchange") &&
     Boolean(exchangeBookingId);
+
 
   const journeyPayload = useMemo(
     () => ({

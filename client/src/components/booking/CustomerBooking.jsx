@@ -12,6 +12,8 @@ import { api } from "../../services/api";
 import { FilterPanel } from "./FilterPanel";
 import { ScheduleCard } from "./ScheduleCard";
 
+import { useAuthStore } from "../../store/authStore";
+
 const DEFAULT_FILTERS = {
   timeSlots: [],
   trainTypes: [],
@@ -73,8 +75,19 @@ function filterAndSortSchedules(schedules, filters, sortBy) {
 }
 
 export function CustomerBooking() {
+  const { user } = useAuthStore();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && user.isActive === false) {
+      toast.error(
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Không xác định"}. Bạn không thể thực hiện đặt vé.`,
+      );
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+
   const fromStationId = searchParams.get("fromStationId");
   const toStationId = searchParams.get("toStationId");
   const from = searchParams.get("from") || "Ga đi";
