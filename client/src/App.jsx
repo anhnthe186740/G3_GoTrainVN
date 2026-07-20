@@ -18,6 +18,8 @@ import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
 import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
 import { PassengerDetailsPage } from "./components/booking/PassengerDetailsPage";
+import { PrivacyPolicy } from "./pages/PrivacyPolicy";
+import { TermsOfService } from "./pages/TermsOfService";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
 
@@ -100,6 +102,8 @@ export default function App() {
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
         <Route path="doi-ve" element={<TicketExchange />} />
         <Route path="promotions" element={<Promotions />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
+        <Route path="terms" element={<TermsOfService />} />
 
         <Route
           path="dashboard"
