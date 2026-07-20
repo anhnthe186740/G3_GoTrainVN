@@ -56,6 +56,13 @@ export function emitSeatState(scheduleId, payload) {
   });
 }
 
+export function emitLiveTrackingUpdate(scheduleId, payload) {
+  io?.emit("live-tracking:update", {
+    scheduleId,
+    ...payload,
+  });
+}
+
 export function emitSessionExpired(userId, payload) {
   if (!io) return;
   for (const socket of io.sockets.sockets.values()) {

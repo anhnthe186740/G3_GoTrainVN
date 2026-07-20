@@ -1,13 +1,20 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.js";
-import { profile, updateProfile } from "../controllers/user.controller.js";
+import {
+  profile,
+  searchCustomerForStaff,
+  updateProfile,
+} from "../controllers/user.controller.js";
 import {
   getAdminUsers,
   createAdminUser,
   updateAdminUser,
   deleteAdminUser,
   getAdminRolesStats,
+  getAdminAuditLogs,
+  getSecurityLogs,
 } from "../controllers/userAdmin.controller.js";
+import { staffOrAdmin } from "../middlewares/staffOrAdmin.js";
 
 export const userRoutes = Router();
 
@@ -20,6 +27,12 @@ function adminOnly(req, res, next) {
 
 userRoutes.get("/profile", authMiddleware, profile);
 userRoutes.put("/profile", authMiddleware, updateProfile);
+userRoutes.get(
+  "/staff/search",
+  authMiddleware,
+  staffOrAdmin,
+  searchCustomerForStaff,
+);
 
 // Admin user management routes
 userRoutes.get("/admin/list", authMiddleware, adminOnly, getAdminUsers);
@@ -36,4 +49,18 @@ userRoutes.get(
   authMiddleware,
   adminOnly,
   getAdminRolesStats,
+);
+
+userRoutes.get(
+  "/admin/audit-logs",
+  authMiddleware,
+  adminOnly,
+  getAdminAuditLogs,
+);
+
+userRoutes.get(
+  "/admin/security-logs",
+  authMiddleware,
+  adminOnly,
+  getSecurityLogs,
 );

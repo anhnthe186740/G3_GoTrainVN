@@ -16,6 +16,7 @@ export function bookingIdentity(req, res, next) {
   if (req.user?.id) {
     req.bookingIdentity = {
       userId: req.user.id,
+      role: req.user.role,
       guestToken: req.cookies?.[GUEST_COOKIE] || null,
     };
     return next();

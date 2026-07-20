@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../../services/api";
 import { toast } from "sonner";
 import {
@@ -6,8 +6,55 @@ import {
   getSchedules,
   getTrains,
 } from "../../services/referenceDataApi";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 // ─── Helpers ───────────────────────────────────────────────────
+const timeToMinutes = (timeStr) => {
+  if (typeof timeStr !== "string" || !timeStr.includes(":")) return 0;
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return 0;
+  return h * 60 + m;
+};
+
+const minutesToTime = (mins) => {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
+
+const getMinutesDifference = (t1, t2) => {
+  const m1 = timeToMinutes(t1);
+  const m2 = timeToMinutes(t2);
+  const diff = Math.abs(m1 - m2);
+  return Math.min(diff, 1440 - diff);
+};
+
+const findNextSafeTime = (proposedTime, occupiedTimesStr, gap = 20) => {
+  const occupiedMins = occupiedTimesStr.map(timeToMinutes);
+  let currentMins = timeToMinutes(proposedTime);
+  let attempts = 0;
+  while (attempts < 72) {
+    let hasConflict = false;
+    for (const occ of occupiedMins) {
+      const diff = Math.min(
+        Math.abs(currentMins - occ),
+        1440 - Math.abs(currentMins - occ),
+      );
+      if (diff < gap) {
+        currentMins = (occ + gap) % 1440;
+        hasConflict = true;
+        break;
+      }
+    }
+    if (!hasConflict) return minutesToTime(currentMins);
+    attempts++;
+  }
+  return minutesToTime((timeToMinutes(proposedTime) + gap) % 1440);
+};
+
 const formatDateTime = (iso) => {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -22,16 +69,16 @@ const formatDateTime = (iso) => {
 
 const getScheduleStatus = (s) => {
   if (s.status === "CANCELLED" || s.status === "Hủy bỏ") return "Hủy bỏ";
-  if (s.status === "DELAYED") return "Chưa chạy";
   if (s.status === "Hoàn thành") return "Hoàn thành";
   if (s.status === "Đang chạy") return "Đang chạy";
   if (s.status === "Chưa chạy") return "Chưa chạy";
 
   const now = new Date();
-  const dep = new Date(s.departureTime);
+  const delayMs = (s.delayMinutes || 0) * 60 * 1000;
+  const dep = new Date(new Date(s.departureTime).getTime() + delayMs);
   const arr = s.arrivalTime
-    ? new Date(s.arrivalTime)
-    : new Date(dep.getTime() + 6 * 3600 * 1000); // Mặc định 6 tiếng nếu không có thời gian đến
+    ? new Date(new Date(s.arrivalTime).getTime() + delayMs)
+    : new Date(dep.getTime() + 6 * 3600 * 1000);
 
   if (now >= dep && now <= arr) return "Đang chạy";
   if (now > arr) return "Hoàn thành";
@@ -46,6 +93,116 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
+const TripPreview = ({
+  selectedRoute,
+  departureTimes,
+  bufferMinutes,
+  trainType = "SE",
+}) => {
+  if (!selectedRoute || !departureTimes) return null;
+
+  const SPEED_FACTORS = {
+    SE: 1.0,
+    TN: 1.3,
+    SP: 1.15,
+    QN: 1.1,
+  };
+  const speedFactor = SPEED_FACTORS[trainType] || 1.0;
+
+  const durationMins = Math.round(
+    (selectedRoute.estimatedDuration || 0) * speedFactor,
+  );
+  if (durationMins <= 0) return null;
+
+  const bufferMins = parseInt(bufferMinutes) || 0;
+  const numStops = selectedRoute.stations ? selectedRoute.stations.length : 0;
+  const totalDurationMins = durationMins + numStops * bufferMins;
+
+  const times = departureTimes
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(t));
+
+  if (times.length === 0) return null;
+
+  const durHours = Math.floor(totalDurationMins / 60);
+  const durMins = totalDurationMins % 60;
+
+  const displayDuration = [];
+  if (durHours > 0) displayDuration.push(`${durHours} giờ`);
+  if (durMins > 0) displayDuration.push(`${durMins} phút`);
+  const durationText = displayDuration.join(" ") || "0 phút";
+
+  return (
+    <div className="mt-3 p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
+      <p className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+        <span className="material-symbols-outlined text-[16px]">info</span>
+        Thời gian hành trình dự kiến ({durationText}):
+      </p>
+      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+        {times.map((t) => {
+          const [h, m] = t.split(":").map(Number);
+          const totalMins = h * 60 + m + totalDurationMins;
+          const availableMins = totalMins + bufferMins;
+
+          const arrDay = Math.floor(totalMins / (24 * 60)) + 1;
+          const arrHour = Math.floor((totalMins % (24 * 60)) / 60);
+          const arrMin = totalMins % 60;
+
+          const avDay = Math.floor(availableMins / (24 * 60)) + 1;
+          const avHour = Math.floor((availableMins % (24 * 60)) / 60);
+          const avMin = availableMins % 60;
+
+          const arrTimeStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
+          const avTimeStr = `${String(avHour).padStart(2, "0")}:${String(avMin).padStart(2, "0")}`;
+
+          const dayLabel = arrDay > 1 ? `Ngày thứ ${arrDay}` : "Cùng ngày";
+          const avDayLabel = avDay > 1 ? `Ngày thứ ${avDay}` : "Cùng ngày";
+
+          return (
+            <div
+              key={t}
+              className="text-xs flex flex-col gap-1 border-b border-violet-100/30 pb-2 last:border-none last:pb-0"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-[#191c1e] bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                    {t}
+                  </span>
+                  <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
+                    arrow_forward
+                  </span>
+                  <span className="font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                    {arrTimeStr}
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${arrDay > 1 ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}
+                >
+                  Đến: {dayLabel}
+                </span>
+              </div>
+              {bufferMins > 0 && (
+                <div className="flex items-center justify-between text-[10px] text-violet-700 bg-violet-100/40 px-2 py-0.5 rounded border border-violet-100/70">
+                  <span className="flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[11px]">
+                      schedule
+                    </span>
+                    Khả dụng từ (sau nghỉ ga cuối): <strong>{avTimeStr}</strong>
+                  </span>
+                  <span>
+                    {avDayLabel} (+{bufferMins}p)
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export function AdminSchedulePanel() {
   const [schedules, setSchedules] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -56,6 +213,7 @@ export function AdminSchedulePanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tất cả");
+  const [filterTrainId, setFilterTrainId] = useState("Tất cả");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,12 +232,94 @@ export function AdminSchedulePanel() {
   const [schedSubmitting, setSchedSubmitting] = useState(false);
   const [conflicts, setConflicts] = useState([]);
 
-  // Detail Modal
-  const [activeDetails, setActiveDetails] = useState(null);
-
   // Timeline Modal
-  const [timelineSchedule, setTimelineSchedule] = useState(null); // { schedule, timeline }
+  const [timelineSchedule, setTimelineSchedule] = useState(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
+
+  // Live Tracking Modal states
+  const [showLiveModal, setShowLiveModal] = useState(false);
+  const [selectedLiveSchedule, setSelectedLiveSchedule] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [updatingLive, setUpdatingLive] = useState(false);
+  const [delayMinutesVal, setDelayMinutesVal] = useState("0");
+  const [liveTrackingData, setLiveTrackingData] = useState({
+    speed: 0,
+    temperature: 25,
+    passengerCount: 0,
+    latitude: 21.0285,
+    longitude: 105.8542,
+    currentStation: "",
+    status: "ON_TIME",
+  });
+
+  const [triggeringAuto, setTriggeringAuto] = useState(false);
+
+  // RouteTemplate Management State
+  const [templates, setTemplates] = useState([]);
+  const [showTemplateSection, setShowTemplateSection] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({
+    routeId: "",
+    trainId: "",
+    departureTimes: "08:00",
+    bufferMinutes: "60",
+    isActive: true,
+  });
+  const [templateSubmitting, setTemplateSubmitting] = useState(false);
+
+  // ── UC-27: Create Single Schedule Modal ──────────────────────
+  const [showSingleScheduleModal, setShowSingleScheduleModal] = useState(false);
+  const [singleSchedForm, setSingleSchedForm] = useState({
+    routeId: "",
+    trainId: "",
+    departureTime: "",
+    bufferMinutes: "60",
+    notes: "",
+  });
+  const [singleSchedSubmitting, setSingleSchedSubmitting] = useState(false);
+  const [singleSchedPreview, setSingleSchedPreview] = useState(null);
+
+  // ── UC-27 G3b: Stop Edit Modal ────────────────────────────────
+  const [stopEditModal, setStopEditModal] = useState({
+    open: false,
+    scheduleId: null,
+    stop: null,
+    prevStop: null,
+    nextStop: null,
+    scheduleDep: null,
+    scheduleArr: null,
+    trainCode: "",
+    routeName: "",
+  });
+  const [stopEditForm, setStopEditForm] = useState({
+    arrivalTime: "",
+    departureTime: "",
+  });
+  const [stopValidation, setStopValidation] = useState({
+    loading: false,
+    errors: [],
+    warnings: [],
+    suggestion: null,
+  });
+  const [stopSaving, setStopSaving] = useState(false);
+  const stopValidateTimerRef = useRef(null);
+
+  // ── UC-27: Confirm Dialog (BR-33) ─────────────────────────────
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    message: "",
+    severity: "warning",
+    confirmText: "Xác nhận",
+    loading: false,
+    onConfirm: null,
+  });
+
+  const openConfirm = (opts) =>
+    setConfirmDialog({ ...opts, open: true, loading: false });
+  const closeConfirm = () =>
+    setConfirmDialog((d) => ({ ...d, open: false, loading: false }));
 
   const handleViewTimeline = async (scheduleId) => {
     setTimelineLoading(true);
@@ -94,7 +334,108 @@ export function AdminSchedulePanel() {
     }
   };
 
-  const [triggeringAuto, setTriggeringAuto] = useState(false);
+  // Open Live Tracking & Incident Controls
+  const handleOpenLiveTracking = async (schedule) => {
+    setSelectedLiveSchedule(schedule);
+    setDelayMinutesVal(String(schedule.delayMinutes || 0));
+    setShowLiveModal(true);
+    setLiveLoading(true);
+    try {
+      const res = await api.get(`/schedules/${schedule.id}/live-tracking`);
+      setLiveTrackingData(res.data.tracking);
+    } catch {
+      toast.error("Không thể tải thông tin định vị thời gian thực.");
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  // Update Live Telemetry parameters
+  const handleUpdateLiveTelemetry = async (field, value) => {
+    if (!selectedLiveSchedule) return;
+    try {
+      const payload = {
+        ...liveTrackingData,
+        [field]: value,
+      };
+      const res = await api.put(
+        `/schedules/${selectedLiveSchedule.id}/live-tracking`,
+        payload,
+      );
+      setLiveTrackingData(res.data.tracking);
+      toast.success("Đã đồng bộ thông số live!");
+    } catch {
+      toast.error("Lỗi khi cập nhật thông số live.");
+    }
+  };
+
+  // Submit Delay Minute Recalculations
+  const handleUpdateDelay = async (e) => {
+    e.preventDefault();
+    if (!selectedLiveSchedule) return;
+    setUpdatingLive(true);
+    try {
+      const res = await api.put(`/schedules/${selectedLiveSchedule.id}/delay`, {
+        delayMinutes: parseInt(delayMinutesVal) || 0,
+      });
+      toast.success(
+        res.data.message || "Cập nhật delay và tính toán lại lịch thành công!",
+      );
+      setShowLiveModal(false);
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Lỗi khi cập nhật thời gian trễ.",
+      );
+    } finally {
+      setUpdatingLive(false);
+    }
+  };
+
+  // Emergency Stop Trigger (Remote Deactivation)
+  const handleEmergencyStop = async () => {
+    if (!selectedLiveSchedule) return;
+    if (
+      !window.confirm(
+        "CẢNH BÁO CỰC KỲ QUAN TRỌNG: Bạn có chắc chắn muốn DỪNG TÀU KHẨN CẤP? Lịch trình này sẽ bị HỦY, hệ thống sẽ tự động hoàn tiền cho khách hàng và đưa tàu đi sửa chữa lập tức.",
+      )
+    )
+      return;
+
+    setUpdatingLive(true);
+    try {
+      // 1. Deactivate train to MAINTENANCE status
+      await api.put(`/trains/${selectedLiveSchedule.trainId}/status`, {
+        status: "MAINTENANCE",
+      });
+
+      // 2. Establish Emergency Maintenance Log
+      const now = new Date();
+      const end = new Date(now.getTime() + 24 * 3600 * 1000); // 1 day
+      await api.post("/maintenance", {
+        trainId: selectedLiveSchedule.trainId,
+        maintenanceType: "EMERGENCY",
+        description:
+          "DỪNG TÀU KHẨN CẤP: Gặp sự cố động cơ đột xuất trên hành trình.",
+        startDate: now.toISOString(),
+        endDate: end.toISOString(),
+        affectedScheduleIds: [selectedLiveSchedule.id],
+        notes: "Dừng tàu khẩn cấp do can thiệp từ xa của Admin.",
+      });
+
+      toast.success(
+        "Đã kích hoạt dừng tàu khẩn cấp và chuyển tàu đi bảo trì thành công!",
+      );
+      setShowLiveModal(false);
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể thực hiện dừng tàu khẩn cấp.",
+      );
+    } finally {
+      setUpdatingLive(false);
+    }
+  };
 
   const handleTriggerAutoGenerate = async () => {
     setTriggeringAuto(true);
@@ -118,20 +459,23 @@ export function AdminSchedulePanel() {
   const loadAll = useCallback(async ({ force = false } = {}) => {
     try {
       setLoading(true);
-      const [rtRes, trRes, scRes] = await Promise.all([
+      const [rtRes, trRes, scRes, tplRes] = await Promise.all([
         getRoutes({ force }),
         getTrains({ force }),
         getSchedules({ force }),
+        api.get("/route-templates").catch(() => ({ data: { templates: [] } })),
       ]);
 
       setRoutes(rtRes.routes || []);
       setTrains(trRes.trains || []);
       setSchedules(scRes.schedules || []);
+      setTemplates(tplRes.data?.templates || []);
     } catch (err) {
       toast.error("Không thể tải dữ liệu từ server.");
       setRoutes([]);
       setTrains([]);
       setSchedules([]);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -140,6 +484,162 @@ export function AdminSchedulePanel() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // ── RouteTemplate Handlers ──────────────────────────────────────
+  const openAddTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      routeId: "",
+      trainId: "",
+      departureTimes: "08:00",
+      bufferMinutes: "60",
+      isActive: true,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const openEditTemplate = (tpl) => {
+    setEditingTemplate(tpl);
+    setTemplateForm({
+      routeId: tpl.routeId || "",
+      trainId: tpl.trainId || "",
+      departureTimes: tpl.departureTimes.join(", "),
+      bufferMinutes: String(tpl.bufferMinutes),
+      isActive: tpl.isActive,
+    });
+    setShowTemplateModal(true);
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    openConfirm({
+      title: "Xóa mẫu lịch chạy",
+      message:
+        "Bạn có chắc chắn muốn xóa mẫu lịch chạy này? Thao tác không thể hoàn tác.",
+      severity: "danger",
+      confirmText: "Xóa mẫu",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          await api.delete(`/route-templates/${id}`);
+          setTemplates((prev) => prev.filter((t) => t.id !== id));
+          toast.success("Đã xóa mẫu lịch chạy thành công.");
+          closeConfirm();
+        } catch (err) {
+          toast.error(
+            err.response?.data?.message || "Lỗi khi xóa mẫu lịch chạy.",
+          );
+          closeConfirm();
+        }
+      },
+    });
+  };
+
+  const handleToggleTemplateActive = async (id) => {
+    const tpl = templates.find((t) => t.id === id);
+    if (!tpl) return;
+    const newActive = !tpl.isActive;
+    try {
+      const res = await api.put(`/route-templates/${id}`, {
+        isActive: newActive,
+      });
+      setTemplates((prev) =>
+        prev.map((t) => (t.id === id ? res.data.template : t)),
+      );
+      toast.success(
+        newActive ? "Đã kích hoạt mẫu lịch chạy." : "Đã tắt mẫu lịch chạy.",
+      );
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể thay đổi trạng thái mẫu.",
+      );
+    }
+  };
+
+  const getTemplateConflicts = () => {
+    if (!templateForm.routeId || !templateForm.departureTimes) return [];
+
+    const activeRouteTemplates = templates.filter(
+      (t) =>
+        t.routeId === templateForm.routeId &&
+        t.isActive &&
+        (!editingTemplate || t.id !== editingTemplate.id),
+    );
+
+    if (activeRouteTemplates.length === 0) return [];
+
+    const occupiedTimes = activeRouteTemplates.flatMap((t) => t.departureTimes);
+
+    const inputTimes = templateForm.departureTimes
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+    const conflicts = [];
+
+    for (const propTime of inputTimes) {
+      for (const tpl of activeRouteTemplates) {
+        for (const occTime of tpl.departureTimes) {
+          const diff = getMinutesDifference(propTime, occTime);
+          if (diff < 20) {
+            const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+            conflicts.push({
+              proposedTime: propTime,
+              conflictingTime: occTime,
+              trainCode: tpl.train?.trainCode || "khác",
+              suggestedTime: safeTime,
+            });
+          }
+        }
+      }
+    }
+
+    return conflicts;
+  };
+
+  const templateConflicts = getTemplateConflicts();
+
+  const handleSaveTemplate = async (e) => {
+    e.preventDefault();
+    setTemplateSubmitting(true);
+    const times = templateForm.departureTimes
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    try {
+      if (editingTemplate) {
+        const res = await api.put(`/route-templates/${editingTemplate.id}`, {
+          routeId: templateForm.routeId,
+          trainId: templateForm.trainId,
+          departureTimes: times,
+          bufferMinutes: parseInt(templateForm.bufferMinutes) || 60,
+          isActive: templateForm.isActive,
+        });
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === editingTemplate.id ? res.data.template : t,
+          ),
+        );
+        toast.success(res.data.message || "Đã cập nhật mẫu lịch chạy.");
+      } else {
+        const res = await api.post("/route-templates", {
+          routeId: templateForm.routeId,
+          trainId: templateForm.trainId,
+          departureTimes: times,
+          bufferMinutes: parseInt(templateForm.bufferMinutes) || 60,
+          isActive: templateForm.isActive,
+        });
+        setTemplates((prev) => [res.data.template, ...prev]);
+        toast.success(res.data.message || "Đã thêm mẫu lịch chạy mới.");
+      }
+      setShowTemplateModal(false);
+      setEditingTemplate(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu mẫu lịch chạy.");
+    } finally {
+      setTemplateSubmitting(false);
+    }
+  };
 
   // ── Auto-generate Schedule Submit ──────────────────────────────
   const handleCreateSchedules = async (e) => {
@@ -183,22 +683,232 @@ export function AdminSchedulePanel() {
     }
   };
 
-  // ── Delete Schedule ─────────────────────────────────────────────
+  // ── Delete Schedule (Legacy hard-delete) ────────────────────
   const handleDeleteSchedule = async (id, name) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa lịch trình của ${name}?`))
-      return;
+    openConfirm({
+      title: `Xóa lịch trình: ${name}`,
+      message:
+        "Thao tác này sẽ xóa vĩnh viễn lịch trình. Nếu có hành khách đặt vé, hãy dùng 'Hủy lịch' thay thế.",
+      severity: "danger",
+      confirmText: "Xóa vĩnh viễn",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          if (id.startsWith("mock-")) {
+            setSchedules((prev) => prev.filter((s) => s.id !== id));
+            toast.success("Đã xóa lịch trình (Dữ liệu mô phỏng).");
+          } else {
+            await api.delete(`/schedules/${id}`);
+            toast.success("Đã xóa lịch trình thành công.");
+            loadAll({ force: true });
+          }
+          closeConfirm();
+        } catch (err) {
+          toast.error("Không thể xóa lịch trình này.");
+          closeConfirm();
+        }
+      },
+    });
+  };
+
+  // ── UC-27 G6: Hủy lịch trình (giữ record, hoàn tiền) ────────
+  const handleCancelSchedule = (schedule) => {
+    const name = `${schedule.train?.trainCode} - ${schedule.route?.routeName}`;
+    openConfirm({
+      title: `Hủy lịch trình: ${name}`,
+      message: (
+        <>
+          <p>
+            Lịch trình <strong>{name}</strong> xuất phát lúc{" "}
+            <strong>
+              {new Date(schedule.departureTime).toLocaleString("vi-VN")}
+            </strong>{" "}
+            sẽ bị hủy.
+          </p>
+          <p className="mt-2 text-amber-700 bg-amber-50 rounded-lg p-2.5 text-xs">
+            ⚠️ Tất cả hành khách có đặt vé CONFIRMED sẽ được hoàn tiền tự động
+            và nhận email thông báo (BR-14).
+          </p>
+        </>
+      ),
+      severity: "danger",
+      confirmText: "Hủy & Hoàn tiền",
+      onConfirm: async () => {
+        setConfirmDialog((d) => ({ ...d, loading: true }));
+        try {
+          const res = await api.patch(`/schedules/${schedule.id}/cancel`, {
+            reason: "Admin hủy lịch trình từ bảng quản lý.",
+          });
+          toast.success(res.data.message || "Đã hủy lịch trình thành công.");
+          closeConfirm();
+          loadAll({ force: true });
+        } catch (err) {
+          toast.error(
+            err.response?.data?.message || "Không thể hủy lịch trình.",
+          );
+          closeConfirm();
+        }
+      },
+    });
+  };
+
+  // ── UC-27 G4: Tạo lịch trình đơn lẻ ─────────────────────────
+  const handleCreateSingleSchedule = async (e) => {
+    e.preventDefault();
+    setSingleSchedSubmitting(true);
     try {
-      // Check if it is a mock schedule or server schedule
-      if (id.startsWith("mock-")) {
-        setSchedules((prev) => prev.filter((s) => s.id !== id));
-        toast.success("Đã xóa lịch trình (Dữ liệu mô phỏng).");
-      } else {
-        await api.delete(`/schedules/${id}`);
-        toast.success("Đã xóa lịch trình thành công.");
-        loadAll({ force: true });
-      }
+      const res = await api.post("/schedules", {
+        trainId: singleSchedForm.trainId,
+        routeId: singleSchedForm.routeId,
+        departureTime: singleSchedForm.departureTime,
+        bufferMinutes: parseInt(singleSchedForm.bufferMinutes) || 60,
+        notes: singleSchedForm.notes || undefined,
+      });
+      toast.success(res.data.message || "Đã tạo lịch trình thành công!");
+      setShowSingleScheduleModal(false);
+      setSingleSchedForm({
+        routeId: "",
+        trainId: "",
+        departureTime: "",
+        bufferMinutes: "60",
+        notes: "",
+      });
+      setSingleSchedPreview(null);
+      loadAll({ force: true });
     } catch (err) {
-      toast.error("Không thể xóa lịch trình này.");
+      toast.error(err.response?.data?.message || "Lỗi khi tạo lịch trình.");
+    } finally {
+      setSingleSchedSubmitting(false);
+    }
+  };
+
+  // ── UC-27 G3b: Mở modal chỉnh sửa ScheduleStop ───────────────
+  const handleOpenStopEdit = (schedule, stop, allStops) => {
+    const sorted = [...allStops].sort((a, b) => a.stopOrder - b.stopOrder);
+    const idx = sorted.findIndex((s) => s.id === stop.id);
+    setStopEditModal({
+      open: true,
+      scheduleId: schedule.id,
+      stop,
+      prevStop: idx > 0 ? sorted[idx - 1] : null,
+      nextStop: idx < sorted.length - 1 ? sorted[idx + 1] : null,
+      scheduleDep: schedule.departureTime,
+      scheduleArr: schedule.arrivalTime,
+      trainCode: schedule.train?.trainCode || "",
+      routeName: schedule.route?.routeName || "",
+    });
+    // Pre-fill form với giờ hiện tại, convert sang local datetime-local format
+    const toLocal = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().slice(0, 16);
+    };
+    setStopEditForm({
+      arrivalTime: toLocal(stop.arrivalTime),
+      departureTime: toLocal(stop.departureTime),
+    });
+    setStopValidation({
+      loading: false,
+      errors: [],
+      warnings: [],
+      suggestion: null,
+    });
+  };
+
+  // ── UC-27 G3b: Debounce preview khi thay đổi giờ ─────────────
+  useEffect(() => {
+    if (
+      !stopEditModal.open ||
+      !stopEditForm.arrivalTime ||
+      !stopEditForm.departureTime
+    )
+      return;
+    clearTimeout(stopValidateTimerRef.current);
+    stopValidateTimerRef.current = setTimeout(async () => {
+      setStopValidation((v) => ({ ...v, loading: true }));
+      try {
+        const res = await api.put(
+          `/schedules/${stopEditModal.scheduleId}/stops/${stopEditModal.stop?.id}?preview=true`,
+          {
+            arrivalTime: new Date(stopEditForm.arrivalTime).toISOString(),
+            departureTime: new Date(stopEditForm.departureTime).toISOString(),
+          },
+        );
+        setStopValidation({
+          loading: false,
+          errors: [],
+          warnings: res.data.warnings || [],
+          suggestion: res.data.suggestedDepartureTime || null,
+        });
+      } catch (err) {
+        const msg = err.response?.data?.message || "Lỗi validate";
+        const errs = err.response?.data?.errors || [msg];
+        setStopValidation({
+          loading: false,
+          errors: errs,
+          warnings: [],
+          suggestion: null,
+        });
+      }
+    }, 600);
+    return () => clearTimeout(stopValidateTimerRef.current);
+  }, [
+    stopEditForm.arrivalTime,
+    stopEditForm.departureTime,
+    stopEditModal.open,
+  ]);
+
+  // ── UC-27 G3b: Lưu thay đổi ScheduleStop ─────────────────────
+  const handleSaveStop = async () => {
+    if (stopValidation.errors.length > 0) return;
+    if (stopValidation.warnings.length > 0) {
+      openConfirm({
+        title: "Cảnh báo đường đơn",
+        message: (
+          <ul className="list-disc list-inside space-y-1 text-sm text-amber-800">
+            {stopValidation.warnings.map((w, i) => (
+              <li key={i}>{w.message}</li>
+            ))}
+          </ul>
+        ),
+        severity: "warning",
+        confirmText: "Vẫn lưu",
+        onConfirm: async () => {
+          setConfirmDialog((d) => ({ ...d, loading: true }));
+          await doSaveStop();
+          closeConfirm();
+        },
+      });
+      return;
+    }
+    await doSaveStop();
+  };
+
+  const doSaveStop = async () => {
+    setStopSaving(true);
+    try {
+      const res = await api.put(
+        `/schedules/${stopEditModal.scheduleId}/stops/${stopEditModal.stop?.id}`,
+        {
+          arrivalTime: new Date(stopEditForm.arrivalTime).toISOString(),
+          departureTime: new Date(stopEditForm.departureTime).toISOString(),
+        },
+      );
+      toast.success(res.data.message || "Đã cập nhật giờ dừng.");
+      setStopEditModal((m) => ({ ...m, open: false }));
+      // Refresh timeline nếu đang mở
+      if (timelineSchedule) {
+        const tRes = await api.get(
+          `/schedules/${stopEditModal.scheduleId}/timeline`,
+        );
+        setTimelineSchedule(tRes.data);
+      }
+      loadAll({ force: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu.");
+    } finally {
+      setStopSaving(false);
     }
   };
 
@@ -206,7 +916,6 @@ export function AdminSchedulePanel() {
   const filteredSchedules = schedules.filter((s) => {
     const status = getScheduleStatus(s);
 
-    // Search term check
     const matchSearch =
       (s.train?.trainCode || "")
         .toLowerCase()
@@ -221,17 +930,17 @@ export function AdminSchedulePanel() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
 
-    // Date check
     let matchDate = true;
     if (filterDate) {
       const sDateStr = new Date(s.departureTime).toISOString().split("T")[0];
       matchDate = sDateStr === filterDate;
     }
 
-    // Status check
     const matchStatus = filterStatus === "Tất cả" || status === filterStatus;
+    const matchTrain =
+      filterTrainId === "Tất cả" || s.trainId === filterTrainId;
 
-    return matchSearch && matchDate && matchStatus;
+    return matchSearch && matchDate && matchStatus && matchTrain;
   });
 
   // ── Stats calculation ───────────────────────────────────────────
@@ -255,7 +964,15 @@ export function AdminSchedulePanel() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterDate, filterStatus]);
+  }, [searchTerm, filterDate, filterStatus, filterTrainId]);
+
+  // BR-32 Warning filter: find delayed schedules > 10 mins
+  const delayedSchedules = schedules.filter((s) => {
+    const status = getScheduleStatus(s);
+    return (
+      s.delayMinutes > 10 && status !== "Hoàn thành" && status !== "Hủy bỏ"
+    );
+  });
 
   return (
     <div className="space-y-8">
@@ -270,16 +987,59 @@ export function AdminSchedulePanel() {
             tự động.
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-[18px]">add</span>
-          Tạo lịch trình mới
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowSingleScheduleModal(true)}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-emerald-600/20 transition-all active:scale-95 border-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              add_circle
+            </span>
+            Tạo lịch đơn lẻ
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-5 py-3 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-[#00629d]/20 transition-all active:scale-95 border-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              auto_schedule
+            </span>
+            Tạo hàng loạt
+          </button>
+        </div>
       </div>
 
-      {/* Stats Summary (Asymmetric Layout matching HTML) */}
+      {/* Warning Alerts for Delays > 10 mins (BR-32) */}
+      {delayedSchedules.length > 0 && (
+        <div className="bg-[#ffdad6] border border-[#ba1a1a]/20 rounded-2xl p-5 flex flex-col gap-3">
+          <h4 className="text-sm font-bold text-[#ba1a1a] flex items-center gap-1.5">
+            <span className="material-symbols-outlined">warning</span>
+            Tàu Trễ &gt; 10 phút
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {delayedSchedules.map((ds) => (
+              <div
+                key={ds.id}
+                className="bg-white rounded-xl p-3 border border-[#ffdad6] flex items-center justify-between text-xs font-semibold"
+              >
+                <div>
+                  <p className="text-[#ba1a1a] font-bold">
+                    {ds.train?.trainCode} ({ds.route?.routeName})
+                  </p>
+                  <p className="text-[#3f4852] mt-0.5">
+                    Số hiệu delay:{" "}
+                    <strong className="text-red-600">
+                      {ds.delayMinutes} phút
+                    </strong>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stats Summary */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         <div className="md:col-span-8 bg-white p-6 rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 flex items-center justify-between">
           <div>
@@ -368,10 +1128,10 @@ export function AdminSchedulePanel() {
             Trình tự động tạo lịch trình (Hàng ngày)
           </h4>
           <p className="text-xs text-[#3f4852]">
-            Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày, tự động sinh
-            lịch trình chạy tàu cho <strong>ngày thứ 30 tới</strong> dựa trên dữ
-            liệu các mẫu lịch chạy cố định hoặc nhân bản lịch trình 7 ngày trước
-            để đảm bảo luôn mở bán vé trước cho khách.
+            Hệ thống tự động đồng bộ định kỳ lúc 00:00 hàng ngày (sinh lịch cho
+            ngày thứ 30 tới). Nhấp <strong>&quot;Chạy Ngay&quot;</strong> để
+            quét và tạo/bù lịch chạy cho toàn bộ{" "}
+            <strong>30 ngày tiếp theo</strong> dựa trên các mẫu đang hoạt động.
           </p>
         </div>
         <button
@@ -391,10 +1151,219 @@ export function AdminSchedulePanel() {
               <span className="material-symbols-outlined text-[16px]">
                 bolt
               </span>
-              Chạy Ngay (Đồng bộ Ngày 30)
+              Chạy Ngay (Đồng bộ 30 Ngày)
             </>
           )}
         </button>
+      </div>
+
+      {/* ── RouteTemplate Management Section ── */}
+      <div className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-[#bec7d4]/10">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-violet-600 text-[20px]">
+                calendar_clock
+              </span>
+            </div>
+            <div>
+              <h3 className="font-bold text-[#191c1e] text-sm">
+                Mẫu Lịch Chạy (RouteTemplate)
+              </h3>
+              <p className="text-xs text-[#3f4852]/60">
+                Định nghĩa nền tảng cho tự động gen lịch trình hàng ngày
+              </p>
+            </div>
+            <div className="flex gap-2 ml-1">
+              <span className="text-xs font-bold bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full">
+                {templates.filter((t) => t.isActive).length} đang hoạt động
+              </span>
+              <span className="text-xs font-bold bg-[#f2f4f6] text-[#3f4852] px-2.5 py-0.5 rounded-full">
+                {templates.filter((t) => !t.isActive).length} đã tắt
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={openAddTemplate}
+              className="px-3.5 py-2 bg-[#00629d] hover:bg-[#00629d]/90 text-white rounded-xl font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 border-none cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              Thêm mẫu
+            </button>
+            <button
+              onClick={() => setShowTemplateSection((s) => !s)}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-[#3f4852] hover:bg-[#f2f4f6] transition-all border-none bg-transparent cursor-pointer"
+              title={showTemplateSection ? "Thu gọn" : "Mở rộng"}
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                {showTemplateSection ? "expand_less" : "expand_more"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {showTemplateSection && (
+          <>
+            <div className="px-6 py-3 bg-violet-50/60 border-b border-violet-100/60 flex items-start gap-2">
+              <span className="material-symbols-outlined text-violet-500 text-[16px] mt-0.5 shrink-0">
+                info
+              </span>
+              <p className="text-xs text-violet-700 leading-relaxed">
+                Mỗi mẫu lịch chạy xác định{" "}
+                <strong>tuyến đường + tàu + giờ khởi hành</strong>. Khi kích
+                hoạt &quot;Chạy Ngay&quot; hoặc lịch tự động 00:00 hàng ngày, hệ
+                thống chỉ sinh lịch từ <strong>các mẫu đang hoạt động</strong>.
+                Mẫu không hoạt động sẽ bị bỏ qua hoàn toàn.
+              </p>
+            </div>
+
+            {templates.length === 0 ? (
+              <div className="py-14 text-center">
+                <span className="material-symbols-outlined text-5xl text-[#bec7d4] block mb-3">
+                  calendar_clock
+                </span>
+                <p className="font-bold text-[#191c1e] text-sm">
+                  Chưa có mẫu lịch chạy nào
+                </p>
+                <p className="text-xs text-[#3f4852]/60 mt-1">
+                  Thêm mẫu để hệ thống có thể tự động gen lịch trình
+                </p>
+                <button
+                  onClick={openAddTemplate}
+                  className="mt-4 px-4 py-2 bg-[#00629d] text-white rounded-xl font-semibold text-xs cursor-pointer border-none hover:bg-[#00629d]/90 transition-all"
+                >
+                  Thêm mẫu đầu tiên
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#f7f9fb]/80 border-b border-[#bec7d4]/20">
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Tuyến đường
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Tàu
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide">
+                        Giờ khởi hành
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-center">
+                        Buffer
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-center">
+                        Hoạt động
+                      </th>
+                      <th className="px-6 py-3.5 font-semibold text-[#3f4852] text-xs uppercase tracking-wide text-right">
+                        Thao tác
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#bec7d4]/10">
+                    {templates.map((tpl) => (
+                      <tr
+                        key={tpl.id}
+                        className="hover:bg-[#f7f9fb] transition-colors group"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-[#191c1e]">
+                              {tpl.route?.startStation?.stationCode}
+                            </span>
+                            <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
+                              arrow_forward
+                            </span>
+                            <span className="font-bold text-sm text-[#00629d]">
+                              {tpl.route?.endStation?.stationCode}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#3f4852]/50 mt-0.5 truncate max-w-[220px]">
+                            {tpl.route?.startStation?.stationName} →{" "}
+                            {tpl.route?.endStation?.stationName}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#cfe5ff]/40 rounded-lg">
+                            <span className="material-symbols-outlined text-[14px] text-[#00629d]">
+                              train
+                            </span>
+                            <span className="font-bold text-sm text-[#00629d]">
+                              {tpl.train?.trainCode}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {tpl.departureTimes.map((t) => (
+                              <span
+                                key={t}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f4fd] text-[#005a90] text-xs font-bold rounded-lg border border-[#bde0f7]"
+                              >
+                                <span className="material-symbols-outlined text-[11px]">
+                                  schedule
+                                </span>
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-xs font-semibold text-[#3f4852] bg-[#f2f4f6] px-2.5 py-1 rounded-lg">
+                            {tpl.bufferMinutes} phút
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => handleToggleTemplateActive(tpl.id)}
+                              className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer border-none focus:outline-none ${
+                                tpl.isActive ? "bg-[#00629d]" : "bg-[#bec7d4]"
+                              }`}
+                              title={tpl.isActive ? "Tắt mẫu" : "Kích hoạt mẫu"}
+                            >
+                              <span
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                                  tpl.isActive
+                                    ? "translate-x-5"
+                                    : "translate-x-0.5"
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => openEditTemplate(tpl)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#00629d] hover:bg-white hover:shadow-sm transition-all cursor-pointer border-none bg-transparent"
+                              title="Chỉnh sửa"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                edit
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTemplate(tpl.id)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-[#ba1a1a] hover:bg-white hover:shadow-sm transition-all cursor-pointer border-none bg-transparent"
+                              title="Xóa mẫu"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                delete
+                              </span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Filters & Search */}
@@ -451,14 +1420,36 @@ export function AdminSchedulePanel() {
           </select>
         </div>
 
-        {(searchTerm || filterDate || filterStatus !== "Tất cả") && (
+        <div className="w-full md:w-auto min-w-[160px]">
+          <label className="block font-label-sm text-xs font-bold text-[#3f4852] mb-2">
+            Đoàn tàu
+          </label>
+          <select
+            value={filterTrainId}
+            onChange={(e) => setFilterTrainId(e.target.value)}
+            className="w-full px-4 py-2.5 bg-[#f2f4f6] rounded-xl border-none focus:ring-2 focus:ring-[#00a3ff] outline-none text-sm cursor-pointer"
+          >
+            <option value="Tất cả">Tất cả tàu</option>
+            {trains.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.trainCode} - {t.trainName}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {(searchTerm ||
+          filterDate ||
+          filterStatus !== "Tất cả" ||
+          filterTrainId !== "Tất cả") && (
           <button
             onClick={() => {
               setSearchTerm("");
               setFilterDate("");
               setFilterStatus("Tất cả");
+              setFilterTrainId("Tất cả");
             }}
-            className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer"
+            className="bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center gap-1 cursor-pointer border-none"
             title="Xóa bộ lọc"
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -477,7 +1468,7 @@ export function AdminSchedulePanel() {
         </button>
       </div>
 
-      {/* Schedule Table (Modern List Pattern) */}
+      {/* Schedule Table */}
       <div className="bg-white rounded-2xl shadow-[0px_10px_30px_rgba(0,163,255,0.06)] border border-[#bec7d4]/10 overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-[#3f4852]">
@@ -597,20 +1588,14 @@ export function AdminSchedulePanel() {
                             }`}
                           >
                             {status}
+                            {s.delayMinutes > 0 && ` (+${s.delayMinutes}p)`}
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setActiveDetails(s)}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#3f4852] hover:bg-white hover:shadow-sm hover:text-[#00a3ff] transition-all cursor-pointer border-none bg-transparent"
-                            title="Xem chi tiết"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              visibility
-                            </span>
-                          </button>
+                          {/* Live operations button removed */}
+
                           <button
                             onClick={() => handleViewTimeline(s.id)}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7c4dff] hover:bg-white hover:shadow-sm hover:text-[#5e35b1] transition-all cursor-pointer border-none bg-transparent"
@@ -618,19 +1603,6 @@ export function AdminSchedulePanel() {
                           >
                             <span className="material-symbols-outlined text-[20px]">
                               route
-                            </span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              toast.info(
-                                "Tính năng chỉnh sửa lịch trình đơn lẻ đang được phát triển.",
-                              );
-                            }}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#00629d] hover:bg-white hover:shadow-sm hover:text-[#005a90] transition-all cursor-pointer border-none bg-transparent"
-                            title="Chỉnh sửa"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              edit
                             </span>
                           </button>
                           <button
@@ -729,7 +1701,9 @@ export function AdminSchedulePanel() {
         )}
       </div>
 
-      {/* ── Add Schedule Modal (Drawer style / Centered Modal) ── */}
+      {/* MODAL: LIVE TRACKING & INCIDENT DELAY MANAGEMENT REMOVED */}
+
+      {/* ── Add Schedule Modal ── */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-lg p-6 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -848,11 +1822,16 @@ export function AdminSchedulePanel() {
                   placeholder="08:00, 14:30, 20:00"
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
+                <TripPreview
+                  selectedRoute={routes.find((r) => r.id === schedForm.routeId)}
+                  departureTimes={schedForm.departureTimes}
+                  bufferMinutes={schedForm.bufferMinutes}
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Khoảng thời gian dọn dẹp tối thiểu (phút)
+                  Thời gian nghỉ tại mỗi ga (phút)
                 </label>
                 <input
                   type="number"
@@ -867,8 +1846,8 @@ export function AdminSchedulePanel() {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian giãn cách bắt buộc giữa hai chuyến liên tiếp của
-                  cùng 1 tàu.
+                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
+                  cuối).
                 </p>
               </div>
 
@@ -879,7 +1858,7 @@ export function AdminSchedulePanel() {
                     setShowAddModal(false);
                     setConflicts([]);
                   }}
-                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer"
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer border-none bg-transparent"
                 >
                   Đóng
                 </button>
@@ -943,370 +1922,766 @@ export function AdminSchedulePanel() {
         </div>
       )}
 
-      {/* ── Detail Modal ── */}
-      {activeDetails && (
+      {/* ── RouteTemplate Add/Edit Modal ── */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
+              <h3 className="font-bold text-lg text-[#191c1e] flex items-center gap-2">
+                <span className="material-symbols-outlined text-violet-600">
+                  calendar_clock
+                </span>
+                {editingTemplate
+                  ? "Chỉnh sửa mẫu lịch chạy"
+                  : "Thêm mới mẫu lịch chạy"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  setEditingTemplate(null);
+                }}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTemplate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tuyến đường *
+                </label>
+                <select
+                  required
+                  value={templateForm.routeId}
+                  onChange={(e) => {
+                    const selectedRouteId = e.target.value;
+                    let nextTime = "08:00";
+                    if (selectedRouteId) {
+                      const activeRouteTemplates = templates.filter(
+                        (t) =>
+                          t.routeId === selectedRouteId &&
+                          t.isActive &&
+                          (!editingTemplate || t.id !== editingTemplate.id),
+                      );
+                      if (activeRouteTemplates.length > 0) {
+                        const occupiedTimes = activeRouteTemplates.flatMap(
+                          (t) => t.departureTimes,
+                        );
+                        nextTime = findNextSafeTime("08:00", occupiedTimes, 20);
+                      }
+                    }
+                    setTemplateForm({
+                      ...templateForm,
+                      routeId: selectedRouteId,
+                      departureTimes: nextTime,
+                    });
+                  }}
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tuyến đường --</option>
+                  {routes
+                    .filter((r) => r.isActive !== false)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.routeName} ({r.startStation?.stationName} →{" "}
+                        {r.endStation?.stationName})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Đoàn tàu hoạt động *
+                </label>
+                <select
+                  required
+                  value={templateForm.trainId}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      trainId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tàu hỏa --</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainName} ({t.trainCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Giờ khởi hành hàng ngày *
+                  <span className="text-[#3f4852]/60 font-normal ml-1">
+                    (phân tách nhiều giờ bằng dấu phẩy)
+                  </span>
+                </label>
+                <input
+                  required
+                  value={templateForm.departureTimes}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      departureTimes: e.target.value,
+                    })
+                  }
+                  placeholder="06:00, 12:00, 20:00"
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+
+                {templateForm.routeId &&
+                  (() => {
+                    const activeRouteTemplates = templates.filter(
+                      (t) =>
+                        t.routeId === templateForm.routeId &&
+                        t.isActive &&
+                        (!editingTemplate || t.id !== editingTemplate.id),
+                    );
+                    if (activeRouteTemplates.length > 0) {
+                      const allTimes = activeRouteTemplates.flatMap((t) =>
+                        t.departureTimes.map(
+                          (time) =>
+                            `${time} (${t.train?.trainCode || "chưa rõ"})`,
+                        ),
+                      );
+                      return (
+                        <p className="mt-1 text-[11px] text-[#3f4852]/60">
+                          Các giờ chạy đã có trên tuyến này:{" "}
+                          {allTimes.join(", ")}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                {templateConflicts.length > 0 && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1.5">
+                    {templateConflicts.map((c, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs text-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      >
+                        <span>
+                          ⚠️ Giờ <strong>{c.proposedTime}</strong> quá gần giờ
+                          chạy <strong>{c.conflictingTime}</strong> (Tàu{" "}
+                          {c.trainCode}).
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parts = templateForm.departureTimes
+                              .split(",")
+                              .map((t) => t.trim());
+                            const updatedParts = parts.map((t) =>
+                              t === c.proposedTime ? c.suggestedTime : t,
+                            );
+                            setTemplateForm({
+                              ...templateForm,
+                              departureTimes: updatedParts.join(", "),
+                            });
+                          }}
+                          className="text-[11px] font-bold text-violet-700 hover:text-violet-900 underline bg-transparent border-none cursor-pointer p-0 self-end sm:self-auto"
+                        >
+                          Sửa thành {c.suggestedTime}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Thời gian ga nghỉ buffer (phút)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={templateForm.bufferMinutes}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      bufferMinutes: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="templateActive"
+                  checked={templateForm.isActive}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      isActive: e.target.checked,
+                    })
+                  }
+                  className="rounded text-primary focus:ring-0 cursor-pointer"
+                />
+                <label
+                  htmlFor="templateActive"
+                  className="text-xs font-semibold text-[#3f4852] cursor-pointer"
+                >
+                  Mẫu lịch đang hoạt động (Active)
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTemplateModal(false);
+                    setEditingTemplate(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer border-none bg-transparent"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={templateSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {templateSubmitting ? "Đang lưu..." : "Lưu mẫu lịch"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Timeline Modal ── */}
+      {timelineSchedule && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md p-6 relative">
+          <div className="bg-white rounded-3xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-xl p-6 relative">
             <button
-              onClick={() => setActiveDetails(null)}
+              onClick={() => setTimelineSchedule(null)}
               className="absolute top-4 right-4 text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
             >
               <span className="material-symbols-outlined">close</span>
             </button>
-            <div className="flex items-center gap-3 border-b border-[#bec7d4]/10 pb-4 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#00629d]/10 flex items-center justify-center text-[#00629d] font-bold text-lg shrink-0">
-                {activeDetails.train?.trainCode || "TÀU"}
-              </div>
-              <div>
-                <h3 className="font-bold text-[#191c1e] text-base">
-                  {activeDetails.train?.trainName || "Tàu hành khách"}
-                </h3>
-                <p className="text-xs text-[#3f4852]/60">
-                  Mã lịch trình: {activeDetails.id}
-                </p>
-              </div>
-            </div>
+            <h3 className="font-bold text-lg text-[#191c1e] mb-2 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[#7c4dff]">
+                route
+              </span>
+              Lịch Trình Tuyến Tính:{" "}
+              {timelineSchedule.schedule.train?.trainCode}
+            </h3>
+            <p className="text-xs text-[#3f4852] mb-5">
+              Hành trình {timelineSchedule.schedule.routeName} chi tiết từng
+              chặng dừng (phút, km).
+            </p>
 
-            <div className="space-y-4">
-              <div>
-                <p className="text-[11px] text-[#3f4852]/60 font-bold uppercase tracking-wide">
-                  Tuyến đường
-                </p>
-                <p className="text-sm font-semibold text-[#191c1e] mt-0.5">
-                  {activeDetails.route?.routeName || "Chưa xác định"}
-                </p>
-              </div>
-
-              <div className="flex justify-between border-t border-[#bec7d4]/10 pt-3">
-                <div>
-                  <p className="text-[11px] text-[#3f4852]/60 font-bold uppercase tracking-wide">
-                    Ga xuất phát
-                  </p>
-                  <p className="text-sm font-semibold text-[#191c1e] mt-0.5">
-                    {activeDetails.route?.startStation?.stationName ||
-                      "Ga khởi hành"}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[11px] text-[#3f4852]/60 font-bold uppercase tracking-wide">
-                    Ga kết thúc
-                  </p>
-                  <p className="text-sm font-semibold text-[#00629d] mt-0.5">
-                    {activeDetails.route?.endStation?.stationName ||
-                      "Ga kết thúc"}
-                  </p>
-                </div>
-              </div>
-
-              {activeDetails.route?.stations &&
-                activeDetails.route.stations.length > 0 && (
+            <div className="relative border-l-2 border-[#7c4dff]/20 ml-4 pl-6 space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {timelineSchedule.timeline?.map((point, index) => (
+                <div key={index} className="relative">
+                  <div
+                    className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
+                      point.type === "START"
+                        ? "bg-green-500"
+                        : point.type === "END"
+                          ? "bg-[#7c4dff]"
+                          : "bg-amber-500"
+                    }`}
+                  />
                   <div>
-                    <p className="text-[11px] text-[#3f4852]/60 font-bold uppercase tracking-wide mb-1.5">
-                      Lộ trình ga trung gian
-                    </p>
-                    <div className="relative border-l-2 border-[#00629d]/20 ml-2 pl-4 space-y-2">
-                      {activeDetails.route.stations.map((st, i) => (
-                        <div key={i} className="relative">
-                          <div className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-[#00629d]" />
-                          <span className="text-xs font-semibold text-[#191c1e]">
-                            {st.station?.stationName || st.stationName}
+                    <h5 className="font-bold text-sm text-[#191c1e] flex items-center gap-1.5">
+                      {point.stationName} ({point.city})
+                      {point.type === "START" && (
+                        <span className="text-[9px] bg-green-100 text-green-800 font-bold px-2 py-0.5 rounded-full">
+                          Khởi hành
+                        </span>
+                      )}
+                      {point.type === "END" && (
+                        <span className="text-[9px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+                          Ga cuối
+                        </span>
+                      )}
+                      {/* UC-27 G3b: Nút chỉnh sửa giờ dừng cho ga trung gian */}
+                      {point.type === "STOP" && point.stopId && (
+                        <button
+                          onClick={() =>
+                            handleOpenStopEdit(
+                              timelineSchedule.schedule,
+                              {
+                                id: point.stopId,
+                                stationName: point.stationName,
+                                arrivalTime: point.arrivalTime,
+                                departureTime: point.departureTime,
+                                stopOrder: point.stopOrder,
+                              },
+                              timelineSchedule.timeline
+                                .filter((p) => p.type === "STOP" && p.stopId)
+                                .map((p) => ({
+                                  id: p.stopId,
+                                  arrivalTime: p.arrivalTime,
+                                  departureTime: p.departureTime,
+                                  stopOrder: p.stopOrder,
+                                })),
+                            )
+                          }
+                          className="ml-1 w-6 h-6 rounded-md bg-violet-50 hover:bg-violet-100 flex items-center justify-center text-violet-600 transition-all cursor-pointer border-none"
+                          title="Điều chỉnh giờ dừng"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            edit
                           </span>
-                        </div>
-                      ))}
-                    </div>
+                        </button>
+                      )}
+                    </h5>
+                    <p className="text-xs text-[#3f4852]/60 mt-1">
+                      {point.arrivalTime &&
+                        `Đến: ${new Date(point.arrivalTime).toLocaleTimeString("vi-VN")}`}
+                      {point.arrivalTime && point.departureTime && " | "}
+                      {point.departureTime &&
+                        `Đi: ${new Date(point.departureTime).toLocaleTimeString("vi-VN")}`}
+                    </p>
+                    {point.segmentMinutes != null && (
+                      <p className="text-[10px] text-[#7c4dff] font-bold mt-0.5">
+                        Chặng: +{point.segmentMinutes} phút (+
+                        {point.segmentDistanceKm} km)
+                      </p>
+                    )}
                   </div>
-                )}
-
-              <div className="border-t border-[#bec7d4]/10 pt-3">
-                <p className="text-[11px] text-[#3f4852]/60 font-bold uppercase tracking-wide">
-                  Thời gian đi
-                </p>
-                <p className="text-sm font-semibold text-[#191c1e] mt-0.5">
-                  Khởi hành: {formatDateTime(activeDetails.departureTime)}
-                </p>
-                {activeDetails.arrivalTime && (
-                  <p className="text-sm font-semibold text-[#191c1e] mt-0.5">
-                    Đến nơi (dự kiến):{" "}
-                    {formatDateTime(activeDetails.arrivalTime)}
-                  </p>
-                )}
-              </div>
-
-              <div className="border-t border-[#bec7d4]/10 pt-3 flex justify-between items-center">
-                <p className="text-xs font-semibold text-[#3f4852]">
-                  Trạng thái chạy
-                </p>
-                <span
-                  className={`px-3 py-1 rounded-full text-[11px] font-bold border uppercase tracking-wider ${
-                    STATUS_BADGE_CLASS[getScheduleStatus(activeDetails)] ||
-                    "bg-[#f2f4f6] text-[#3f4852] border-[#bec7d4]"
-                  }`}
-                >
-                  {getScheduleStatus(activeDetails)}
-                </span>
-              </div>
+                </div>
+              ))}
             </div>
 
             <button
-              onClick={() => setActiveDetails(null)}
+              onClick={() => setTimelineSchedule(null)}
               className="mt-6 w-full py-2.5 rounded-xl bg-[#f2f4f6] hover:bg-[#eceef0] text-[#3f4852] font-semibold text-sm transition-all cursor-pointer border-none"
             >
-              Đóng chi tiết
+              Đóng timeline
             </button>
           </div>
         </div>
       )}
 
-      {/* Sticky Footer matching HTML */}
-      <footer className="py-4 border-t border-[#bec7d4]/10 flex flex-col sm:flex-row items-center justify-between text-xs text-[#3f4852]/40 gap-2">
-        <div>© 2026 GoTrain VN System Admin</div>
-        <div className="flex gap-4">
-          <span>Trạng thái máy chủ: Ổn định</span>
-          <span>Version 2.4.1-stable</span>
-        </div>
-      </footer>
+      {/* ── UC-27: Single Schedule Create Modal ── */}
+      {showSingleScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md p-6 my-8">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
+              <h3 className="font-bold text-lg text-[#191c1e] flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-600">
+                  add_circle
+                </span>
+                Tạo lịch trình đơn lẻ
+              </h3>
+              <button
+                onClick={() => {
+                  setShowSingleScheduleModal(false);
+                  setSingleSchedPreview(null);
+                }}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
 
-      {/* ── Timeline Loading Overlay ── */}
-      {timelineLoading && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-3 shadow-2xl">
-            <span className="material-symbols-outlined animate-spin text-4xl text-[#00629d]">
-              progress_activity
-            </span>
-            <p className="text-sm font-semibold text-[#191c1e]">
-              Đang tải lịch trình liên tục...
-            </p>
+            <div className="mb-4 p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-2">
+              <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5 shrink-0">
+                info
+              </span>
+              <p className="text-xs text-emerald-800">
+                Giờ dừng tại các ga trung gian sẽ được{" "}
+                <strong>tính tự động</strong> theo khoảng cách. Bạn có thể điều
+                chỉnh sau khi tạo qua Timeline.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateSingleSchedule} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Tuyến đường *
+                </label>
+                <select
+                  required
+                  value={singleSchedForm.routeId}
+                  onChange={(e) => {
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      routeId: e.target.value,
+                    });
+                    const r = routes.find((r) => r.id === e.target.value);
+                    setSingleSchedPreview(r || null);
+                  }}
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tuyến đường --</option>
+                  {routes
+                    .filter((r) => r.isActive !== false)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.routeName} ({r.startStation?.stationName} →{" "}
+                        {r.endStation?.stationName})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Đoàn tàu *
+                </label>
+                <select
+                  required
+                  value={singleSchedForm.trainId}
+                  onChange={(e) =>
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      trainId: e.target.value,
+                    })
+                  }
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Chọn tàu hỏa --</option>
+                  {trains.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.trainName} ({t.trainCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ xuất phát *
+                  </label>
+                  <input
+                    required
+                    type="datetime-local"
+                    min={new Date().toISOString().slice(0, 16)}
+                    value={singleSchedForm.departureTime}
+                    onChange={(e) =>
+                      setSingleSchedForm({
+                        ...singleSchedForm,
+                        departureTime: e.target.value,
+                      })
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Buffer tại ga (phút)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={singleSchedForm.bufferMinutes}
+                    onChange={(e) =>
+                      setSingleSchedForm({
+                        ...singleSchedForm,
+                        bufferMinutes: e.target.value,
+                      })
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Preview timeline */}
+              {singleSchedPreview && singleSchedForm.departureTime && (
+                <div className="p-3 bg-[#f2f4f6] rounded-xl space-y-1.5">
+                  <p className="text-xs font-bold text-[#3f4852] flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">
+                      preview
+                    </span>
+                    Xem trước hành trình
+                  </p>
+                  <TripPreview
+                    selectedRoute={singleSchedPreview}
+                    departureTimes={
+                      singleSchedForm.departureTime
+                        .split("T")[1]
+                        ?.slice(0, 5) || ""
+                    }
+                    bufferMinutes={singleSchedForm.bufferMinutes}
+                    trainType={
+                      trains.find((t) => t.id === singleSchedForm.trainId)
+                        ?.trainType
+                    }
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                  Ghi chú
+                </label>
+                <input
+                  type="text"
+                  value={singleSchedForm.notes}
+                  onChange={(e) =>
+                    setSingleSchedForm({
+                      ...singleSchedForm,
+                      notes: e.target.value,
+                    })
+                  }
+                  placeholder="Không bắt buộc"
+                  className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSingleScheduleModal(false);
+                    setSingleSchedPreview(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer bg-transparent"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={singleSchedSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {singleSchedSubmitting ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">
+                        progress_activity
+                      </span>
+                      Đang tạo...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">
+                        add_circle
+                      </span>
+                      Tạo lịch trình
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* ── Train Timeline Modal ── */}
-      {timelineSchedule && !timelineLoading && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="px-7 py-5 border-b border-[#bec7d4]/20 flex items-start justify-between bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5">
+      {/* ── UC-27 G3b: Stop Edit Modal ── */}
+      {stopEditModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between border-b border-[#bec7d4]/10 pb-4 mb-5">
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="material-symbols-outlined text-[#00629d] text-[20px]">
-                    train
+                <h3 className="font-bold text-base text-[#191c1e] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-violet-600 text-[20px]">
+                    edit_calendar
                   </span>
-                  <span className="font-extrabold text-lg text-[#191c1e]">
-                    {timelineSchedule.schedule.train?.trainName}
-                  </span>
-                  <span className="text-xs bg-[#00629d]/10 text-[#00629d] px-2 py-0.5 rounded-full font-bold">
-                    {timelineSchedule.schedule.train?.trainCode}
-                  </span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border uppercase ${
-                      STATUS_BADGE_CLASS[
-                        getScheduleStatus(timelineSchedule.schedule)
-                      ] || "bg-[#f2f4f6] text-[#3f4852] border-[#bec7d4]"
-                    }`}
-                  >
-                    {getScheduleStatus(timelineSchedule.schedule)}
-                  </span>
-                </div>
-                <p className="text-sm text-[#3f4852] font-medium">
-                  {timelineSchedule.schedule.routeName} &nbsp;·&nbsp;
-                  <span className="text-[#00629d] font-semibold">
-                    {timelineSchedule.schedule.distance} km
-                  </span>
-                  &nbsp;·&nbsp;
-                  {Math.floor(
-                    (timelineSchedule.schedule.duration || 0) / 60,
-                  )}h {(timelineSchedule.schedule.duration || 0) % 60}m hành
-                  trình
+                  Điều chỉnh giờ dừng — {stopEditModal.stop?.stationName}
+                </h3>
+                <p className="text-xs text-[#3f4852]/60 mt-0.5">
+                  {stopEditModal.trainCode} | {stopEditModal.routeName}
                 </p>
               </div>
               <button
-                onClick={() => setTimelineSchedule(null)}
-                className="p-2 hover:bg-[#f2f4f6] rounded-xl transition-all text-[#3f4852] hover:text-[#191c1e] cursor-pointer border-none bg-transparent flex-shrink-0"
+                onClick={() => setStopEditModal((m) => ({ ...m, open: false }))}
+                className="text-[#6f7883] hover:text-[#191c1e] p-1 rounded-lg hover:bg-[#f2f4f6] transition-all cursor-pointer border-none bg-transparent"
               >
-                <span className="material-symbols-outlined text-[22px]">
-                  close
-                </span>
+                <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            {/* Timeline body */}
-            <div className="overflow-y-auto flex-1 px-7 py-6">
-              <h4 className="text-xs font-bold text-[#3f4852] uppercase tracking-widest mb-5 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#7c4dff] text-[16px]">
-                  route
-                </span>
-                Lịch Trình Nối Tiếp Liên Tục
-              </h4>
-
-              <div className="relative">
-                {timelineSchedule.timeline.map((point, idx) => {
-                  const isStart = point.type === "START";
-                  const isEnd = point.type === "END";
-                  const isLast = idx === timelineSchedule.timeline.length - 1;
-
-                  const dotColor = isStart
-                    ? "bg-[#00629d] ring-[#00629d]/20"
-                    : isEnd
-                      ? "bg-[#7c4dff] ring-[#7c4dff]/20"
-                      : "bg-white ring-[#00629d]/30 border-2 border-[#00629d]";
-
-                  const labelColor = isStart
-                    ? "text-[#00629d]"
-                    : isEnd
-                      ? "text-[#7c4dff]"
-                      : "text-[#191c1e]";
-
-                  const timeDisplay = isStart
-                    ? formatDateTime(point.departureTime)
-                    : isEnd
-                      ? formatDateTime(point.arrivalTime)
-                      : `${formatDateTime(point.arrivalTime)} → ${formatDateTime(point.departureTime)}`;
-
-                  return (
-                    <div key={idx} className="flex gap-4">
-                      {/* Left: dot + connector line */}
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div
-                          className={`w-5 h-5 rounded-full ring-4 flex items-center justify-center mt-0.5 flex-shrink-0 ${dotColor}`}
-                        >
-                          {(isStart || isEnd) && (
-                            <span className="material-symbols-outlined text-white text-[10px]">
-                              {isStart ? "play_arrow" : "flag"}
-                            </span>
-                          )}
-                        </div>
-                        {!isLast && (
-                          <div className="flex-1 w-px min-h-[40px] bg-gradient-to-b from-[#00629d]/40 to-[#7c4dff]/40 my-1" />
-                        )}
-                      </div>
-
-                      {/* Right: stop info */}
-                      <div
-                        className={`pb-6 ${isLast ? "pb-0" : ""} flex-1 min-w-0`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p
-                                className={`font-bold text-base leading-tight ${labelColor}`}
-                              >
-                                {point.stationName}
-                              </p>
-                              {isStart && (
-                                <span className="text-[10px] bg-[#00629d] text-white px-1.5 py-0.5 rounded-full font-bold">
-                                  GA ĐẦU
-                                </span>
-                              )}
-                              {isEnd && (
-                                <span className="text-[10px] bg-[#7c4dff] text-white px-1.5 py-0.5 rounded-full font-bold">
-                                  GA CUỐI
-                                </span>
-                              )}
-                              {!isStart && !isEnd && (
-                                <span className="text-[10px] bg-[#cfe5ff] text-[#00629d] px-1.5 py-0.5 rounded-full font-bold">
-                                  GA DỪNG #{point.stopOrder}
-                                </span>
-                              )}
-                            </div>
-                            {point.city && (
-                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
-                                {point.city}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-bold text-[#191c1e] font-mono">
-                              {timeDisplay}
-                            </p>
-                            {point.distanceFromStart != null && (
-                              <p className="text-xs text-[#3f4852]/60 mt-0.5">
-                                📍 {point.distanceFromStart} km từ ga đầu
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Segment info between stops */}
-                        {!isLast && point.segmentMinutes != null && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-full">
-                              <span className="material-symbols-outlined text-[12px] text-[#6f7883]">
-                                schedule
-                              </span>
-                              <span className="text-[11px] text-[#6f7883] font-semibold">
-                                {Math.floor(point.segmentMinutes / 60) > 0
-                                  ? `${Math.floor(point.segmentMinutes / 60)}h `
-                                  : ""}
-                                {point.segmentMinutes % 60}m di chuyển
-                              </span>
-                              {point.segmentDistanceKm != null && (
-                                <>
-                                  <span className="text-[#bec7d4]">·</span>
-                                  <span className="text-[11px] text-[#6f7883] font-semibold">
-                                    {point.segmentDistanceKm} km
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <div className="h-px flex-1 bg-[#bec7d4]/20" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Summary footer */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-[#00629d]/5 to-[#7c4dff]/5 border border-[#bec7d4]/20 rounded-2xl grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Tổng ga dừng
-                  </p>
-                  <p className="text-xl font-extrabold text-[#00629d]">
-                    {timelineSchedule.timeline.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Khoảng cách
-                  </p>
-                  <p className="text-xl font-extrabold text-[#00629d]">
-                    {timelineSchedule.schedule.distance} km
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#3f4852]/60 font-semibold uppercase tracking-wide mb-1">
-                    Hành trình
-                  </p>
-                  <p className="text-xl font-extrabold text-[#7c4dff]">
-                    {Math.floor((timelineSchedule.schedule.duration || 0) / 60)}
-                    h {(timelineSchedule.schedule.duration || 0) % 60}m
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer actions */}
-            <div className="px-7 py-4 border-t border-[#bec7d4]/10 flex items-center justify-between gap-3 bg-[#f7f9fb]">
-              <p className="text-xs text-[#3f4852]/50">
-                💡 Dữ liệu này là nền tảng để hệ thống bán vé chặng lẻ
+            <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 text-[16px] mt-0.5 shrink-0">
+                warning
+              </span>
+              <p className="text-xs text-amber-800">
+                Thay đổi giờ dừng sẽ được kiểm tra quy tắc đường đơn tự động.
               </p>
-              <button
-                onClick={() => setTimelineSchedule(null)}
-                className="px-5 py-2 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white font-semibold text-sm transition-all cursor-pointer border-none"
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ đến ga *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={stopEditForm.arrivalTime}
+                    onChange={(e) =>
+                      setStopEditForm((f) => ({
+                        ...f,
+                        arrivalTime: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#7c4dff] outline-none cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#3f4852] mb-1">
+                    Giờ đi khỏi ga *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={stopEditForm.departureTime}
+                    onChange={(e) =>
+                      setStopEditForm((f) => ({
+                        ...f,
+                        departureTime: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-[#bec7d4]/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-[#7c4dff] outline-none cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time validation panel */}
+              <div
+                className={`rounded-xl border p-3 text-xs space-y-1.5 ${
+                  stopValidation.loading
+                    ? "bg-[#f2f4f6] border-[#bec7d4]/30"
+                    : stopValidation.errors.length > 0
+                      ? "bg-red-50 border-red-100"
+                      : stopValidation.warnings.length > 0
+                        ? "bg-amber-50 border-amber-100"
+                        : "bg-green-50 border-green-100"
+                }`}
               >
-                Đóng
-              </button>
+                {stopValidation.loading ? (
+                  <div className="flex items-center gap-1.5 text-[#3f4852]">
+                    <span className="material-symbols-outlined text-[14px] animate-spin">
+                      progress_activity
+                    </span>
+                    Đang kiểm tra đường đơn...
+                  </div>
+                ) : stopValidation.errors.length > 0 ? (
+                  <>
+                    <p className="font-bold text-red-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        error
+                      </span>
+                      Lỗi thời gian:
+                    </p>
+                    {stopValidation.errors.map((e, i) => (
+                      <p key={i} className="text-red-700 pl-4">
+                        • {e}
+                      </p>
+                    ))}
+                  </>
+                ) : stopValidation.warnings.length > 0 ? (
+                  <>
+                    <p className="font-bold text-amber-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        warning
+                      </span>
+                      Cảnh báo đường đơn:
+                    </p>
+                    {stopValidation.warnings.map((w, i) => (
+                      <p key={i} className="text-amber-800 pl-4">
+                        • {w.message}
+                      </p>
+                    ))}
+                    {stopValidation.suggestion && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(stopValidation.suggestion);
+                          d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                          setStopEditForm((f) => ({
+                            ...f,
+                            departureTime: d.toISOString().slice(0, 16),
+                          }));
+                        }}
+                        className="mt-1 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-semibold cursor-pointer border-none text-[11px]"
+                      >
+                        📅 Tự động điều chỉnh về{" "}
+                        {new Date(stopValidation.suggestion).toLocaleTimeString(
+                          "vi-VN",
+                        )}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold text-green-700 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">
+                        check_circle
+                      </span>
+                      Kiểm tra đường đơn:
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Giãn cách cùng chiều: OK
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Không xung đột tàu ngược chiều
+                    </p>
+                    <p className="text-green-700 pl-4">
+                      ✅ Tuần tự thời gian hợp lệ
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-[#bec7d4]/10">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setStopEditModal((m) => ({ ...m, open: false }))
+                  }
+                  className="flex-1 py-2.5 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer bg-transparent"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveStop}
+                  disabled={
+                    stopSaving ||
+                    stopValidation.loading ||
+                    stopValidation.errors.length > 0
+                  }
+                  className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  {stopSaving ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">
+                        progress_activity
+                      </span>
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">
+                        save
+                      </span>
+                      Lưu & Thông báo hành khách
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* ── UC-27 BR-33: Confirm Dialog ── */}
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        severity={confirmDialog.severity}
+        confirmText={confirmDialog.confirmText}
+        loading={confirmDialog.loading}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 }

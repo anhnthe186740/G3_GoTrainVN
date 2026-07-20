@@ -4,7 +4,6 @@ import {
   MapPin,
   Navigation,
   Calendar,
-  RotateCw,
   Users,
   Train,
   ArrowRight,
@@ -28,6 +27,15 @@ import { api } from "../services/api";
 
 const DEFAULT_FROM_STATION = "Hà Nội";
 const DEFAULT_TO_STATION = "Đà Nẵng";
+const HERO_SLIDES = [
+  { src: "/assets/hero-bg.jpg", alt: "Hà Nội" },
+  { src: "/assets/hcmc.jpg", alt: "Thành phố Hồ Chí Minh" },
+  { src: "/assets/danang.jpg", alt: "Đà Nẵng" },
+  {
+    src: "https://lh3.googleusercontent.com/aida-public/AB6AXuDQ5Xajf7mAtz_KfO6j1nNYU6Gl2Ny9UHhksIUer32EoNV1qzgM2acR7OEP0_kY6Cc6PrObB4TX0XxzDiMlOdRMFu8JCnqcymHMAR23ph0FbYkpOUVAZtiQJlASOaO5FxY7XoJsHnOGMTZ12aI_ra4iVxJKlXfYbbCBK6iEoVggaPh5YjxE7dN_nK8F4L2-SsIHKYiSgOWhqhAZ4f-hA00jGPe3D0SqY3jvxGiQN-CWWjFzfRVKDopprohqOGCVMq78EiVhNDfqskkX",
+    alt: "Huế",
+  },
+];
 
 export function Home() {
   const navigate = useNavigate();
@@ -48,20 +56,33 @@ export function Home() {
   };
 
   // Search parameters
-  const [fromStation, setFromStation] = useState(DEFAULT_FROM_STATION);
+  const [fromStation, setFromStation] = useState("");
   const [fromStationId, setFromStationId] = useState("");
-  const [toStation, setToStation] = useState(DEFAULT_TO_STATION);
+  const [toStation, setToStation] = useState("");
   const [toStationId, setToStationId] = useState("");
-  const [departureDate, setDepartureDate] = useState(getTodayDateStr());
+  const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
   const [tripType, setTripType] = useState("one-way"); // 'one-way' or 'round-trip'
 
   const [stations, setStations] = useState([]);
   const [showFromSuggestions, setShowFromSuggestions] = useState(false);
   const [showToSuggestions, setShowToSuggestions] = useState(false);
+  const [fromSearch, setFromSearch] = useState("");
+  const [toSearch, setToSearch] = useState("");
 
   // Live tracking progress bar logic
   const [progress, setProgress] = useState(66.05);
+
+  const [promotionsList, setPromotionsList] = useState([]);
+  const [loadingPromotions, setLoadingPromotions] = useState(true);
+  const [activeHeroSlide, setActiveHeroSlide] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveHeroSlide((current) => (current + 1) % HERO_SLIDES.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -83,20 +104,70 @@ export function Home() {
             city: s.city,
           }));
           setStations(formatted);
-          setFromStationId(
-            formatted.find((station) => station.name === DEFAULT_FROM_STATION)
-              ?.id || "",
-          );
-          setToStationId(
-            formatted.find((station) => station.name === DEFAULT_TO_STATION)
-              ?.id || "",
-          );
+          // Start with empty selections
         }
       })
       .catch((err) => {
         console.error("Lỗi khi tải danh sách ga từ API:", err);
         toast.error("Không thể tải danh sách ga đang hoạt động.");
       });
+  }, []);
+
+  // Fetch active promotions & vouchers from server on load
+  useEffect(() => {
+    const fetchPromotions = async () => {
+      try {
+        setLoadingPromotions(true);
+        const { data } = await api.get("/promotions");
+        const list = [];
+        if (data) {
+          // Map vouchers
+          if (Array.isArray(data.vouchers)) {
+            data.vouchers.forEach((v) => {
+              list.push({
+                id: `voucher-${v.id}`,
+                code: v.voucherCode,
+                title: `Mã giảm giá ${v.voucherCode}`,
+                description:
+                  v.description ||
+                  `Giảm ngay ${v.discountType === "PERCENTAGE" ? `${v.discountValue}%` : `${v.discountValue.toLocaleString("vi-VN")}đ`}`,
+                discount:
+                  v.discountType === "PERCENTAGE"
+                    ? `${v.discountValue}%`
+                    : `${v.discountValue / 1000}k`,
+                isVoucher: true,
+              });
+            });
+          }
+          // Map promotions
+          if (Array.isArray(data.promotions)) {
+            data.promotions.forEach((p) => {
+              list.push({
+                id: `promo-${p.id}`,
+                code: "Tự động áp dụng",
+                title: p.title,
+                description:
+                  p.description ||
+                  "Ưu đãi tự động áp dụng trực tiếp cho các chặng/chuyến tàu đủ điều kiện.",
+                discount:
+                  p.discountType === "PERCENTAGE"
+                    ? `${p.discountValue}%`
+                    : p.discountType === "FREE_UPGRADE"
+                      ? "Nâng hạng"
+                      : `${p.discountValue / 1000}k`,
+                isVoucher: false,
+              });
+            });
+          }
+        }
+        setPromotionsList(list);
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách khuyến mãi trên trang chủ:", err);
+      } finally {
+        setLoadingPromotions(false);
+      }
+    };
+    fetchPromotions();
   }, []);
 
   // Close dropdowns on click outside
@@ -120,7 +191,7 @@ export function Home() {
   };
 
   const filteredFromSuggestions = useMemo(() => {
-    const query = fromStation.trim().toLowerCase();
+    const query = fromSearch.trim().toLowerCase();
     if (!query) return stations;
     return stations.filter(
       (s) =>
@@ -128,10 +199,10 @@ export function Home() {
         s.city.toLowerCase().includes(query) ||
         s.code.toLowerCase().includes(query),
     );
-  }, [fromStation, stations]);
+  }, [fromSearch, stations]);
 
   const filteredToSuggestions = useMemo(() => {
-    const query = toStation.trim().toLowerCase();
+    const query = toSearch.trim().toLowerCase();
     if (!query) return stations;
     return stations.filter(
       (s) =>
@@ -139,7 +210,7 @@ export function Home() {
         s.city.toLowerCase().includes(query) ||
         s.code.toLowerCase().includes(query),
     );
-  }, [toStation, stations]);
+  }, [toSearch, stations]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -249,177 +320,288 @@ export function Home() {
   return (
     <div className="text-on-surface bg-[#f7f9fb] min-h-screen pb-16 md:pb-0 pt-16">
       {/* 1. Hero Section */}
-      <section className="relative min-h-[680px] flex items-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <img
-            className="w-full h-full object-cover"
-            alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning."
-            data-alt="A high-speed modern train speeding through a lush green Vietnamese landscape during a clear, bright morning. The visual style is premium and minimalist, with a high-key lighting that emphasizes a clean and airy atmosphere."
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAiYOE4xZ1rXlui1yAL0kL5_fTQ5bavpG-CRTAn8v9i5l1pDWxd8TWP7hPmf-bMRWaGNqVLoREfl3h_ironj-UeZeoWitlNnWcu2X-BD4UkmtwiBtrR71ofm12azr8auyNb8Y7O-7sAEXRZp3sKzkji-2TerV9Ps0z9yBwpReSW0lH9ADmL8LkxcQOYJinqGvR4BJGzOeiCgArzVfpkOr4L8uYZd5YmepxmcyaIFDyzy0Icm3CpjIf4QiYsRL0x3aleFv13tgtQW6M0"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-transparent"></div>
+      <section className="relative min-h-[680px] flex items-center">
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          {HERO_SLIDES.map((slide, index) => (
+            <img
+              key={slide.src}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ease-in-out ${
+                index === activeHeroSlide ? "opacity-100" : "opacity-0"
+              }`}
+              alt={slide.alt}
+              src={slide.src}
+              aria-hidden={index !== activeHeroSlide}
+            />
+          ))}
+          <div className="absolute inset-0 bg-white/20"></div>
         </div>
 
-        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full pt-16 pb-28 md:pb-36">
-          <div className="text-left w-full">
-            <div className="max-w-2xl mb-lg">
-              <h1 className="font-display-lg text-display-lg md:text-[56px] text-primary mb-md leading-tight">
-                Hành Trình Mới,
-                <br />
-                Trải Nghiệm Mới
+        <div className="relative z-10 px-container-margin max-w-[1200px] mx-auto w-full pt-16 pb-28 md:pb-36 flex flex-col items-center">
+          <div className="text-center w-full flex flex-col items-center">
+            <div className="mb-10">
+              <h1 className="text-[40px] md:text-[56px] font-semibold mb-sm leading-tight tracking-tight drop-shadow-md text-slate-900">
+                Hành trình mới,{" "}
+                <span className="text-[#007aff]">trải nghiệm vượt trội</span>
               </h1>
-              <p className="font-body-lg text-body-lg text-secondary">
-                Đặt vé tàu nhanh chóng, an toàn và tiện lợi cùng GoTrain VN.
-                Khám phá vẻ đẹp Việt Nam qua từng ô cửa sổ.
-              </p>
             </div>
 
             {/* Search Card */}
-            <div className="bg-white p-lg rounded-[24px] shadow-[0px_20px_50px_rgba(0,163,255,0.12)] border border-surface-container max-w-5xl w-full">
+            <div className="bg-slate-300/75 backdrop-blur-xl border border-white/20 p-6 md:p-8 rounded-[28px] shadow-[0_24px_50px_rgba(0,0,0,0.12)] w-full transition-all duration-300">
               <form onSubmit={handleSearch}>
                 <div
                   className={`grid grid-cols-1 gap-md items-end ${tripType === "round-trip" ? "md:grid-cols-5" : "md:grid-cols-4"}`}
                 >
                   {/* Station Fields Container */}
-                  <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-md relative">
+                  <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)] gap-md md:gap-3 relative">
                     {/* Ga Đi */}
                     <div
-                      className="flex flex-col gap-xs relative text-left"
+                      className={`flex flex-col gap-xs relative text-left ${showFromSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <label className="font-label-md text-label-md text-secondary">
+                      <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                         Ga Đi
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                        <MapPin className="h-5 w-5 text-primary shrink-0" />
-                        <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                          placeholder="Hà Nội"
-                          type="text"
-                          value={fromStation}
-                          onChange={(e) => {
-                            setFromStation(e.target.value);
-                            setFromStationId("");
-                            setShowFromSuggestions(true);
-                          }}
-                          onFocus={() => {
-                            setShowFromSuggestions(true);
-                            setShowToSuggestions(false);
-                          }}
-                        />
+                      <div
+                        className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowFromSuggestions(!showFromSuggestions);
+                          setShowToSuggestions(false);
+                          setFromSearch(""); // Reset search query on open
+                        }}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <MapPin className="h-5 w-5 text-[#007aff] shrink-0" />
+                          <span
+                            className={`text-sm truncate ${fromStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
+                          >
+                            {fromStation ? `Ga ${fromStation}` : "Chọn ga đi"}
+                          </span>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
+                          keyboard_arrow_down
+                        </span>
                       </div>
+
                       {/* Suggestions Dropdown */}
-                      {showFromSuggestions &&
-                        filteredFromSuggestions.length > 0 && (
-                          <div className="absolute left-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
-                            {filteredFromSuggestions.map((s) => (
+                      {showFromSuggestions && (
+                        <div className="absolute left-0 top-[105%] w-full md:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] z-30 p-3 flex flex-col gap-2">
+                          <div className="flex items-center gap-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all h-[36px]">
+                            <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                              search
+                            </span>
+                            <input
+                              type="text"
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
+                              placeholder="Tìm ga đi..."
+                              value={fromSearch}
+                              onChange={(e) => setFromSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {fromSearch && (
                               <button
-                                key={s.id}
                                 type="button"
-                                onClick={() => {
-                                  setFromStation(s.name);
-                                  setFromStationId(s.id);
-                                  setShowFromSuggestions(false);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFromSearch("");
                                 }}
-                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer"
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
-                                    <MapPin className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-slate-800">
-                                      {s.name.toLowerCase().startsWith("ga")
-                                        ? s.name
-                                        : `Ga ${s.name}`}
-                                    </p>
-                                    <p className="text-xs text-slate-400 font-semibold">
-                                      {s.city}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
-                                  {s.code}
-                                </span>
+                                <X className="h-4 w-4" />
                               </button>
-                            ))}
+                            )}
                           </div>
-                        )}
+
+                          <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-50 scrollbar-thin">
+                            {filteredFromSuggestions.length > 0 ? (
+                              filteredFromSuggestions.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFromStation(s.name);
+                                    setFromStationId(s.id);
+                                    setShowFromSuggestions(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 rounded-lg cursor-pointer group ${
+                                    fromStationId === s.id
+                                      ? "border-primary bg-blue-50/30 font-bold"
+                                      : "border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`p-1.5 rounded-lg transition-colors ${
+                                        fromStationId === s.id
+                                          ? "bg-blue-100 text-primary"
+                                          : "bg-slate-50 text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary"
+                                      }`}
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                      <p
+                                        className={`text-xs ${fromStationId === s.id ? "text-primary font-bold" : "text-slate-800 font-semibold"}`}
+                                      >
+                                        {s.name.toLowerCase().startsWith("ga")
+                                          ? s.name
+                                          : `Ga ${s.name}`}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-semibold">
+                                        {s.city}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border transition-colors ${
+                                      fromStationId === s.id
+                                        ? "bg-blue-100 text-primary border-blue-200"
+                                        : "bg-slate-50 text-slate-500 border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200"
+                                    }`}
+                                  >
+                                    {s.code}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-4 text-center text-xs text-slate-400 font-semibold">
+                                Không tìm thấy ga phù hợp
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Swap Button */}
                     <button
                       type="button"
                       onClick={handleSwapStations}
-                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[20%] z-10 bg-white border border-outline-variant rounded-full p-2 text-primary hover:rotate-180 transition-transform duration-500 shadow-sm hidden md:flex items-center justify-center cursor-pointer"
+                      className="hidden h-11 w-11 self-end mb-1 md:flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#007aff] shadow-sm transition-all duration-200 hover:border-[#007aff] hover:bg-[#007aff] hover:text-white hover:shadow-md active:scale-95 cursor-pointer"
                       title="Đảo chiều ga"
+                      aria-label="Đảo chiều ga đi và ga đến"
                     >
-                      <RotateCw className="h-5 w-5" />
+                      <ArrowLeftRight className="h-5 w-5" />
                     </button>
 
                     {/* Ga Đến */}
                     <div
-                      className="flex flex-col gap-xs relative text-left"
+                      className={`flex flex-col gap-xs relative text-left ${showToSuggestions ? "z-30" : "z-0"}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <label className="font-label-md text-label-md text-secondary">
+                      <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                         Ga Đến
                       </label>
-                      <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                        <Navigation className="h-5 w-5 text-primary rotate-45 shrink-0" />
-                        <input
-                          className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                          placeholder="Đà Nẵng"
-                          type="text"
-                          value={toStation}
-                          onChange={(e) => {
-                            setToStation(e.target.value);
-                            setToStationId("");
-                            setShowToSuggestions(true);
-                          }}
-                          onFocus={() => {
-                            setShowToSuggestions(true);
-                            setShowFromSuggestions(false);
-                          }}
-                        />
+                      <div
+                        className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowToSuggestions(!showToSuggestions);
+                          setShowFromSuggestions(false);
+                          setToSearch(""); // Reset search query on open
+                        }}
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <Navigation className="h-5 w-5 text-[#007aff] rotate-45 shrink-0" />
+                          <span
+                            className={`text-sm truncate ${toStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
+                          >
+                            {toStation ? `Ga ${toStation}` : "Chọn ga đến"}
+                          </span>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
+                          keyboard_arrow_down
+                        </span>
                       </div>
+
                       {/* Suggestions Dropdown */}
-                      {showToSuggestions &&
-                        filteredToSuggestions.length > 0 && (
-                          <div className="absolute right-0 top-[95%] w-full md:w-[320px] bg-white border border-slate-100 rounded-b-2xl rounded-t-lg shadow-[0_12px_36px_rgba(0,0,0,0.12)] z-30 max-h-[320px] overflow-y-auto divide-y divide-slate-50">
-                            {filteredToSuggestions.map((s) => (
+                      {showToSuggestions && (
+                        <div className="absolute left-0 top-[105%] w-full md:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.15)] z-30 p-3 flex flex-col gap-2">
+                          <div className="flex items-center gap-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus-within:bg-white focus-within:border-primary transition-all h-[36px]">
+                            <span className="material-symbols-outlined text-slate-400 text-[18px]">
+                              search
+                            </span>
+                            <input
+                              type="text"
+                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
+                              placeholder="Tìm ga đến..."
+                              value={toSearch}
+                              onChange={(e) => setToSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {toSearch && (
                               <button
-                                key={s.id}
                                 type="button"
-                                onClick={() => {
-                                  setToStation(s.name);
-                                  setToStationId(s.id);
-                                  setShowToSuggestions(false);
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setToSearch("");
                                 }}
-                                className="w-full text-left px-4 py-3 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 border-transparent hover:border-primary cursor-pointer group"
+                                className="text-slate-400 hover:text-slate-600 cursor-pointer"
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className="p-1.5 bg-slate-50 rounded-lg text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary transition-colors">
-                                    <MapPin className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-slate-800">
-                                      {s.name.toLowerCase().startsWith("ga")
-                                        ? s.name
-                                        : `Ga ${s.name}`}
-                                    </p>
-                                    <p className="text-xs text-slate-400 font-semibold">
-                                      {s.city}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="text-[11px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md border border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200 transition-colors">
-                                  {s.code}
-                                </span>
+                                <X className="h-4 w-4" />
                               </button>
-                            ))}
+                            )}
                           </div>
-                        )}
+
+                          <div className="max-h-[240px] overflow-y-auto divide-y divide-slate-50 scrollbar-thin">
+                            {filteredToSuggestions.length > 0 ? (
+                              filteredToSuggestions.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setToStation(s.name);
+                                    setToStationId(s.id);
+                                    setShowToSuggestions(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 hover:bg-blue-50/50 flex items-center justify-between transition-colors border-l-4 rounded-lg cursor-pointer group ${
+                                    toStationId === s.id
+                                      ? "border-primary bg-blue-50/30 font-bold"
+                                      : "border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`p-1.5 rounded-lg transition-colors ${
+                                        toStationId === s.id
+                                          ? "bg-blue-100 text-primary"
+                                          : "bg-slate-50 text-slate-400 group-hover:bg-blue-100/50 group-hover:text-primary"
+                                      }`}
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                      <p
+                                        className={`text-xs ${toStationId === s.id ? "text-primary font-bold" : "text-slate-800 font-semibold"}`}
+                                      >
+                                        {s.name.toLowerCase().startsWith("ga")
+                                          ? s.name
+                                          : `Ga ${s.name}`}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 font-semibold">
+                                        {s.city}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border transition-colors ${
+                                      toStationId === s.id
+                                        ? "bg-blue-100 text-primary border-blue-200"
+                                        : "bg-slate-50 text-slate-500 border-slate-100 group-hover:bg-blue-50 group-hover:text-primary group-hover:border-blue-200"
+                                    }`}
+                                  >
+                                    {s.code}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-4 text-center text-xs text-slate-400 font-semibold">
+                                Không tìm thấy ga phù hợp
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -430,7 +612,7 @@ export function Home() {
                     {tripType === "one-way" ? (
                       <div className="flex flex-col gap-xs text-left w-full">
                         <div className="flex justify-between items-center">
-                          <label className="font-label-md text-label-md text-secondary">
+                          <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                             Ngày Đi
                           </label>
                           <button
@@ -439,17 +621,17 @@ export function Home() {
                               setTripType("round-trip");
                               setReturnDate(getNextDay(departureDate));
                             }}
-                            className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary-container cursor-pointer transition-colors"
+                            className="flex items-center gap-1 text-[11px] font-bold text-[#007aff] hover:text-[#005bb5] cursor-pointer transition-colors"
                             title="Chọn vé khứ hồi"
                           >
                             <ArrowLeftRight className="h-3.5 w-3.5" />
                             <span>Khứ hồi?</span>
                           </button>
                         </div>
-                        <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                          <Calendar className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                          <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                           <input
-                            className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                            className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                             type="date"
                             min={getTodayDateStr()}
                             value={departureDate}
@@ -466,13 +648,13 @@ export function Home() {
                       <div className="grid grid-cols-2 gap-md w-full">
                         {/* Ngày Đi */}
                         <div className="col-span-1 flex flex-col gap-xs text-left">
-                          <label className="font-label-md text-label-md text-secondary">
+                          <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                             Ngày Đi
                           </label>
-                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                          <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                            <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                             <input
-                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                               type="date"
                               min={getTodayDateStr()}
                               value={departureDate}
@@ -489,22 +671,22 @@ export function Home() {
                         {/* Ngày Về */}
                         <div className="col-span-1 flex flex-col gap-xs text-left relative">
                           <div className="flex justify-between items-center">
-                            <label className="font-label-md text-label-md text-secondary">
+                            <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
                               Ngày Về
                             </label>
                             <button
                               type="button"
                               onClick={() => setTripType("one-way")}
-                              className="text-slate-400 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
+                              className="text-slate-500 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
                               title="Hủy khứ hồi"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <div className="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-xl focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all bg-white h-[48px]">
-                            <Calendar className="h-5 w-5 text-primary shrink-0" />
+                          <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
+                            <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
                             <input
-                              className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none cursor-pointer text-xs font-semibold"
+                              className="w-full border-none p-0 focus:ring-0 text-slate-800 bg-transparent text-sm font-semibold outline-none cursor-pointer"
                               type="date"
                               min={departureDate || getTodayDateStr()}
                               value={returnDate}
@@ -519,7 +701,7 @@ export function Home() {
                   {/* Submit Button */}
                   <button
                     type="submit"
-                    className="bg-primary-container text-white h-[48px] rounded-xl font-label-md text-label-md font-bold shadow-[0px_8px_24px_rgba(0,163,255,0.3)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
+                    className="bg-[#007aff] text-white h-[52px] rounded-xl text-sm font-bold shadow-[0_8px_24px_rgba(0,122,255,0.25)] hover:bg-[#0062cc] hover:shadow-[0_8px_28px_rgba(0,122,255,0.35)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
                   >
                     Tìm Chuyến Tàu
                   </button>
@@ -528,54 +710,40 @@ export function Home() {
             </div>
           </div>
         </div>
-      </section>
 
-      {/* 2. Live Tracking Preview */}
-      <div className="max-w-[1200px] mx-auto px-container-margin -mt-8 relative z-20">
-        <div className="bg-white/90 backdrop-blur-md border border-white/50 p-md rounded-2xl shadow-lg flex items-center gap-lg">
-          <div className="flex flex-col text-left shrink-0">
-            <span className="text-[10px] uppercase tracking-widest text-secondary font-bold">
-              Trạng thái trực tiếp
-            </span>
-            <span className="font-label-md text-primary font-bold">
-              Tàu SE1 - Đang đến ga Huế
-            </span>
-          </div>
-
-          <div className="flex-grow h-[4px] bg-secondary-fixed rounded-full relative overflow-visible">
-            <div
-              className="absolute h-full bg-primary-container rounded-full transition-all duration-1000"
-              style={{ width: `${progress}%` }}
-            ></div>
-            <div
-              className="absolute -top-2 transition-all duration-1000"
-              style={{ left: `${progress}%`, transform: "translateX(-50%)" }}
-            >
-              <div className="flex h-[20px] w-[20px] items-center justify-center rounded-full bg-white shadow-sm border border-primary-container/20">
-                <Train className="h-[12px] w-[12px] text-primary-container" />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right shrink-0">
-            <span className="font-label-sm text-secondary block text-xs">
-              Dự kiến
-            </span>
-            <span className="font-semibold text-xl text-on-surface">14:30</span>
-          </div>
+        <div
+          className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2"
+          role="tablist"
+          aria-label="Chọn ảnh banner"
+        >
+          {HERO_SLIDES.map((slide, index) => (
+            <button
+              key={slide.alt}
+              type="button"
+              onClick={() => setActiveHeroSlide(index)}
+              className={`h-2.5 rounded-full transition-all duration-300 ${
+                index === activeHeroSlide
+                  ? "w-8 bg-[#007aff]"
+                  : "w-2.5 bg-white/80 hover:bg-white"
+              }`}
+              aria-label={`Hiển thị ảnh ${slide.alt}`}
+              aria-selected={index === activeHeroSlide}
+              role="tab"
+            />
+          ))}
         </div>
-      </div>
+      </section>
 
       {/* 3. Popular Routes ("Điểm Đến Phổ Biến") */}
       <section className="py-xl max-w-[1200px] mx-auto px-container-margin">
         <div className="flex justify-between items-end mb-lg text-left">
           <div>
-            <h2 className="font-headline-lg text-headline-lg text-primary">
-              Điểm Đến Phổ Biến
+            <span className="text-[12px] uppercase tracking-wider text-[#007aff] font-bold mb-1 block">
+              Khám phá
+            </span>
+            <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800">
+              Điểm đến phổ biến
             </h2>
-            <p className="text-secondary font-body-md mt-2">
-              Gợi ý những hành trình tuyệt vời nhất dành cho bạn
-            </p>
           </div>
           <button
             onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
@@ -585,129 +753,79 @@ export function Home() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-lg">
-          {/* Card 1 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
-              <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="A beautiful wide shot of the Ho Chi Minh City skyline at sunset."
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAweNCnj57N4GRaZWAQ0l2ZLaML4vybSWJHAwBLCjB7TAhnZrSjBBWVLVvOkTOegNRIRDzcuqVT6nFlgOhQwJeOEc9aV5rTWmQWpFoDvSApZlyNr-g40TjtApnq-abzCK2PQAkwPZgIA4QN21lTpEdwZdKt6EflqO8ZXED7W4_G5Vu0lYJF4IxJl-We8d_ve_PyisrUyxLu4a1rd4Ymssw22XqmaENtsgWs_lPINAF4Uq9hI7euGEimxV5guLmzvOc0ZqlH7gqft8YA"
-              />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 750k
-                </span>
-              </div>
-            </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                Hà Nội - TP. Hồ Chí Minh
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Hành trình xuyên Việt lý tưởng
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1 - Hà Nội (Large) */}
+          <div
+            className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[300px] md:h-auto"
+            onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
+          >
+            <img
+              className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+              alt="Hà Nội"
+              src="/assets/hero-bg.jpg"
+            />
+            <div className="absolute bottom-0 left-0 p-6 text-left">
+              <h3 className="font-bold text-2xl text-white mb-1">Hà Nội</h3>
+              <p className="text-white/80 font-medium text-sm">
+                Giá vé chỉ từ{" "}
+                <span className="font-bold text-white">450.000đ</span>
               </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    HN
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    SG
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    +12
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
+          {/* Right Side Cards */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* TP.HCM */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Sài Gòn", "Hà Nội")}
+            >
               <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="The iconic Dragon Bridge in Da Nang, Vietnam, captured at night."
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXu7f-cze-QF82_JvN-Oa2CdGsppGAx6-X1sBMEaYbg77NcLfFgCRti6BhSUyt-HNUo7Y2nSrK9rHyDweCWUN0KU_5GdJP1O-AuaxD9UUa6gKd20_8_Ciu4pA6TMsjqqqdrmX15YTaqloFxxqq1Ma1trLmrIG40nALnbVHrMkSzZ7w1pAn-nIuSESK3FyAEdl8uMZ4Bhwa9YbPMHSd9U-pRJ96z3NXXEao13fwKUTZdpuCnCq9-LU3nb_C4xiICMm-OnpfX4y97_N4UQ"
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="TP HCM"
+                src="/assets/hcmc.jpg"
               />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 350k
-                </span>
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">TP.HCM</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">520k</span>
+                </p>
               </div>
             </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                Đà Nẵng - Huế
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Ngắm nhìn đèo Hải Vân hùng vĩ
-              </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    DN
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    H
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Đà Nẵng", "Huế")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Card 3 */}
-          <div className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 border border-surface-container">
-            <div className="h-48 overflow-hidden relative">
+            {/* Đà Nẵng */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Đà Nẵng", "Huế")}
+            >
               <img
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                alt="A peaceful coastal scene in Nha Trang, Vietnam."
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="Đà Nẵng"
+                src="/assets/danang.jpg"
+              />
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">Đà Nẵng</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">350k</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Huế */}
+            <div
+              className="group relative bg-slate-900 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-350 cursor-pointer col-span-2 h-[160px] md:h-[200px]"
+              onClick={() => handleRouteSelect("Huế", "Đà Nẵng")}
+            >
+              <img
+                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                alt="Huế"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQ5Xajf7mAtz_KfO6j1nNYU6Gl2Ny9UHhksIUer32EoNV1qzgM2acR7OEP0_kY6Cc6PrObB4TX0XxzDiMlOdRMFu8JCnqcymHMAR23ph0FbYkpOUVAZtiQJlASOaO5FxY7XoJsHnOGMTZ12aI_ra4iVxJKlXfYbbCBK6iEoVggaPh5YjxE7dN_nK8F4L2-SsIHKYiSgOWhqhAZ4f-hA00jGPe3D0SqY3jvxGiQN-CWWjFzfRVKDopprohqOGCVMq78EiVhNDfqskkX"
               />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-md py-xs rounded-full shadow-sm">
-                <span className="text-primary font-bold text-label-md">
-                  Từ 420k
-                </span>
-              </div>
-            </div>
-            <div className="p-md text-left">
-              <h3 className="font-bold text-lg text-on-surface">
-                TP. HCM - Nha Trang
-              </h3>
-              <p className="text-on-surface-variant font-body-sm mt-1">
-                Chuyến đi biển cuối tuần thú vị
-              </p>
-              <div className="mt-md flex justify-between items-center">
-                <div className="flex -space-x-2">
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                    SG
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    NT
-                  </div>
-                  <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center text-[10px] font-bold text-slate-600">
-                    +5
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleRouteSelect("Sài Gòn", "Nha Trang")}
-                  className="p-2 bg-secondary-fixed text-primary rounded-xl group-hover:bg-primary-container group-hover:text-white transition-colors cursor-pointer"
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </button>
+              <div className="absolute bottom-0 left-0 p-4 text-left">
+                <h3 className="font-bold text-lg text-white mb-0.5">Huế</h3>
+                <p className="text-white/80 font-medium text-xs">
+                  Chỉ từ <span className="font-bold text-[#007aff]">280k</span>
+                </p>
               </div>
             </div>
           </div>
@@ -715,90 +833,137 @@ export function Home() {
       </section>
 
       {/* 4. Promotions Section */}
-      <section className="bg-primary-fixed/30 py-xl">
-        <div className="max-w-[1200px] mx-auto px-container-margin text-left">
-          <h2 className="font-headline-lg text-headline-lg text-primary mb-lg">
-            Khuyến Mãi Hấp Dẫn
+      <section className="bg-[#f7f9fb] py-xl">
+        <div className="max-w-[1200px] mx-auto px-container-margin text-center">
+          <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800 mb-lg">
+            Ưu đãi hấp dẫn
           </h2>
 
-          <div className="flex overflow-x-auto gap-md pb-md scrollbar-none">
-            {/* Promo Card 1 */}
-            <div className="flex-shrink-0 w-full md:w-[570px] bg-gradient-to-br from-primary-container to-primary p-lg rounded-[24px] text-white flex justify-between items-center relative overflow-hidden">
-              <div className="relative z-10">
-                <span className="bg-white/20 px-sm py-1 rounded-full text-xs font-semibold mb-md inline-block">
-                  Mã: GOTRAINV20
-                </span>
-                <h3 className="text-2xl font-bold text-white mb-sm">
-                  Giảm 20% cho
-                  <br />
-                  người dùng mới
-                </h3>
-                <button
-                  onClick={() => handleCopyVoucher("GOTRAINV20")}
-                  className="bg-white text-primary px-lg py-sm rounded-xl font-bold mt-md hover:bg-slate-50 transition active:scale-95 cursor-pointer"
-                >
-                  Nhận Ngay
-                </button>
+          <div className="flex overflow-x-auto gap-md pb-md scrollbar-none w-full">
+            {loadingPromotions ? (
+              <div className="flex gap-md w-full">
+                {[1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex-shrink-0 w-full md:w-[570px] bg-slate-200/50 animate-pulse h-[180px] rounded-[24px]"
+                  />
+                ))}
               </div>
-              <Ticket className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
-            </div>
+            ) : promotionsList.length === 0 ? (
+              <div className="w-full bg-white p-lg rounded-[24px] border border-surface-container text-center py-xl shadow-sm">
+                <p className="text-on-surface-variant font-medium">
+                  Hiện tại không có chương trình khuyến mãi nào đang diễn ra.
+                </p>
+              </div>
+            ) : (
+              promotionsList.map((promo, idx) => {
+                const isEven = idx % 2 === 0;
+                const bgClass = isEven
+                  ? "bg-gradient-to-br from-primary-container to-primary"
+                  : "bg-gradient-to-br from-tertiary-container to-tertiary";
+                const btnTextClass = isEven ? "text-primary" : "text-tertiary";
 
-            {/* Promo Card 2 */}
-            <div className="flex-shrink-0 w-full md:w-[570px] bg-gradient-to-br from-tertiary-container to-tertiary p-lg rounded-[24px] text-white flex justify-between items-center relative overflow-hidden">
-              <div className="relative z-10">
-                <span className="bg-white/20 px-sm py-1 rounded-full text-xs font-semibold mb-md inline-block">
-                  Hạn đến 31/12
-                </span>
-                <h3 className="text-2xl font-bold text-white mb-sm">
-                  Hoàn tiền 50k
-                  <br />
-                  qua ví điện tử
-                </h3>
-                <button
-                  onClick={() => handleCopyVoucher("GOTRAIN50K")}
-                  className="bg-white text-tertiary px-lg py-sm rounded-xl font-bold mt-md hover:bg-slate-50 transition active:scale-95 cursor-pointer"
-                >
-                  Khám Phá
-                </button>
-              </div>
-              <Wallet className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
-            </div>
+                return (
+                  <div
+                    key={promo.id}
+                    className={`flex-shrink-0 w-full md:w-[570px] ${bgClass} p-lg rounded-[24px] text-white flex justify-between items-start relative overflow-hidden`}
+                  >
+                    <div className="relative z-10 flex flex-col justify-between h-full min-h-[140px] pr-[120px]">
+                      <div>
+                        <span className="bg-white/20 px-sm py-1 rounded-full text-[11px] font-bold mb-xs inline-block">
+                          {promo.isVoucher
+                            ? `Mã: ${promo.code}`
+                            : "Khuyến mãi hệ thống"}
+                        </span>
+                        <h3 className="text-xl md:text-2xl font-bold text-white mb-xs line-clamp-1">
+                          {promo.title}
+                        </h3>
+                        <p className="text-xs md:text-sm text-white/80 line-clamp-2 leading-relaxed">
+                          {promo.description}
+                        </p>
+                      </div>
+                      <div className="mt-md">
+                        {promo.isVoucher ? (
+                          <button
+                            onClick={() => handleCopyVoucher(promo.code)}
+                            className="bg-white hover:bg-slate-50 text-primary px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm"
+                          >
+                            Sao chép mã
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                              toast.info(
+                                "Vui lòng chọn chặng đi/đến ở phía trên để tìm vé!",
+                              );
+                            }}
+                            className={`bg-white hover:bg-slate-50 ${btnTextClass} px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm`}
+                          >
+                            Khám Phá
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {promo.isVoucher ? (
+                      <Ticket className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
+                    ) : (
+                      <Wallet className="h-[120px] w-[120px] text-white opacity-20 absolute -right-4 -bottom-4 rotate-12 shrink-0" />
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </section>
 
       {/* 5. System Advantages */}
-      <section className="py-xl max-w-[1200px] mx-auto px-container-margin">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-xl">
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Zap className="h-8 w-8 text-primary" />
-            </div>
-            <h3 className="font-bold text-lg mb-sm">Thanh toán nhanh</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Hỗ trợ đa dạng phương thức thanh toán an toàn, bảo mật tuyệt đối.
+      <section className="bg-white py-xl">
+        <div className="max-w-[1200px] mx-auto px-container-margin">
+          <div className="text-center mb-12">
+            <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800 mb-4">
+              Tại sao chọn GoTrain?
+            </h2>
+            <p className="text-slate-500 max-w-2xl mx-auto">
+              Chúng tôi mang đến giải pháp đặt vé tàu hiện đại, nhanh chóng và
+              an toàn nhất cho mọi hành trình của bạn.
             </p>
           </div>
 
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Headphones className="h-8 w-8 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Zap className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Thanh toán tức thì</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Xác nhận vé ngay lập tức sau khi thanh toán thành công qua nhiều
+                phương thức linh hoạt.
+              </p>
             </div>
-            <h3 className="font-bold text-lg mb-sm">Hỗ trợ 24/7</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Đội ngũ chăm sóc khách hàng tận tâm, sẵn sàng giải đáp mọi thắc
-              mắc.
-            </p>
-          </div>
 
-          <div className="flex flex-col items-center text-center p-md">
-            <div className="w-16 h-16 bg-primary-fixed rounded-2xl flex items-center justify-center text-primary mb-md shadow-sm">
-              <Tag className="h-8 w-8 text-primary" />
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Headphones className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Hỗ trợ tận tâm</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Đội ngũ chăm sóc khách hàng 24/7 luôn sẵn sàng giải quyết mọi
+                thắc mắc và sự cố của bạn.
+              </p>
             </div>
-            <h3 className="font-bold text-lg mb-sm">Giá tốt nhất</h3>
-            <p className="text-on-surface-variant font-body-sm text-sm">
-              Cam kết giá vé minh bạch, nhiều chương trình ưu đãi độc quyền.
-            </p>
+
+            <div className="flex flex-col items-center text-center p-8 bg-white rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-50">
+              <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                <Tag className="h-6 w-6 text-slate-700" />
+              </div>
+              <h3 className="font-bold text-lg mb-3">Giá tốt nhất</h3>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Cam kết giá vé minh bạch, không phí ẩn và luôn có các chương
+                trình ưu đãi độc quyền.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -886,83 +1051,178 @@ export function Home() {
         </div>
       </section>
 
+      {/* 6. Testimonials Section */}
+      <section className="py-xl bg-[#f7f9fb]">
+        <div className="max-w-[1200px] mx-auto px-container-margin">
+          <div className="text-center mb-12">
+            <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800">
+              Khách hàng nói gì về GoTrain
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Testimonial 1 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "Ứng dụng tuyệt vời, giao diện rất dễ sử dụng và đặt vé chỉ
+                  mất chưa đầy 3 phút. Tôi rất hài lòng với dịch vụ chăm sóc
+                  khách hàng."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=1"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Nguyễn Minh Anh
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Nhân viên văn phòng
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 2 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "GoTrain giúp việc đi du lịch bằng tàu hỏa trở nên sang trọng
+                  và tiện lợi hơn bao giờ hết. Lịch trình rõ ràng, thanh toán an
+                  toàn."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=11"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Trần Hoàng Nam
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Nhiếp ảnh gia tự do
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 3 */}
+            <div className="bg-white p-8 rounded-3xl shadow-sm text-left relative flex flex-col justify-between">
+              <div>
+                <div className="flex gap-1 text-[#007aff] mb-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star key={i} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <p className="text-slate-600 italic text-sm leading-relaxed mb-8">
+                  "Rất ấn tượng với tính năng hoàn tiền qua ví điện tử. Tiết
+                  kiệm được một khoản kha khá cho các chuyến đi thường xuyên."
+                </p>
+              </div>
+              <div className="flex items-center gap-3 mt-auto">
+                <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                  <img
+                    src="https://i.pravatar.cc/150?img=5"
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    Lê Thu Trang
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Sinh viên đại học
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 7. Footer */}
-      <footer className="w-full rounded-t-xl bg-surface-container-high py-xl text-left">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-md px-container-margin py-xl max-w-[1200px] mx-auto">
-          <div className="flex flex-col gap-md">
-            <div className="font-headline-md text-headline-md text-primary font-bold text-xl">
+      <footer className="w-full bg-[#f7f9fb] py-16 text-left border-t border-slate-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 px-container-margin max-w-[1200px] mx-auto">
+          <div className="flex flex-col gap-4 col-span-2">
+            <div className="flex items-center gap-2 text-[#007aff] font-bold text-xl">
+              <Train className="h-6 w-6" />
               GoTrain VN
             </div>
-            <p className="font-body-sm text-body-sm text-on-surface-variant text-sm">
-              Kiến tạo những hành trình tàu hỏa hiện đại, kết nối mọi miền đất
-              nước bằng công nghệ và sự tận tâm.
+            <p className="text-slate-500 text-sm max-w-sm mt-2">
+              © 2024 GoTrain VN. Hành trình bình yên, kết nối mọi miền.
+              <br />
+              Ứng dụng đặt vé tàu hỏa hàng đầu Việt Nam.
             </p>
-          </div>
-
-          <div className="flex flex-col gap-sm">
-            <h4 className="font-bold text-primary text-sm">Khám phá</h4>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Về Chúng Tôi
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Chính Sách
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Hỗ Trợ
-            </a>
-          </div>
-
-          <div className="flex flex-col gap-sm">
-            <h4 className="font-bold text-primary text-sm">Pháp lý</h4>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Điều Khoản
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Bảo mật
-            </a>
-            <a
-              className="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors text-sm"
-              href="#"
-            >
-              Liên Hệ
-            </a>
-          </div>
-
-          <div className="flex flex-col gap-md">
-            <h4 className="font-bold text-primary text-sm">Theo dõi</h4>
-            <div className="flex gap-md">
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+            <div className="flex gap-4 mt-2">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">FB</span>
               </button>
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">YT</span>
               </button>
-              <button className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary shadow-sm hover:scale-110 transition-transform cursor-pointer border border-slate-100">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors">
                 <span className="font-bold text-xs">IN</span>
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="max-w-[1200px] mx-auto px-container-margin pt-lg border-t border-surface-container-highest text-center">
-          <p className="font-label-sm text-label-sm text-on-surface-variant opacity-80 text-xs">
-            © 2024 GoTrain VN. Tất cả quyền được bảo lưu.
-          </p>
+          <div className="flex flex-col gap-3">
+            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
+              Khám phá
+            </h4>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Chính sách bảo mật
+            </a>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Điều khoản sử dụng
+            </a>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
+              Hỗ trợ
+            </h4>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Thông tin liên hệ
+            </a>
+            <a
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
+              href="#"
+            >
+              Hướng dẫn đặt vé
+            </a>
+          </div>
         </div>
       </footer>
 

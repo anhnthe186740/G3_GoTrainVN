@@ -1,4 +1,5 @@
 import { prisma } from "../config/database.js";
+import { getTrainTypeSpeedFactor } from "../config/trainTypes.js";
 
 /**
  * Tự động tạo lịch trình từ các RouteTemplate hoạt động cho một ngày chỉ định
@@ -47,6 +48,7 @@ export async function generateSchedulesByTemplate(targetDate) {
         select: {
           id: true,
           trainCode: true,
+          trainType: true,
           carriages: {
             select: {
               id: true,
@@ -83,14 +85,28 @@ export async function generateSchedulesByTemplate(targetDate) {
         const hour = parseInt(hourStr, 10);
         const minute = parseInt(minStr, 10);
 
+        const speedFactor = getTrainTypeSpeedFactor(train.trainType);
+        const bufferMins = template.bufferMinutes || 60;
+        const numStops = route.stations ? route.stations.length : 0;
+        const totalDurationMins =
+          Math.round(route.estimatedDuration * speedFactor) +
+          numStops * bufferMins;
+
         const departure = new Date(targetDay);
         departure.setHours(hour, minute, 0, 0);
+
+        // Kiểm tra thời gian thực (Real-time Validation)
+        if (departure.getTime() <= Date.now()) {
+          skippedCount++;
+          continue;
+        }
+
         const arrival = new Date(
-          departure.getTime() + route.estimatedDuration * 60 * 1000,
+          departure.getTime() + totalDurationMins * 60 * 1000,
         );
 
         // Kiểm tra xung đột (giãn cách bufferMinutes)
-        const bufferMs = (template.bufferMinutes || 60) * 60 * 1000;
+        const bufferMs = bufferMins * 60 * 1000;
         const windowStart = departure.getTime() - bufferMs;
         const windowEnd = arrival.getTime() + bufferMs;
 
@@ -137,30 +153,41 @@ export async function generateSchedulesByTemplate(targetDate) {
               departureTime: departure,
               arrivalTime: arrival,
               distance: route.distance,
-              duration: route.estimatedDuration,
+              duration: totalDurationMins,
               status: "ACTIVE",
             },
           });
 
           // Tạo ScheduleStops
           if (route.stations && route.stations.length > 0) {
-            const tripDurationMs = arrival.getTime() - departure.getTime();
+            const sortedStations = [...route.stations].sort(
+              (a, b) => a.stopOrder - b.stopOrder,
+            );
             await tx.scheduleStop.createMany({
-              data: route.stations.map((stop) => {
-                const progress = Math.min(
-                  1,
-                  Math.max(0, stop.distanceFromStart / route.distance),
+              data: sortedStations.map((stop, index) => {
+                const progress =
+                  route.distance > 0
+                    ? Math.min(
+                        1,
+                        Math.max(0, stop.distanceFromStart / route.distance),
+                      )
+                    : 0;
+                const movingTimeMs =
+                  route.estimatedDuration * speedFactor * progress * 60 * 1000;
+                const restingTimeMs = index * bufferMins * 60 * 1000;
+                const stopArrivalTime = new Date(
+                  departure.getTime() + movingTimeMs + restingTimeMs,
                 );
-                const stopTime = new Date(
-                  departure.getTime() + tripDurationMs * progress,
+                const stopDepartureTime = new Date(
+                  stopArrivalTime.getTime() + bufferMins * 60 * 1000,
                 );
 
                 return {
                   scheduleId: schedule.id,
                   stationId: stop.stationId,
                   stopOrder: stop.stopOrder,
-                  arrivalTime: stopTime,
-                  departureTime: stopTime,
+                  arrivalTime: stopArrivalTime,
+                  departureTime: stopDepartureTime,
                 };
               }),
             });
@@ -280,6 +307,7 @@ export async function generateSchedulesByBaseline(targetDate) {
         select: {
           id: true,
           trainCode: true,
+          trainType: true,
           carriages: {
             select: {
               id: true,
@@ -310,13 +338,35 @@ export async function generateSchedulesByBaseline(targetDate) {
         continue;
       }
 
+      const template = await prisma.routeTemplate.findUnique({
+        where: {
+          routeId_trainId: {
+            routeId: pattern.routeId,
+            trainId: pattern.trainId,
+          },
+        },
+      });
+      const speedFactor = getTrainTypeSpeedFactor(train.trainType);
+      const bufferMins = template ? (template.bufferMinutes ?? 60) : 60;
+      const numStops = route.stations ? route.stations.length : 0;
+      const totalDurationMins =
+        Math.round(route.estimatedDuration * speedFactor) +
+        numStops * bufferMins;
+
       const departure = new Date(targetDay);
       departure.setHours(pattern.hour, pattern.minute, 0, 0);
+
+      // Kiểm tra thời gian thực (Real-time Validation)
+      if (departure.getTime() <= Date.now()) {
+        skippedCount++;
+        continue;
+      }
+
       const arrival = new Date(
-        departure.getTime() + route.estimatedDuration * 60 * 1000,
+        departure.getTime() + totalDurationMins * 60 * 1000,
       );
 
-      const bufferMs = 60 * 60 * 1000;
+      const bufferMs = bufferMins * 60 * 1000;
       const windowStart = departure.getTime() - bufferMs;
       const windowEnd = arrival.getTime() + bufferMs;
 
@@ -361,28 +411,39 @@ export async function generateSchedulesByBaseline(targetDate) {
             departureTime: departure,
             arrivalTime: arrival,
             distance: route.distance,
-            duration: route.estimatedDuration,
+            duration: totalDurationMins,
             status: "ACTIVE",
           },
         });
 
         if (route.stations && route.stations.length > 0) {
-          const tripDurationMs = arrival.getTime() - departure.getTime();
+          const sortedStations = [...route.stations].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
           await tx.scheduleStop.createMany({
-            data: route.stations.map((stop) => {
-              const progress = Math.min(
-                1,
-                Math.max(0, stop.distanceFromStart / route.distance),
+            data: sortedStations.map((stop, index) => {
+              const progress =
+                route.distance > 0
+                  ? Math.min(
+                      1,
+                      Math.max(0, stop.distanceFromStart / route.distance),
+                    )
+                  : 0;
+              const movingTimeMs =
+                route.estimatedDuration * speedFactor * progress * 60 * 1000;
+              const restingTimeMs = index * bufferMins * 60 * 1000;
+              const stopArrivalTime = new Date(
+                departure.getTime() + movingTimeMs + restingTimeMs,
               );
-              const stopTime = new Date(
-                departure.getTime() + tripDurationMs * progress,
+              const stopDepartureTime = new Date(
+                stopArrivalTime.getTime() + bufferMins * 60 * 1000,
               );
               return {
                 scheduleId: schedule.id,
                 stationId: stop.stationId,
                 stopOrder: stop.stopOrder,
-                arrivalTime: stopTime,
-                departureTime: stopTime,
+                arrivalTime: stopArrivalTime,
+                departureTime: stopDepartureTime,
               };
             }),
           });
@@ -413,10 +474,17 @@ export async function generateSchedulesForDay30() {
   targetDate.setHours(0, 0, 0, 0);
 
   console.log(
-    `[AutoSchedule] Bắt đầu tự động tạo lịch trình cho ngày thứ 30 tới: ${targetDate.toDateString()}`,
+    `[AutoSchedule] Bắt đầu tự động quét và tạo lịch trình cho 30 ngày tới: từ ${today.toLocaleDateString("vi-VN")} đến ${targetDate.toLocaleDateString("vi-VN")}`,
   );
 
-  return generateSchedulesByTemplate(targetDate);
+  const formatLocal = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  return generateSchedulesForRange(formatLocal(today), formatLocal(targetDate));
 }
 
 /**
@@ -459,27 +527,51 @@ export async function generateSchedulesForRange(startDateStr, endDateStr) {
 }
 
 /**
- * Khởi chạy timer tự động tạo lịch trình mỗi 24 giờ
+ * Khởi chạy timer tự động tạo lịch trình định kỳ lúc 00:00 hàng ngày
  */
 export function startAutoScheduleCron() {
-  // Chạy thử lần đầu sau 10 giây khi khởi động server
+  // 1. Chạy thử lần đầu sau 10 giây khi khởi động server để bù lịch nếu có gián đoạn
   setTimeout(async () => {
     try {
       await generateSchedulesForDay30();
     } catch (e) {
-      console.error("[AutoSchedule] Lỗi chạy ngầm lần đầu:", e);
+      console.error("[AutoSchedule] Lỗi chạy ngầm lần đầu khi khởi động:", e);
     }
   }, 10_000);
 
-  // Chạy định kỳ sau mỗi 24 giờ
-  const intervalTime = 24 * 3600 * 1000;
-  const timer = setInterval(async () => {
+  // 2. Tính toán thời gian chờ đến 00:00 đêm tiếp theo
+  const now = new Date();
+  const nextMidnight = new Date(now);
+  nextMidnight.setDate(nextMidnight.getDate() + 1);
+  nextMidnight.setHours(0, 0, 0, 0);
+
+  const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+
+  console.log(
+    `[AutoSchedule] Đã hẹn giờ tự động quét tiếp theo vào lúc 00:00 ngày ${nextMidnight.toLocaleDateString("vi-VN")} (sau ${Math.round(msUntilMidnight / 60000)} phút nữa).`,
+  );
+
+  // Đợi đến mốc 00:00 đêm
+  const startupTimer = setTimeout(async () => {
+    // Chạy tác vụ lúc 00:00
     try {
       await generateSchedulesForDay30();
     } catch (e) {
-      console.error("[AutoSchedule] Lỗi tác vụ chạy ngầm định kỳ:", e);
+      console.error("[AutoSchedule] Lỗi chạy ngầm lúc 00:00:", e);
     }
-  }, intervalTime);
 
-  timer.unref();
+    // Thiết lập chạy lặp lại định kỳ mỗi 24 giờ kể từ lúc 00:00
+    const intervalTime = 24 * 3600 * 1000;
+    const timer = setInterval(async () => {
+      try {
+        await generateSchedulesForDay30();
+      } catch (e) {
+        console.error("[AutoSchedule] Lỗi tác vụ chạy ngầm định kỳ 00:00:", e);
+      }
+    }, intervalTime);
+
+    timer.unref();
+  }, msUntilMidnight);
+
+  startupTimer.unref();
 }

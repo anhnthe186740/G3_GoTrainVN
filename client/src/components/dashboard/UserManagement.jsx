@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { toast } from "sonner";
+import { useAuthStore } from "../../store/authStore";
 
 /* ── Reusable Skeleton Component ────────────────────────── */
 function SkeletonRow({ cols = 5 }) {
@@ -305,9 +306,151 @@ function CreateStaffModal({ isOpen, onClose, onSave, loading }) {
   );
 }
 
+/* ── Modal Đặt Lại Mật Khẩu ────────────────────────────── */
+function ResetPasswordModal({ isOpen, onClose, user, onConfirm, loading }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setError("");
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !user) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      setError("Vui lòng nhập mật khẩu mới");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Mật khẩu mới phải từ 8 ký tự trở lên");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp");
+      return;
+    }
+    onConfirm(password.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-md overflow-hidden transform transition-all scale-100">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-[#bec7d4]/10 bg-slate-50/50 flex justify-between items-center text-left">
+          <h3 className="font-headline-md text-base font-bold text-[#191c1e] flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[#00629d] text-[20px]">
+              key
+            </span>
+            Đặt Lại Mật Khẩu
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-slate-200 text-slate-500 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-left">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Bạn đang đặt lại mật khẩu cho thành viên{" "}
+            <strong className="text-slate-800">{user.fullName}</strong> (
+            {user.email}). Mật khẩu mới phải có độ dài ít nhất 8 ký tự.
+          </p>
+
+          {/* Mật khẩu mới */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Mật khẩu mới *
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
+                className="w-full px-3 py-2 pr-10 border border-[#bec7d4]/60 rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm bg-white"
+                placeholder="Nhập mật khẩu mới..."
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {showPassword ? "visibility_off" : "visibility"}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Xác nhận mật khẩu */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Xác nhận mật khẩu *
+            </label>
+            <input
+              type={showPassword ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setError("");
+              }}
+              className="w-full px-3 py-2 border border-[#bec7d4]/60 rounded-xl outline-none focus:ring-2 focus:ring-[#00a3ff] text-sm bg-white"
+              placeholder="Xác nhận mật khẩu mới..."
+            />
+          </div>
+
+          {error && (
+            <span className="text-red-500 text-[11px] mt-0.5 block font-semibold">
+              {error}
+            </span>
+          )}
+
+          {/* Modal Actions */}
+          <div className="flex gap-3 pt-4 border-t border-[#bec7d4]/10 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-[#bec7d4]/60 text-[#3f4852] text-sm font-semibold hover:bg-[#f2f4f6] transition-colors cursor-pointer"
+            >
+              Hủy bỏ
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-xl bg-[#00629d] hover:bg-[#00a3ff] text-white text-sm font-semibold transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer"
+            >
+              {loading && (
+                <span className="material-symbols-outlined text-[16px] animate-spin">
+                  progress_activity
+                </span>
+              )}
+              Xác nhận
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── Component Chính ─────────────────────────────────── */
 export function UserManagement() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuthStore();
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
@@ -322,6 +465,7 @@ export function UserManagement() {
   const [lockConfirmUser, setLockConfirmUser] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState(null);
 
   // Debouncing search
   useEffect(() => {
@@ -399,6 +543,20 @@ export function UserManagement() {
     },
   });
 
+  // Admin reset password mutation
+  const resetPasswordByAdminMutation = useMutation({
+    mutationFn: ({ id, password }) =>
+      api.put(`/users/admin/update/${id}`, { password }),
+    onSuccess: (res) => {
+      toast.success(res.data.message || "Đặt lại mật khẩu thành công!");
+      setResetPasswordUser(null);
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Đặt lại mật khẩu thất bại!");
+    },
+  });
+
   const handleToggleActiveClick = (user) => {
     if (user.isActive) {
       // If active, open lock reason modal
@@ -418,7 +576,9 @@ export function UserManagement() {
 
   const stats = statsData?.stats;
   const isMutating =
-    toggleActiveMutation.isPending || createStaffMutation.isPending;
+    toggleActiveMutation.isPending ||
+    createStaffMutation.isPending ||
+    resetPasswordByAdminMutation.isPending;
 
   // Initials Avatar generator
   const getInitials = (name) => {
@@ -680,38 +840,56 @@ export function UserManagement() {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-right relative">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveDropdown(
-                              activeDropdown === user.id ? null : user.id,
-                            );
-                          }}
-                          className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            more_vert
-                          </span>
-                        </button>
-
-                        {/* Dropdown Menu */}
-                        {activeDropdown === user.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-6 top-12 w-48 bg-white border border-slate-200/80 rounded-xl shadow-lg z-20 py-1 text-left animate-fade-in"
-                          >
+                      <td className="px-6 py-4 text-right">
+                        {currentUser?.id !== user.id && (
+                          <div className="relative inline-block text-left">
                             <button
-                              onClick={() => handleToggleActiveClick(user)}
-                              className="w-full px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdown(
+                                  activeDropdown === user.id ? null : user.id,
+                                );
+                              }}
+                              className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors cursor-pointer"
                             >
-                              <span className="material-symbols-outlined text-[16px] text-slate-400">
-                                {user.isActive ? "lock" : "lock_open"}
+                              <span className="material-symbols-outlined text-[20px]">
+                                more_vert
                               </span>
-                              {user.isActive
-                                ? "Khóa tài khoản"
-                                : "Mở khóa tài khoản"}
                             </button>
+
+                            {/* Dropdown Menu */}
+                            {activeDropdown === user.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200/80 rounded-xl shadow-lg z-20 py-1 text-left animate-fade-in"
+                              >
+                                <button
+                                  onClick={() => handleToggleActiveClick(user)}
+                                  className="w-full px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] text-slate-400">
+                                    {user.isActive ? "lock" : "lock_open"}
+                                  </span>
+                                  {user.isActive
+                                    ? "Khóa tài khoản"
+                                    : "Mở khóa tài khoản"}
+                                </button>
+                                {user.userType === "STAFF" && (
+                                  <button
+                                    onClick={() => {
+                                      setResetPasswordUser(user);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className="w-full px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer border-t border-slate-100"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px] text-slate-400">
+                                      key
+                                    </span>
+                                    Đặt lại mật khẩu
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
@@ -881,6 +1059,19 @@ export function UserManagement() {
         onClose={() => setIsCreateModalOpen(false)}
         onSave={(form) => createStaffMutation.mutate(form)}
         loading={isMutating}
+      />
+
+      <ResetPasswordModal
+        isOpen={!!resetPasswordUser}
+        onClose={() => setResetPasswordUser(null)}
+        user={resetPasswordUser}
+        onConfirm={(newPassword) => {
+          resetPasswordByAdminMutation.mutate({
+            id: resetPasswordUser.id,
+            password: newPassword,
+          });
+        }}
+        loading={resetPasswordByAdminMutation.isPending}
       />
     </div>
   );

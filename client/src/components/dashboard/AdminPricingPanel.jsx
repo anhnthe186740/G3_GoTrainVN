@@ -44,22 +44,38 @@ const DEFAULTS = {
   SLEEPER_4: { basePrice: "", pricePerKm: "", classSurcharge: "" },
 };
 
-const DISCOUNTS = {
-  ADULT: 0,
-  CHILD: 0,
-  STUDENT: 0,
-  SENIOR: 0,
+const EMPTY_TICKET_TYPE = {
+  code: "",
+  name: "",
+  shortLabel: "",
+  description: "",
+  discountType: "PERCENTAGE",
+  discountValue: 0,
+  minAge: "",
+  maxAgeExclusive: "",
+  seatMode: "REQUIRED",
+  publicSelectable: true,
+  autoApply: false,
+  requiresDocument: true,
+  requiresStudent: false,
+  priority: 100,
+  active: true,
+  effectiveFrom: todayValue(),
+  effectiveTo: "",
 };
 
 function todayValue() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  // Cố định UTC+7 để tránh lệch ngày trên máy admin không đặt múi giờ Việt Nam
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function dateInputValue(value) {
   if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  // Shift sang UTC+7 để tránh lệch ngày khi server lưu midnight +07:00
+  const local = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return local.toISOString().slice(0, 10);
 }
 
 function createRules(source = []) {
@@ -84,8 +100,7 @@ function createRules(source = []) {
             classSurcharge:
               inherited?.classSurcharge ??
               DEFAULTS[carriage.value].classSurcharge,
-            discountPercentage:
-              inherited?.discountPercentage ?? DISCOUNTS[passenger.value],
+            discountPercentage: 0,
             minPrice: inherited?.minPrice ?? "",
             maxPrice: inherited?.maxPrice ?? "",
             inherited: Boolean(inherited?.inherited),
@@ -107,7 +122,8 @@ function money(value) {
 
 function compactMoney(value) {
   const number = Number(value) || 0;
-  if (number >= 1000000) return `${(number / 1000000).toFixed(2)}tr`;
+  if (number >= 1000000)
+    return `${parseFloat((number / 1000000).toFixed(1))}tr`;
   if (number >= 1000) return `${Math.round(number / 1000)}k`;
   return String(Math.round(number));
 }
@@ -121,13 +137,12 @@ function calculate(rule, distance, taxPercentage) {
     rule.minPrice === "" ? base : Math.max(base, Number(rule.minPrice));
   const bounded =
     rule.maxPrice === "" ? floor : Math.min(floor, Number(rule.maxPrice));
-  const afterDiscount =
-    bounded * (1 - Number(rule.discountPercentage || 0) / 100);
+  const afterDiscount = bounded;
   const final = afterDiscount * (1 + Number(taxPercentage || 0) / 100);
   return {
     base,
     bounded,
-    discount: bounded - afterDiscount,
+    discount: 0,
     tax: final - afterDiscount,
     final: Math.max(0, Math.round(final)),
   };
@@ -182,6 +197,12 @@ export function AdminPricingPanel() {
   const [taxPercentage, setTaxPercentage] = useState(8);
   const [rules, setRules] = useState(() => createRules());
   const [dirty, setDirty] = useState(false);
+  const [ticketTypeForm, setTicketTypeForm] = useState(() => ({
+    ...EMPTY_TICKET_TYPE,
+    effectiveFrom: todayValue(),
+  }));
+  const [editingTicketTypeId, setEditingTicketTypeId] = useState("");
+  const [ticketTypeErrors, setTicketTypeErrors] = useState({});
 
   const contextQuery = useQuery({
     queryKey: ["pricingContext"],
@@ -198,6 +219,12 @@ export function AdminPricingPanel() {
         })
         .then((response) => response.data),
     enabled: scopeType === "SYSTEM" || Boolean(scopeId),
+  });
+
+  const ticketTypesQuery = useQuery({
+    queryKey: ["pricingTicketTypes"],
+    queryFn: () =>
+      pricingApi.getTicketTypes().then((response) => response.data),
   });
 
   const loadPolicy = (policy) => {
@@ -243,11 +270,13 @@ export function AdminPricingPanel() {
   }, [configurationQuery.data]);
 
   useEffect(() => {
-    if (scopeType === "SYSTEM") setScopeId("");
-    else setScopeId("");
+    setScopeId("");
   }, [scopeType]);
 
   const selectedRule = rules[selectedKey];
+  const selectedCarriage =
+    CARRIAGES.find((item) => item.value === selectedRule?.carriageType) ||
+    CARRIAGES[0];
   const preview = useMemo(
     () => calculate(selectedRule || {}, previewDistance, taxPercentage),
     [selectedRule, previewDistance, taxPercentage],
@@ -261,13 +290,9 @@ export function AdminPricingPanel() {
   const updateRule = (field, value) => {
     setRules((current) => {
       const next = { ...current };
-      const isPassengerField = field === "discountPercentage";
 
       for (const [key, rule] of Object.entries(current)) {
-        const sameDimension = isPassengerField
-          ? rule.passengerType === selectedRule.passengerType
-          : rule.carriageType === selectedRule.carriageType;
-        if (sameDimension) {
+        if (rule.carriageType === selectedRule.carriageType) {
           next[key] = { ...rule, [field]: value, inherited: false };
         }
       }
@@ -297,7 +322,7 @@ export function AdminPricingPanel() {
             basePrice: Number(rule.basePrice),
             pricePerKm: Number(rule.pricePerKm),
             classSurcharge: Number(rule.classSurcharge),
-            discountPercentage: Number(rule.discountPercentage),
+            discountPercentage: 0,
             minPrice: rule.minPrice === "" ? null : Number(rule.minPrice),
             maxPrice: rule.maxPrice === "" ? null : Number(rule.maxPrice),
           }),
@@ -325,6 +350,103 @@ export function AdminPricingPanel() {
     onError: (error) => {
       toast.error(
         error.response?.data?.message || "Không thể đổi trạng thái chính sách.",
+      );
+    },
+  });
+
+  const resetTicketTypeForm = () => {
+    setEditingTicketTypeId("");
+    setTicketTypeForm({ ...EMPTY_TICKET_TYPE, effectiveFrom: todayValue() });
+    setTicketTypeErrors({});
+  };
+
+  const validateTicketTypeForm = (form) => {
+    const errors = {};
+    if (!form.code.trim()) errors.code = "Mã loại vé là bắt buộc.";
+    if (!form.name.trim()) errors.name = "Tên loại vé là bắt buộc.";
+    if (form.autoApply && form.minAge === "" && form.maxAgeExclusive === "") {
+      errors.autoApply =
+        "Loại vé tự động phải có khoảng tuổi; nếu để trống sẽ áp dụng cho mọi hành khách.";
+    }
+    if (
+      form.minAge !== "" &&
+      form.maxAgeExclusive !== "" &&
+      Number(form.minAge) >= Number(form.maxAgeExclusive)
+    ) {
+      errors.maxAgeExclusive = "Tuổi kết thúc phải lớn hơn tuổi bắt đầu.";
+    }
+    if (
+      form.discountType === "PERCENTAGE" &&
+      (Number(form.discountValue) < 0 || Number(form.discountValue) > 100)
+    ) {
+      errors.discountValue = "Phần trăm giảm phải từ 0 đến 100.";
+    }
+    return errors;
+  };
+
+  const editTicketType = (type) => {
+    setEditingTicketTypeId(type.id);
+    setTicketTypeForm({
+      code: type.code || "",
+      name: type.name || "",
+      shortLabel: type.shortLabel || "",
+      description: type.description || "",
+      discountType: type.discountType || "PERCENTAGE",
+      discountValue: type.discountValue ?? 0,
+      minAge: type.minAge ?? "",
+      maxAgeExclusive: type.maxAgeExclusive ?? "",
+      seatMode: type.seatMode || "REQUIRED",
+      publicSelectable: type.publicSelectable !== false,
+      autoApply: Boolean(type.autoApply),
+      requiresDocument: type.requiresDocument !== false,
+      requiresStudent: Boolean(type.requiresStudent),
+      priority: type.priority ?? 100,
+      active: type.active !== false,
+      effectiveFrom: dateInputValue(type.effectiveFrom) || todayValue(),
+      effectiveTo: dateInputValue(type.effectiveTo),
+    });
+  };
+
+  const ticketTypePayload = () => ({
+    ...ticketTypeForm,
+    code: ticketTypeForm.code.trim().toUpperCase(),
+    discountValue:
+      ticketTypeForm.discountType === "FREE"
+        ? 100
+        : Number(ticketTypeForm.discountValue || 0),
+    minAge: ticketTypeForm.minAge === "" ? null : Number(ticketTypeForm.minAge),
+    maxAgeExclusive:
+      ticketTypeForm.maxAgeExclusive === ""
+        ? null
+        : Number(ticketTypeForm.maxAgeExclusive),
+    priority: Number(ticketTypeForm.priority || 100),
+    effectiveTo: ticketTypeForm.effectiveTo || null,
+  });
+
+  const saveTicketTypeMutation = useMutation({
+    mutationFn: () =>
+      editingTicketTypeId
+        ? pricingApi.updateTicketType(editingTicketTypeId, ticketTypePayload())
+        : pricingApi.createTicketType(ticketTypePayload()),
+    onSuccess: ({ data }) => {
+      toast.success(data.message);
+      resetTicketTypeForm();
+      queryClient.invalidateQueries({ queryKey: ["pricingTicketTypes"] });
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Không thể lưu loại vé.");
+    },
+  });
+
+  const ticketTypeActiveMutation = useMutation({
+    mutationFn: ({ id, active }) => pricingApi.setTicketTypeActive(id, active),
+    onSuccess: ({ data }) => {
+      toast.success(data.message);
+      queryClient.invalidateQueries({ queryKey: ["pricingTicketTypes"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error.response?.data?.message || "Không thể đổi trạng thái loại vé.",
       );
     },
   });
@@ -360,7 +482,7 @@ export function AdminPricingPanel() {
           <div className="max-w-2xl">
             <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200">
               <CircleDollarSign className="h-4 w-4" />
-              Pricing control · UC-17
+              Quản trị biểu giá
             </div>
             <h1 className="font-headline-lg text-3xl font-bold tracking-tight md:text-4xl">
               Điều phối biểu giá
@@ -443,6 +565,13 @@ export function AdminPricingPanel() {
               disabled={!configurationQuery.data}
               onChange={(event) => {
                 const code = event.target.value;
+                if (
+                  dirty &&
+                  !window.confirm(
+                    "Có thay đổi chưa lưu. Chuyển sang chính sách khác sẽ mất các thay đổi. Tiếp tục?",
+                  )
+                )
+                  return;
                 if (!code)
                   startNewPolicy(configurationQuery.data?.effectiveRules);
                 else {
@@ -467,15 +596,416 @@ export function AdminPricingPanel() {
         </div>
 
         <button
-          onClick={() =>
-            startNewPolicy(configurationQuery.data?.effectiveRules)
-          }
+          onClick={() => {
+            if (
+              dirty &&
+              !window.confirm(
+                "Có thay đổi chưa lưu. Tạo chính sách mới sẽ mất các thay đổi. Tiếp tục?",
+              )
+            )
+              return;
+            startNewPolicy(configurationQuery.data?.effectiveRules);
+          }}
           disabled={scopeType !== "SYSTEM" && !scopeId}
           className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#00629d]/20 bg-[#00629d]/5 px-4 text-sm font-bold text-[#00629d] transition hover:bg-[#00629d]/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Sparkles className="h-4 w-4" />
           Chính sách mới
         </button>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[#00629d]" />
+              <h2 className="text-lg font-bold">Loại vé & chính sách ưu đãi</h2>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Quản lý các loại vé áp dụng khi đặt: miễn phí, giảm theo phần
+              trăm, giảm số tiền cố định và điều kiện tuổi.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={resetTicketTypeForm}
+            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
+          >
+            Thêm loại vé
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-[11px] leading-5 text-blue-800">
+          <strong>Cách hoạt động:</strong> Bảng giá gốc bên dưới xác định giá
+          theo loại chỗ (Ngồi mềm, Nằm cứng…). Loại vé ở đây áp thêm ưu đãi giảm
+          phần trăm hoặc miễn phí lên giá đó — ví dụ: Trẻ em −25%, Trẻ dưới 6
+          tuổi miễn phí. Hệ thống ghép hai bảng tự động khi khách đặt vé.
+        </div>
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="min-w-[900px] w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.08em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Loại vé</th>
+                  <th className="px-4 py-3">Điều kiện tuổi</th>
+                  <th className="px-4 py-3">Ưu đãi</th>
+                  <th className="px-4 py-3">Ghế</th>
+                  <th className="px-4 py-3">Áp dụng</th>
+                  <th className="px-4 py-3 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ticketTypesQuery.data?.ticketTypes?.map((type) => (
+                  <tr key={type.id} className="align-top">
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-slate-900">{type.name}</p>
+                      <p className="mt-0.5 font-utility-mono text-[11px] text-slate-400">
+                        {type.code}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {type.minAge == null && type.maxAgeExclusive == null
+                        ? "Không giới hạn"
+                        : `${type.minAge ?? 0} - ${type.maxAgeExclusive ? `< ${type.maxAgeExclusive}` : "trở lên"}`}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-bold text-emerald-700">
+                      {type.discountType === "FREE"
+                        ? "Miễn phí"
+                        : type.discountType === "PERCENTAGE"
+                          ? `Giảm ${type.discountValue}%`
+                          : `Giảm ${money(type.discountValue)}`}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {type.seatMode === "NOT_ALLOWED"
+                        ? "Không giữ ghế"
+                        : type.seatMode === "OPTIONAL"
+                          ? "Tùy chọn"
+                          : "Có ghế"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {type.publicSelectable && (
+                          <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+                            Public
+                          </span>
+                        )}
+                        {type.autoApply && (
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                            Tự động
+                          </span>
+                        )}
+                        {type.autoApply && (
+                          <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                            Ưu tiên {type.priority}
+                          </span>
+                        )}
+                        <span
+                          className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                            type.active
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {type.active ? "Đang bật" : "Tạm dừng"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editTicketType(type)}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          type="button"
+                          disabled={ticketTypeActiveMutation.isPending}
+                          onClick={() => {
+                            if (
+                              type.active &&
+                              !window.confirm(
+                                `Tạm dừng loại vé "${type.name}" sẽ ẩn nó khỏi bước đặt vé. Các vé đã đặt không bị ảnh hưởng. Tiếp tục?`,
+                              )
+                            )
+                              return;
+                            ticketTypeActiveMutation.mutate({
+                              id: type.id,
+                              active: !type.active,
+                            });
+                          }}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          {type.active ? "Tạm dừng" : "Bật"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!ticketTypesQuery.data?.ticketTypes?.length && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-8 text-center text-sm text-slate-500"
+                    >
+                      Chưa có dữ liệu loại vé.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <h3 className="text-sm font-bold text-slate-900">
+              {editingTicketTypeId ? "Cập nhật loại vé" : "Thêm loại vé"}
+            </h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-1">
+                <span className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase text-slate-500">
+                  Mã
+                  {ticketTypeErrors.code && (
+                    <span className="text-[10px] font-semibold normal-case text-rose-500">
+                      {ticketTypeErrors.code}
+                    </span>
+                  )}
+                </span>
+                <input
+                  value={ticketTypeForm.code}
+                  disabled={Boolean(editingTicketTypeId)}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      code: event.target.value.toUpperCase(),
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                />
+                {editingTicketTypeId && (
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Mã không thể thay đổi sau khi tạo — lịch sử đặt vé tham
+                    chiếu mã này.
+                  </p>
+                )}
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[11px] font-bold uppercase text-slate-500">
+                  Nhãn ngắn
+                </span>
+                <input
+                  value={ticketTypeForm.shortLabel}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      shortLabel: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase text-slate-500">
+                  Tên loại vé
+                  {ticketTypeErrors.name && (
+                    <span className="text-[10px] font-semibold normal-case text-rose-500">
+                      {ticketTypeErrors.name}
+                    </span>
+                  )}
+                </span>
+                <input
+                  value={ticketTypeForm.name}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  className={`h-10 w-full rounded-xl border px-3 text-sm font-semibold outline-none ${ticketTypeErrors.name ? "border-rose-400" : "border-slate-200"}`}
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[11px] font-bold uppercase text-slate-500">
+                  Tuổi từ
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={ticketTypeForm.minAge}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      minAge: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase text-slate-500">
+                  Đến trước tuổi
+                  {ticketTypeErrors.maxAgeExclusive && (
+                    <span className="text-[10px] font-semibold normal-case text-rose-500">
+                      {ticketTypeErrors.maxAgeExclusive}
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={ticketTypeForm.maxAgeExclusive}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      maxAgeExclusive: event.target.value,
+                    }))
+                  }
+                  className={`h-10 w-full rounded-xl border px-3 text-sm font-semibold outline-none ${ticketTypeErrors.maxAgeExclusive ? "border-rose-400" : "border-slate-200"}`}
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[11px] font-bold uppercase text-slate-500">
+                  Độ ưu tiên
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={ticketTypeForm.priority}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      priority: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
+                />
+              </label>
+              <label>
+                <span className="mb-1.5 block text-[11px] font-bold uppercase text-slate-500">
+                  Kiểu giảm
+                </span>
+                <select
+                  value={ticketTypeForm.discountType}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      discountType: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
+                >
+                  <option value="PERCENTAGE">Phần trăm</option>
+                  <option value="FIXED_AMOUNT">Số tiền cố định</option>
+                  <option value="FREE">Miễn phí</option>
+                </select>
+              </label>
+              <label>
+                <span className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase text-slate-500">
+                  Giá trị
+                  {ticketTypeErrors.discountValue && (
+                    <span className="text-[10px] font-semibold normal-case text-rose-500">
+                      {ticketTypeErrors.discountValue}
+                    </span>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  disabled={ticketTypeForm.discountType === "FREE"}
+                  value={
+                    ticketTypeForm.discountType === "FREE"
+                      ? 100
+                      : ticketTypeForm.discountValue
+                  }
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      discountValue: event.target.value,
+                    }))
+                  }
+                  className={`h-10 w-full rounded-xl border px-3 text-sm font-semibold outline-none disabled:bg-slate-100 ${ticketTypeErrors.discountValue ? "border-rose-400" : "border-slate-200"}`}
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1.5 block text-[11px] font-bold uppercase text-slate-500">
+                  Cấu hình ghế
+                </span>
+                <select
+                  value={ticketTypeForm.seatMode}
+                  onChange={(event) =>
+                    setTicketTypeForm((current) => ({
+                      ...current,
+                      seatMode: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none"
+                >
+                  <option value="REQUIRED">Phải có ghế</option>
+                  <option value="NOT_ALLOWED">Không giữ ghế riêng</option>
+                  <option value="OPTIONAL">Tùy chọn</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-4 grid gap-2 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+              {[
+                ["publicSelectable", "Cho khách chọn"],
+                ["autoApply", "Tự động theo tuổi"],
+                ["requiresDocument", "Yêu cầu giấy tờ"],
+                ["requiresStudent", "Yêu cầu SV/HS"],
+              ].map(([field, label]) => (
+                <label key={field} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(ticketTypeForm[field])}
+                    onChange={(event) =>
+                      setTicketTypeForm((current) => ({
+                        ...current,
+                        [field]: event.target.checked,
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {ticketTypeErrors.autoApply && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+                ⚠ {ticketTypeErrors.autoApply}
+              </p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={saveTicketTypeMutation.isPending}
+                onClick={() => {
+                  const errors = validateTicketTypeForm(ticketTypeForm);
+                  if (Object.keys(errors).length > 0) {
+                    setTicketTypeErrors(errors);
+                    return;
+                  }
+                  setTicketTypeErrors({});
+                  saveTicketTypeMutation.mutate();
+                }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#00629d] px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {saveTicketTypeMutation.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {editingTicketTypeId ? "Lưu loại vé" : "Tạo loại vé"}
+              </button>
+              {editingTicketTypeId && (
+                <button
+                  type="button"
+                  onClick={resetTicketTypeForm}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </section>
 
       {scopeType !== "SYSTEM" && !scopeId ? (
@@ -554,11 +1084,13 @@ export function AdminPricingPanel() {
                 <div>
                   <div className="flex items-center gap-2">
                     <ReceiptText className="h-5 w-5 text-[#00629d]" />
-                    <h2 className="text-lg font-bold">Ma trận biểu giá</h2>
+                    <h2 className="text-lg font-bold">
+                      Bảng giá gốc theo loại chỗ
+                    </h2>
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    Chọn một ô để chỉnh chi tiết. Giá hiển thị theo cự ly xem
-                    trước.
+                    Giá nền cho từng loại ghế/giường. Loại vé và ưu đãi BR-08 sẽ
+                    được áp dụng ở bước đặt vé.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
@@ -574,92 +1106,53 @@ export function AdminPricingPanel() {
                 </label>
               </div>
 
-              <div className="overflow-x-auto">
-                <div className="min-w-[900px]">
-                  <div className="grid grid-cols-[150px_repeat(4,minmax(165px,1fr))] border-b border-slate-100 bg-slate-50/70">
-                    <div className="flex items-end p-4 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Hành khách
-                    </div>
-                    {CARRIAGES.map((carriage) => (
-                      <div
-                        key={carriage.value}
-                        className="border-l border-slate-100 p-4"
-                      >
-                        <p className="text-xs font-bold text-slate-800">
-                          {carriage.label}
-                        </p>
-                        <p className="mt-1 text-[10px] text-slate-400">
-                          {carriage.hint}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {PASSENGERS.map((passenger) => (
-                    <div
-                      key={passenger.value}
-                      className="grid grid-cols-[150px_repeat(4,minmax(165px,1fr))] border-b border-slate-100 last:border-b-0"
+              <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                {CARRIAGES.map((carriage) => {
+                  const key = `ADULT:${carriage.value}`;
+                  const rule = rules[key];
+                  const cellPrice = calculate(
+                    rule,
+                    previewDistance,
+                    taxPercentage,
+                  ).final;
+                  const selected =
+                    selectedRule?.carriageType === carriage.value;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedKey(key)}
+                      className={`relative rounded-2xl border p-4 text-left transition ${
+                        selected
+                          ? "border-[#00629d] bg-[#eaf6ff] shadow-[inset_0_0_0_2px_#00629d]"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
                     >
-                      <div className="flex items-center gap-3 p-4">
-                        <span
-                          className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black text-white"
-                          style={{ backgroundColor: passenger.color }}
-                        >
-                          {passenger.short}
-                        </span>
+                      <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-bold">{passenger.label}</p>
-                          <p className="mt-0.5 text-[10px] text-slate-400">
-                            Giảm{" "}
-                            {rules[`${passenger.value}:NORMAL_SEAT`]
-                              ?.discountPercentage ?? 0}
-                            % theo chính sách
+                          <p className="text-sm font-bold text-slate-900">
+                            {carriage.label}
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            {carriage.hint}
                           </p>
                         </div>
+                        {rule?.inherited && (
+                          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold text-violet-700">
+                            Kế thừa
+                          </span>
+                        )}
                       </div>
-
-                      {CARRIAGES.map((carriage) => {
-                        const key = `${passenger.value}:${carriage.value}`;
-                        const rule = rules[key];
-                        const cellPrice = calculate(
-                          rule,
-                          previewDistance,
-                          taxPercentage,
-                        ).final;
-                        const selected = selectedKey === key;
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => setSelectedKey(key)}
-                            className={`relative border-l p-4 text-left transition ${
-                              selected
-                                ? "z-10 border-[#00629d] bg-[#eaf6ff] shadow-[inset_0_0_0_2px_#00629d]"
-                                : "border-slate-100 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-base font-black tracking-tight text-slate-900">
-                                {compactMoney(cellPrice)}
-                              </p>
-                              {rule.inherited && (
-                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold text-violet-700">
-                                  Kế thừa
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-3 flex items-center justify-between text-[10px] font-semibold text-slate-400">
-                              <span>{compactMoney(rule.pricePerKm)} / km</span>
-                              <span>-{rule.discountPercentage}%</span>
-                            </div>
-                            {selected && (
-                              <span className="absolute bottom-0 left-1/2 h-1 w-10 -translate-x-1/2 rounded-t-full bg-[#00629d]" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
+                      <p className="mt-5 text-2xl font-black tracking-tight text-slate-950">
+                        {compactMoney(cellPrice)}
+                      </p>
+                      <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-slate-400">
+                        <span>{compactMoney(rule?.pricePerKm)} / km</span>
+                        <span>Giá gốc</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
@@ -668,21 +1161,13 @@ export function AdminPricingPanel() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#00629d]">
-                      Đang chỉnh
+                      Giá gốc đang chỉnh
                     </p>
                     <h3 className="mt-1 text-lg font-bold">
-                      {
-                        PASSENGERS.find(
-                          (item) => item.value === selectedRule.passengerType,
-                        )?.label
-                      }
+                      {selectedCarriage.label}
                     </h3>
                     <p className="text-xs text-slate-500">
-                      {
-                        CARRIAGES.find(
-                          (item) => item.value === selectedRule.carriageType,
-                        )?.label
-                      }
+                      {selectedCarriage.hint}
                     </p>
                   </div>
                   {selectedRule.inherited && (
@@ -712,16 +1197,6 @@ export function AdminPricingPanel() {
                     onChange={(value) => updateRule("classSurcharge", value)}
                   />
                   <Field
-                    label="Mức giảm"
-                    suffix="%"
-                    max={100}
-                    step={1}
-                    value={selectedRule.discountPercentage}
-                    onChange={(value) =>
-                      updateRule("discountPercentage", value)
-                    }
-                  />
-                  <Field
                     label="Giá sàn"
                     suffix="đ"
                     value={selectedRule.minPrice}
@@ -736,8 +1211,9 @@ export function AdminPricingPanel() {
                 </div>
 
                 <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-[10px] leading-5 text-blue-800">
-                  Giá, đơn giá cự ly và giới hạn được đồng bộ theo loại chỗ.
-                  Chiết khấu được đồng bộ theo nhóm hành khách.
+                  Các thông số này là giá nền của loại chỗ. Khi lưu, hệ thống
+                  vẫn đồng bộ vào các dòng hành khách nội bộ để tương thích dữ
+                  liệu cũ; ưu đãi được quản lý riêng ở bảng loại vé phía trên.
                 </div>
               </section>
 
@@ -757,7 +1233,7 @@ export function AdminPricingPanel() {
                 <div className="mt-5 flex items-end justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold text-slate-500">
-                      Giá cho 01 hành khách
+                      Giá gốc cho 01 chỗ
                     </p>
                     <p className="mt-1 text-3xl font-black tracking-tight text-[#00375a]">
                       {money(preview.final)}
@@ -776,19 +1252,52 @@ export function AdminPricingPanel() {
                     <span>Sau giới hạn sàn / trần</span>
                     <strong>{money(preview.bounded)}</strong>
                   </div>
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Chiết khấu</span>
-                    <strong>-{money(preview.discount)}</strong>
-                  </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Thuế {taxPercentage || 0}%</span>
                     <strong>+{money(preview.tax)}</strong>
                   </div>
                 </div>
 
+                {ticketTypesQuery.data?.ticketTypes?.filter(
+                  (t) => t.active && t.discountValue > 0,
+                ).length > 0 && (
+                  <>
+                    <div className="my-5 border-t border-dashed border-[#00629d]/20" />
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#00629d]/60">
+                      Ưu đãi theo loại vé
+                    </p>
+                    <div className="space-y-1.5 text-xs">
+                      {ticketTypesQuery.data.ticketTypes
+                        .filter((t) => t.active && t.discountValue > 0)
+                        .map((t) => {
+                          const discountedPrice =
+                            t.discountType === "PERCENTAGE"
+                              ? Math.round(
+                                  preview.final * (1 - t.discountValue / 100),
+                                )
+                              : Math.max(0, preview.final - t.discountValue);
+                          const label =
+                            t.discountType === "FREE"
+                              ? "Miễn phí"
+                              : t.discountType === "PERCENTAGE"
+                                ? `${money(discountedPrice)} (−${t.discountValue}%)`
+                                : `${money(discountedPrice)} (−${money(t.discountValue)})`;
+                          return (
+                            <div
+                              key={t.code}
+                              className="flex justify-between text-slate-600"
+                            >
+                              <span>{t.name}</span>
+                              <strong>{label}</strong>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </>
+                )}
                 <div className="mt-5 rounded-xl bg-white/70 p-3 text-[10px] leading-5 text-slate-500">
                   Giá mở cửa + (cự ly × đơn giá) + phụ thu, sau đó áp dụng giới
-                  hạn, chiết khấu và thuế.
+                  hạn sàn/trần và thuế. Ưu đãi loại vé được tính ở bước đặt vé.
                 </div>
               </section>
             </aside>
@@ -826,6 +1335,13 @@ export function AdminPricingPanel() {
                     const current = configurationQuery.data?.policies.find(
                       (item) => item.policyCode === policyCode,
                     );
+                    if (
+                      current?.active &&
+                      !window.confirm(
+                        "Tạm dừng chính sách này sẽ ngừng áp dụng mức giá hiện tại cho tất cả lịch trình chưa chốt. Tiếp tục?",
+                      )
+                    )
+                      return;
                     activeMutation.mutate({
                       code: policyCode,
                       active: !current?.active,
@@ -880,7 +1396,16 @@ export function AdminPricingPanel() {
                 configurationQuery.data.policies.map((policy) => (
                   <button
                     key={policy.policyCode}
-                    onClick={() => loadPolicy(policy)}
+                    onClick={() => {
+                      if (
+                        dirty &&
+                        !window.confirm(
+                          "Có thay đổi chưa lưu. Chuyển sang phiên bản này sẽ mất các thay đổi. Tiếp tục?",
+                        )
+                      )
+                        return;
+                      loadPolicy(policy);
+                    }}
                     className="flex items-center justify-between rounded-2xl border border-slate-200 p-4 text-left transition hover:border-[#00629d]/30 hover:bg-[#00629d]/[0.03]"
                   >
                     <div>

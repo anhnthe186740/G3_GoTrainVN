@@ -25,7 +25,9 @@ const formatDuration = (minutes) => {
   if (!minutes) return "—";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  if (h > 0 && m > 0) return `${h} giờ ${m} phút`;
+  if (h > 0) return `${h} giờ`;
+  return `${m} phút`;
 };
 
 const STATUS_BADGE = {
@@ -130,6 +132,65 @@ export function RouteScheduleMgmt({ mode }) {
   const [schedules, setSchedules] = useState([]);
   const [loadingRef, setLoadingRef] = useState(true);
 
+  // Pagination and Filter states
+  const [routePage, setRoutePage] = useState(1);
+  const routesPerPage = 10;
+  const [schedPage, setSchedPage] = useState(1);
+  const schedsPerPage = 10;
+
+  const [routeSearch, setRouteSearch] = useState("");
+  const [routeStatusFilter, setRouteStatusFilter] = useState("");
+
+  const filteredRoutes = useMemo(() => {
+    return routes.filter((r) => {
+      const matchesSearch =
+        r.routeName.toLowerCase().includes(routeSearch.toLowerCase()) ||
+        (r.startStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase()) ||
+        (r.endStation?.stationName || "")
+          .toLowerCase()
+          .includes(routeSearch.toLowerCase());
+
+      const matchesStatus =
+        routeStatusFilter === ""
+          ? true
+          : routeStatusFilter === "ACTIVE"
+            ? r.isActive
+            : !r.isActive;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [routes, routeSearch, routeStatusFilter]);
+
+  const totalRoutePages = Math.ceil(filteredRoutes.length / routesPerPage);
+  const currentRoutes = useMemo(() => {
+    const startIdx = (routePage - 1) * routesPerPage;
+    return filteredRoutes.slice(startIdx, startIdx + routesPerPage);
+  }, [filteredRoutes, routePage]);
+
+  const totalSchedPages = Math.ceil(schedules.length / schedsPerPage);
+  const currentSchedules = useMemo(() => {
+    const startIdx = (schedPage - 1) * schedsPerPage;
+    return schedules.slice(startIdx, startIdx + schedsPerPage);
+  }, [schedules, schedPage]);
+
+  useEffect(() => {
+    setRoutePage(1);
+  }, [routeSearch, routeStatusFilter]);
+
+  useEffect(() => {
+    if (routePage > totalRoutePages && totalRoutePages > 0) {
+      setRoutePage(totalRoutePages);
+    }
+  }, [filteredRoutes.length, totalRoutePages, routePage]);
+
+  useEffect(() => {
+    if (schedPage > totalSchedPages && totalSchedPages > 0) {
+      setSchedPage(totalSchedPages);
+    }
+  }, [schedules.length, totalSchedPages, schedPage]);
+
   // Route form state
   const [routeForm, setRouteForm] = useState({
     routeName: "",
@@ -141,6 +202,42 @@ export function RouteScheduleMgmt({ mode }) {
   const [autoCalcDistance, setAutoCalcDistance] = useState(false);
   const [selectedStopIds, setSelectedStopIds] = useState(new Set());
   const [routeSubmitting, setRouteSubmitting] = useState(false);
+
+  // Computed hours & minutes for display based on estimatedDuration (in minutes)
+  const displayHours = routeForm.estimatedDuration
+    ? Math.floor(parseInt(routeForm.estimatedDuration, 10) / 60)
+    : "";
+  const displayMinutes = routeForm.estimatedDuration
+    ? parseInt(routeForm.estimatedDuration, 10) % 60
+    : "";
+
+  const handleHoursChange = (val) => {
+    setAutoCalcDistance(false);
+    if (val === "" && displayMinutes === "") {
+      setRouteForm((prev) => ({ ...prev, estimatedDuration: "" }));
+      return;
+    }
+    const h = val === "" ? 0 : parseInt(val, 10);
+    const m = displayMinutes === "" ? 0 : parseInt(displayMinutes, 10);
+    setRouteForm((prev) => ({
+      ...prev,
+      estimatedDuration: String(h * 60 + m),
+    }));
+  };
+
+  const handleMinutesChange = (val) => {
+    setAutoCalcDistance(false);
+    if (val === "" && displayHours === "") {
+      setRouteForm((prev) => ({ ...prev, estimatedDuration: "" }));
+      return;
+    }
+    const h = displayHours === "" ? 0 : parseInt(displayHours, 10);
+    const m = val === "" ? 0 : parseInt(val, 10);
+    setRouteForm((prev) => ({
+      ...prev,
+      estimatedDuration: String(h * 60 + m),
+    }));
+  };
 
   // Schedule form state
   const [schedForm, setSchedForm] = useState({
@@ -281,6 +378,26 @@ export function RouteScheduleMgmt({ mode }) {
       toast.error("Ga khởi hành và ga kết thúc không được trùng nhau.");
       return;
     }
+
+    // Check if route with same start and end station already exists
+    const duplicateRoute = routes.find(
+      (r) =>
+        r.startStationId === routeForm.startStationId &&
+        r.endStationId === routeForm.endStationId,
+    );
+    if (duplicateRoute) {
+      toast.error(
+        `Tuyến đường từ ga khởi hành đến ga kết thúc đã tồn tại: "${duplicateRoute.routeName}" (kể cả khi đã vô hiệu hóa).`,
+      );
+      return;
+    }
+
+    const duration = parseInt(routeForm.estimatedDuration, 10);
+    if (isNaN(duration) || duration <= 0) {
+      toast.error("Thời gian di chuyển phải lớn hơn 0 phút.");
+      return;
+    }
+
     setRouteSubmitting(true);
     try {
       // Build stations array từ các ga đã chọn, giữ thứ tự theo distanceFromStart
@@ -296,7 +413,7 @@ export function RouteScheduleMgmt({ mode }) {
       const payload = {
         ...routeForm,
         distance: parseInt(routeForm.distance),
-        estimatedDuration: parseInt(routeForm.estimatedDuration),
+        estimatedDuration: duration,
         stations: selectedStops,
       };
       await api.post("/routes/auto-generate", payload);
@@ -362,8 +479,22 @@ export function RouteScheduleMgmt({ mode }) {
       await api.delete(`/routes/${id}`);
       toast.success("Đã vô hiệu hóa tuyến đường.");
       loadAll({ force: true });
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Lỗi khi vô hiệu hóa tuyến đường.",
+      );
+    }
+  };
+
+  // ── Activate/Unlock Route ──────────────────────────────────────
+  const handleActivateRoute = async (id, name) => {
+    if (!window.confirm(`Kích hoạt lại tuyến đường "${name}"?`)) return;
+    try {
+      await api.put(`/routes/${id}/activate`);
+      toast.success("Đã kích hoạt lại tuyến đường thành công!");
+      loadAll({ force: true });
     } catch {
-      toast.error("Lỗi khi xóa tuyến đường.");
+      toast.error("Lỗi khi kích hoạt lại tuyến đường.");
     }
   };
 
@@ -588,38 +719,51 @@ export function RouteScheduleMgmt({ mode }) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-[#3f4852] mb-1 flex items-center gap-1">
-                    Thời gian (phút) *
+                    Thời gian di chuyển *
                     {autoCalcDistance && (
                       <span className="text-[10px] bg-[#cfe5ff] text-[#00629d] px-1.5 py-0.5 rounded-full font-bold">
                         Tự động
                       </span>
                     )}
                   </label>
-                  <div className="relative">
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      value={routeForm.estimatedDuration}
-                      onChange={(e) => {
-                        setRouteForm({
-                          ...routeForm,
-                          estimatedDuration: e.target.value,
-                        });
-                        setAutoCalcDistance(false);
-                      }}
-                      placeholder="Chọn ga để tự động tính"
-                      className={`w-full border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
-                        autoCalcDistance
-                          ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
-                          : "border-[#bec7d4]/50"
-                      }`}
-                    />
-                    {autoCalcDistance && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-[16px] text-[#00629d]">
-                        schedule
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="relative">
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        value={displayHours}
+                        onChange={(e) => handleHoursChange(e.target.value)}
+                        placeholder="Giờ"
+                        className={`w-full border rounded-xl pl-3 pr-8 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
+                          autoCalcDistance
+                            ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
+                            : "border-[#bec7d4]/50"
+                        }`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[#3f4852]/60 font-semibold pointer-events-none">
+                        giờ
                       </span>
-                    )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={displayMinutes}
+                        onChange={(e) => handleMinutesChange(e.target.value)}
+                        placeholder="Phút"
+                        className={`w-full border rounded-xl pl-3 pr-9 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none transition-all ${
+                          autoCalcDistance
+                            ? "border-[#00629d]/40 bg-[#cfe5ff]/10 text-[#00629d] font-semibold"
+                            : "border-[#bec7d4]/50"
+                        }`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[#3f4852]/60 font-semibold pointer-events-none">
+                        phút
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -746,9 +890,35 @@ export function RouteScheduleMgmt({ mode }) {
                 <span className="material-symbols-outlined text-[#00629d]">
                   route
                 </span>
-                Danh Sách Tuyến Đường ({routes.length})
+                Danh Sách Tuyến Đường ({filteredRoutes.length})
               </h3>
             </div>
+
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3 px-6 py-3 bg-[#f2f4f6]/30 border-b border-[#bec7d4]/10">
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#3f4852]/60 text-[18px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo tên tuyến đường, ga đi, ga đến..."
+                  value={routeSearch}
+                  onChange={(e) => setRouteSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white"
+                />
+              </div>
+              <select
+                value={routeStatusFilter}
+                onChange={(e) => setRouteStatusFilter(e.target.value)}
+                className="py-2 px-3 border border-[#bec7d4]/50 rounded-xl text-xs focus:ring-2 focus:ring-[#00a3ff] outline-none bg-white cursor-pointer"
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hoạt động</option>
+                <option value="INACTIVE">Đã vô hiệu hóa</option>
+              </select>
+            </div>
+
             {loadingRef ? (
               <div className="flex items-center justify-center py-16 text-[#3f4852]">
                 <span className="material-symbols-outlined animate-spin mr-2">
@@ -756,12 +926,14 @@ export function RouteScheduleMgmt({ mode }) {
                 </span>
                 Đang tải...
               </div>
-            ) : routes.length === 0 ? (
+            ) : filteredRoutes.length === 0 ? (
               <div className="text-center py-16 text-[#3f4852]/60">
                 <span className="material-symbols-outlined text-5xl block mb-2">
                   route
                 </span>
-                Chưa có tuyến đường nào.
+                {routes.length === 0
+                  ? "Chưa có tuyến đường nào."
+                  : "Không tìm thấy tuyến đường phù hợp."}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -786,7 +958,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {routes.map((r) => (
+                    {currentRoutes.map((r) => (
                       <tr
                         key={r.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -852,21 +1024,96 @@ export function RouteScheduleMgmt({ mode }) {
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <button
-                            onClick={() => handleDeleteRoute(r.id, r.routeName)}
-                            disabled={!r.isActive}
-                            className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg disabled:opacity-30 transition-all"
-                            title="Vô hiệu hóa"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              block
-                            </span>
-                          </button>
+                          {r.isActive ? (
+                            <button
+                              onClick={() =>
+                                handleDeleteRoute(r.id, r.routeName)
+                              }
+                              className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6]/60 rounded-lg transition-all"
+                              title="Vô hiệu hóa"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                block
+                              </span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                handleActivateRoute(r.id, r.routeName)
+                              }
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                              title="Kích hoạt lại"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                check_circle
+                              </span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {totalRoutePages > 1 && (
+              <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                <p className="text-xs text-[#3f4852]">
+                  Trang <span className="font-semibold">{routePage}</span> /{" "}
+                  <span className="font-semibold">{totalRoutePages}</span> (Tổng{" "}
+                  {routes.length} tuyến)
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={routePage === 1}
+                    onClick={() => setRoutePage((p) => Math.max(p - 1, 1))}
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalRoutePages }, (_, idx) => idx + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalRoutePages ||
+                        Math.abs(p - routePage) <= 1,
+                    )
+                    .map((p, idx, arr) => {
+                      const showEllipsisBefore =
+                        idx > 0 && p - arr[idx - 1] > 1;
+                      return (
+                        <Fragment key={p}>
+                          {showEllipsisBefore && (
+                            <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                              ...
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setRoutePage(p)}
+                            className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                              routePage === p
+                                ? "bg-[#00629d] text-white"
+                                : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </Fragment>
+                      );
+                    })}
+                  <button
+                    type="button"
+                    disabled={routePage === totalRoutePages}
+                    onClick={() =>
+                      setRoutePage((p) => Math.min(p + 1, totalRoutePages))
+                    }
+                    className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                  >
+                    Sau
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -985,7 +1232,7 @@ export function RouteScheduleMgmt({ mode }) {
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Khoảng giãn cách dọn dẹp (phút)
+                  Thời gian nghỉ tại mỗi ga (phút)
                 </label>
                 <input
                   type="number"
@@ -1000,7 +1247,8 @@ export function RouteScheduleMgmt({ mode }) {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian tối thiểu giữa 2 chuyến của cùng 1 tàu.
+                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
+                  cuối).
                 </p>
               </div>
 
@@ -1104,7 +1352,7 @@ export function RouteScheduleMgmt({ mode }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#bec7d4]/10">
-                    {schedules.slice(0, 30).map((s) => (
+                    {currentSchedules.map((s) => (
                       <tr
                         key={s.id}
                         className="hover:bg-[#f7f9fb] transition-colors"
@@ -1141,10 +1389,68 @@ export function RouteScheduleMgmt({ mode }) {
                     ))}
                   </tbody>
                 </table>
-                {schedules.length > 30 && (
-                  <p className="text-center text-xs text-[#3f4852]/60 py-3 border-t border-[#bec7d4]/10">
-                    Hiển thị 30/{schedules.length} lịch trình gần nhất.
-                  </p>
+                {totalSchedPages > 1 && (
+                  <div className="px-6 py-4 bg-white border-t border-[#bec7d4]/10 flex items-center justify-between">
+                    <p className="text-xs text-[#3f4852]">
+                      Trang <span className="font-semibold">{schedPage}</span> /{" "}
+                      <span className="font-semibold">{totalSchedPages}</span>{" "}
+                      (Tổng {schedules.length} lịch trình)
+                    </p>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={schedPage === 1}
+                        onClick={() => setSchedPage((p) => Math.max(p - 1, 1))}
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Trước
+                      </button>
+                      {Array.from(
+                        { length: totalSchedPages },
+                        (_, idx) => idx + 1,
+                      )
+                        .filter(
+                          (p) =>
+                            p === 1 ||
+                            p === totalSchedPages ||
+                            Math.abs(p - schedPage) <= 1,
+                        )
+                        .map((p, idx, arr) => {
+                          const showEllipsisBefore =
+                            idx > 0 && p - arr[idx - 1] > 1;
+                          return (
+                            <Fragment key={p}>
+                              {showEllipsisBefore && (
+                                <span className="text-[#3f4852]/60 px-1 text-xs self-center">
+                                  ...
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSchedPage(p)}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                                  schedPage === p
+                                    ? "bg-[#00629d] text-white"
+                                    : "bg-transparent text-[#3f4852] hover:bg-[#f2f4f6]"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </Fragment>
+                          );
+                        })}
+                      <button
+                        type="button"
+                        disabled={schedPage === totalSchedPages}
+                        onClick={() =>
+                          setSchedPage((p) => Math.min(p + 1, totalSchedPages))
+                        }
+                        className="p-1 px-2.5 bg-[#f2f4f6] hover:bg-[#eceef0] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold text-[#3f4852] transition-colors"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

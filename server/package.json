@@ -8,13 +8,15 @@
     "start": "node src/server.js",
     "build": "node -e \"console.log('No build step required for server')\"",
     "lint": "eslint src --ext .js",
-    "test": "node --test test/*.test.js",
+    "test": "node --experimental-test-module-mocks --test test/*.test.js",
+    "test:coverage": "c8 --reporter=text --reporter=html --include=src/services/** --include=src/utils/** node --experimental-test-module-mocks --test test/*.test.js",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:dbpush": "prisma db push --schema prisma/schema.prisma",
     "prisma:repair-timestamps": "node prisma/repair_legacy_timestamps.js",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.2.1",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
@@ -24,9 +26,11 @@
     "express-validator": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "nodemailer": "^9.0.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "c8": "^11.0.0",
     "eslint": "^9.17.0",
     "nodemon": "^3.1.9",
     "prisma": "^6.2.1"

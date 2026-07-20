@@ -106,6 +106,45 @@ test("delay minutes are applied to every journey point", () => {
   assert.equal(segment.arrivalTime.toISOString(), "2026-06-20T02:30:00.000Z");
 });
 
+test("resolveJourneySegment correctly computes duration with intermediate stop layovers", () => {
+  const schedule = scheduleFixture({
+    departureTime: "2026-06-20T01:00:00.000Z",
+    arrivalTime: "2026-06-20T05:00:00.000Z",
+    scheduleStops: [
+      {
+        stationId: "station-b",
+        arrivalTime: "2026-06-20T02:00:00.000Z",
+        departureTime: "2026-06-20T02:15:00.000Z",
+      },
+      {
+        stationId: "station-c",
+        arrivalTime: "2026-06-20T03:30:00.000Z",
+        departureTime: "2026-06-20T03:45:00.000Z",
+      },
+    ],
+  });
+
+  // Segment from A (departure 01:00) to C (arrival 03:30)
+  // Duration should be 03:30 - 01:00 = 150 minutes
+  const segmentAC = resolveJourneySegment(schedule, "station-a", "station-c");
+  assert.equal(segmentAC.duration, 150);
+  assert.equal(
+    segmentAC.departureTime.toISOString(),
+    "2026-06-20T01:00:00.000Z",
+  );
+  assert.equal(segmentAC.arrivalTime.toISOString(), "2026-06-20T03:30:00.000Z");
+
+  // Segment from B (departure 02:15) to D (arrival 05:00)
+  // Duration should be 05:00 - 02:15 = 165 minutes
+  const segmentBD = resolveJourneySegment(schedule, "station-b", "station-d");
+  assert.equal(segmentBD.duration, 165);
+  assert.equal(
+    segmentBD.departureTime.toISOString(),
+    "2026-06-20T02:15:00.000Z",
+  );
+  assert.equal(segmentBD.arrivalTime.toISOString(), "2026-06-20T05:00:00.000Z");
+});
+
 test("departure must be inside the selected day and in the future", () => {
   const range = parseVietnamDateRange("2026-06-20");
   const segment = resolveJourneySegment(

@@ -5,6 +5,9 @@ import { validate } from "../middlewares/validate.js";
 import {
   getMyWallet,
   deposit,
+  getDepositStatus,
+  getPendingDeposit,
+  cancelDeposit,
   withdraw,
   getMyTransactions,
   getAdminStats,
@@ -36,6 +39,18 @@ walletRoutes.post(
   ],
   validate,
   deposit,
+);
+
+walletRoutes.get("/deposit/pending", authMiddleware, getPendingDeposit);
+walletRoutes.get(
+  "/deposit/:transactionId/status",
+  authMiddleware,
+  getDepositStatus,
+);
+walletRoutes.post(
+  "/deposit/:transactionId/cancel",
+  authMiddleware,
+  cancelDeposit,
 );
 
 walletRoutes.post(
