@@ -227,9 +227,7 @@ export function AdminDashboard() {
   };
 
   const handleAiAssistant = () => {
-    toast.info(
-      "Trợ lý AI đang được nâng cấp hệ thống dữ liệu. Vui lòng thử lại sau!",
-    );
+    window.dispatchEvent(new CustomEvent("open-chatbot"));
   };
 
   const handleActionClick = (action, code) => {

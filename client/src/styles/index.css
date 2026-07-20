@@ -81,4 +81,33 @@ body {
   .animate-float {
     animation: float 4s ease-in-out infinite;
   }
+
+  @keyframes scalePulse {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
+    }
+  }
+
+  .animate-scale-pulse {
+    animation: scalePulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes pingRipples {
+    0% {
+      transform: scale(1);
+      opacity: 0.65;
+    }
+    100% {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
+
+  .animate-ping-ripples {
+    animation: pingRipples 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
 }

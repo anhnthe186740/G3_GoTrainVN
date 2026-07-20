@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { useAuth } from "../../hooks/useAuth";
+import { ChatbotWidget } from "../ui/ChatbotWidget";
 
 export function AppLayout() {
   const location = useLocation();
@@ -17,6 +18,7 @@ export function AppLayout() {
     return (
       <div className="min-h-screen bg-background text-on-surface font-body-md">
         <Outlet />
+        <ChatbotWidget />
       </div>
     );
   }
@@ -39,6 +41,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       )}
+      <ChatbotWidget />
     </div>
   );
 }
