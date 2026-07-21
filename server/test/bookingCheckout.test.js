@@ -141,6 +141,11 @@ function mockPayos(t, overrides = {}) {
         ...overrides,
       }),
       verifyPayosSignature: () => true,
+      getPayosPaymentRequest: async () => ({
+        id: "pl-mock-1",
+        status: "PENDING",
+        transactions: [],
+      }),
     },
   });
 }

@@ -10,6 +10,7 @@ import { getJourney, getSession } from "./seatSelection.service.js";
 import {
   createPayosPaymentRequest,
   verifyPayosSignature,
+  getPayosPaymentRequest,
 } from "./payos.service.js";
 import { awardLoyaltyPointsAndCheckTier } from "./promotion.service.js";
 import { sendEmail } from "./email.service.js";
@@ -933,7 +934,23 @@ async function matchCustomerUsers(passengers) {
 const MAX_TOTAL_PASSENGERS = 8;
 
 export async function checkoutBooking(identity, payload) {
+
+  if (identity.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: identity.userId },
+      select: { isActive: true, lockReason: true },
+    });
+    if (user && user.isActive === false) {
+      throw httpError(
+        403,
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Vi phạm điều khoản dịch vụ"}. Bạn không thể thực hiện đặt vé.`,
+      );
+    }
+  }
+
+
   const isStaffCounter = payload.salesChannel === "STAFF_COUNTER";
+
   if (
     !Array.isArray(payload.passengers) ||
     payload.passengers.length < 1 ||
@@ -1348,6 +1365,34 @@ export async function getBookingPaymentStatus(identity, bookingId) {
     include: { passengers: true },
   });
   if (!booking) throw httpError(404, "Không tìm thấy đơn đặt vé.");
+
+  if (
+    booking.paymentMethod === "BANK_QR" &&
+    booking.paymentStatus === "PENDING" &&
+    booking.payosPaymentLinkId
+  ) {
+    try {
+      const payosData = await getPayosPaymentRequest(
+        booking.payosPaymentLinkId,
+      );
+      if (payosData && payosData.status === "PAID") {
+        const completed = await prisma.$transaction((tx) =>
+          completePayosBooking(tx, booking, {
+            paymentLinkId: payosData.id,
+            reference: payosData.transactions?.[0]?.reference || payosData.id,
+          }),
+        );
+        sendBookingEmail(completed.id, "SUCCESS");
+        return completed;
+      }
+    } catch (error) {
+      console.error(
+        "Failed to sync PayOS status in getBookingPaymentStatus:",
+        error,
+      );
+    }
+  }
+
   return booking;
 }
 
@@ -1452,7 +1497,9 @@ export async function handlePayosWebhook(payload) {
   });
 
   if (!booking) {
-    return { ignored: true, reason: "booking_not_found", data };
+    // Fallback: try finding a matching wallet deposit transaction
+    const { handleWalletDepositWebhook } = await import("./wallet.service.js");
+    return handleWalletDepositWebhook(data);
   }
   if (booking.paymentStatus === "COMPLETED") {
     return { ignored: false, duplicate: true, booking };

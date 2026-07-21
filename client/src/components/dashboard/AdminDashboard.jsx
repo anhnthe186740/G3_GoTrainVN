@@ -227,9 +227,7 @@ export function AdminDashboard() {
   };
 
   const handleAiAssistant = () => {
-    toast.info(
-      "Trợ lý AI đang được nâng cấp hệ thống dữ liệu. Vui lòng thử lại sau!",
-    );
+    window.dispatchEvent(new CustomEvent("open-chatbot"));
   };
 
   const handleActionClick = (action, code) => {
@@ -1266,30 +1264,30 @@ export function AdminDashboard() {
                 © 2026 GoTrain VN. Tất cả quyền được bảo lưu.
               </p>
               <div className="flex gap-6">
-                <a
+                <Link
                   className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
-                  href="#"
+                  to="/"
                 >
                   Về Chúng Tôi
-                </a>
-                <a
+                </Link>
+                <Link
                   className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
-                  href="#"
+                  to="/privacy"
                 >
                   Chính Sách
-                </a>
-                <a
+                </Link>
+                <Link
                   className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
-                  href="#"
+                  to="/"
                 >
                   Hỗ Trợ
-                </a>
-                <a
+                </Link>
+                <Link
                   className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
-                  href="#"
+                  to="/terms"
                 >
                   Điều Khoản
-                </a>
+                </Link>
               </div>
             </div>
           </footer>

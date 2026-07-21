@@ -176,7 +176,7 @@ export function StaffTicketCheckInPanel() {
       setResult(null);
       cameraTriggeredRef.current = false;
       handleStartScan();
-    }, 2500);
+    }, 20000);
   };
 
   const handleCheckInTicket = async (code) => {

@@ -9,6 +9,7 @@ import {
 } from "./realtime/seatRealtime.js";
 import { cleanupExpiredHolds } from "./services/seatSelection.service.js";
 import { cleanupExpiredBookings } from "./services/bookingCheckout.service.js";
+import { cleanupExpiredDeposits } from "./services/wallet.service.js";
 import { startAutoScheduleCron } from "./services/autoSchedule.service.js";
 
 const PORT = process.env.PORT || 5000;
@@ -42,8 +43,9 @@ async function startServer() {
   const bookingExpiryTimer = setInterval(async () => {
     try {
       await cleanupExpiredBookings();
+      await cleanupExpiredDeposits();
     } catch (error) {
-      console.error("Failed to clean expired bookings", error);
+      console.error("Failed to clean expired bookings or deposits", error);
     }
   }, 60_000);
   bookingExpiryTimer.unref();
