@@ -318,9 +318,9 @@ export async function getChatbotResponse(message, userContext = {}) {
         }
       });
 
+      dbContext += `\n[THÔNG TIN CHUYẾN TÀU THỰC TẾ TRÊN HỆ THỐNG]\n`;
       if (relevantSchedules.length > 0) {
-        dbContext += `\n[THÔNG TIN CHUYẾN TÀU THỰC TẾ TRÊN HỆ THỐNG]\n`;
-        relevantSchedules.slice(0, 5).forEach((sch) => {
+        relevantSchedules.slice(0, 8).forEach((sch) => {
           dbContext += `- Tàu ${sch.train.trainCode} (${sch.train.trainName}): Tuyến ${sch.route.routeName}.\n`;
           dbContext += `  + Ga bắt đầu: ${sch.startStation.stationName} -> Ga kết thúc: ${sch.endStation.stationName}.\n`;
           dbContext += `  + Giờ khởi hành: ${new Date(sch.departureTime).toLocaleString("vi-VN")}, Giờ đến: ${new Date(sch.arrivalTime).toLocaleString("vi-VN")}.\n`;
@@ -332,7 +332,72 @@ export async function getChatbotResponse(message, userContext = {}) {
             return `${c.carriageType}: còn ${total - booked}/${total} chỗ trống`;
           });
           dbContext += `  + Ghế trống: ${availabilities.join(", ")}.\n`;
+
+          const stopsSorted = [...(sch.scheduleStops || [])].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
+          const stopsStr = stopsSorted
+            .map((s) => s.station.stationName)
+            .join(" -> ");
+          if (stopsStr) {
+            dbContext += `  + Các ga trung gian đi qua và dừng đỗ: ${stopsStr}.\n`;
+          } else {
+            dbContext += `  + Các ga trung gian đi qua và dừng đỗ: Không có (Chạy suốt).\n`;
+          }
         });
+      } else {
+        const routeStr = toStation
+          ? `từ ga ${fromStation.stationName} đi ga ${toStation.stationName}`
+          : `đi từ ga ${fromStation.stationName}`;
+        const dateStr = targetDate
+          ? `ngày ${targetDate.toLocaleDateString("vi-VN")}`
+          : "ngày hôm nay";
+        dbContext += `Không có chuyến tàu nào hoạt động trực tiếp cho lộ trình ${routeStr} vào ${dateStr}.\n`;
+      }
+    } else if (targetDate) {
+      // Người dùng chỉ hỏi về ngày mà không cung cấp ga cụ thể (Ví dụ: "Hôm nay có chuyến tàu nào chạy?")
+      const dayStart = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        0,
+        0,
+        0,
+      );
+      const dayEnd = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        targetDate.getDate(),
+        23,
+        59,
+        59,
+      );
+
+      const schedules = await prisma.schedule.findMany({
+        where: {
+          status: { in: ["ACTIVE", "DELAYED"] },
+          departureTime: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+        },
+        include: {
+          train: true,
+          route: true,
+          startStation: true,
+          endStation: true,
+        },
+        orderBy: { departureTime: "asc" },
+        take: 20,
+      });
+
+      dbContext += `\n[DANH SÁCH CÁC CHUYẾN TÀU HOẠT ĐỘNG TRONG NGÀY ${targetDate.toLocaleDateString("vi-VN")}]\n`;
+      if (schedules.length > 0) {
+        schedules.forEach((sch) => {
+          dbContext += `- Tàu ${sch.train?.trainCode} (${sch.train?.trainName}): Ga ${sch.startStation?.stationName} -> Ga ${sch.endStation?.stationName}. Giờ khởi hành: ${new Date(sch.departureTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}. Trạng thái: ${sch.status === "ACTIVE" ? "Đúng giờ" : "Trễ " + sch.delayMinutes + " phút"}.\n`;
+        });
+      } else {
+        dbContext += `Không có chuyến tàu nào hoạt động trong ngày này trên toàn hệ thống.\n`;
       }
     }
 
@@ -374,9 +439,9 @@ export async function getChatbotResponse(message, userContext = {}) {
   try {
     const ai = new GoogleGenerativeAI(apiKey);
 
-    // Sử dụng model gemini-3.5-flash tốc độ cao
+    // Sử dụng model gemini-3.1-flash-lite (cùng hệ 3.x tương thích API key, chạy nhanh và không bị nghẽn 503)
     const model = ai.getGenerativeModel({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.1-flash-lite",
       systemInstruction: SYSTEM_INSTRUCTION,
     });
 
