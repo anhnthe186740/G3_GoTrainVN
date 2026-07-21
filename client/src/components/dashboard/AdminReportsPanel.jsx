@@ -120,60 +120,43 @@ function BarChart({ data, maxValue, compact = false }) {
   );
 }
 
-const MOCK_STATS = {
+const DEFAULT_STATS = {
   overview: {
-    totalBookings: 8432,
-    confirmedBookings: 7890,
-    cancelledBookings: 421,
-    pendingBookings: 121,
-    totalRevenue: 1240000000,
-    netRevenue: 1115000000,
-    totalRefunds: 125000000,
-    totalPassengers: 12847,
-    avgBookingValue: 820000,
+    totalBookings: 0,
+    confirmedBookings: 0,
+    cancelledBookings: 0,
+    pendingBookings: 0,
+    totalRevenue: 0,
+    netRevenue: 0,
+    totalRefunds: 0,
+    totalPassengers: 0,
+    avgBookingValue: 0,
   },
   adminOverview: {
-    totalUsers: 128,
-    totalCustomers: 121,
-    totalAdmins: 7,
-    totalTrains: 42,
-    totalRoutes: 18,
-    totalSchedules: 326,
-    activeSchedules: 301,
-    delayedSchedules: 4,
-    totalWalletBalance: 920000000,
-    pendingWithdrawals: 6,
-    refundThisMonth: 125000000,
+    totalUsers: 0,
+    totalCustomers: 0,
+    totalAdmins: 0,
+    totalTrains: 0,
+    totalRoutes: 0,
+    totalSchedules: 0,
+    activeSchedules: 0,
+    delayedSchedules: 0,
+    totalWalletBalance: 0,
+    pendingWithdrawals: 0,
+    refundThisMonth: 0,
   },
-  monthly: [
-    { label: "T1", value: 142000000 },
-    { label: "T2", value: 98000000 },
-    { label: "T3", value: 165000000 },
-    { label: "T4", value: 190000000 },
-    { label: "T5", value: 210000000 },
-    { label: "T6", value: 240000000 },
-  ],
-  topRoutes: [
-    { name: "Hà Nội → Đà Nẵng", bookings: 2341, revenue: 320000000 },
-    { name: "TP.HCM → Nha Trang", bookings: 1892, revenue: 280000000 },
-    { name: "Hà Nội → Lào Cai", bookings: 1203, revenue: 180000000 },
-    { name: "Huế → Quy Nhơn", bookings: 987, revenue: 145000000 },
-    { name: "Đà Nẵng → TP.HCM", bookings: 756, revenue: 120000000 },
-  ],
-  trainTypes: [
-    { name: "Tàu Nhanh SE", count: 4120, pct: 48.9 },
-    { name: "Tàu Thường TN", count: 2310, pct: 27.4 },
-    { name: "Tàu Đêm", count: 1456, pct: 17.3 },
-    { name: "Tàu Đặc Biệt", count: 546, pct: 6.4 },
-  ],
+  monthly: [],
+  revenueSeries: [],
+  topRoutes: [],
+  trainTypes: [],
   bookingByDay: [
-    { label: "T2", value: 1230 },
-    { label: "T3", value: 980 },
-    { label: "T4", value: 1450 },
-    { label: "T5", value: 1890 },
-    { label: "T6", value: 2100 },
-    { label: "T7", value: 2450 },
-    { label: "CN", value: 1980 },
+    { label: "T2", value: 0 },
+    { label: "T3", value: 0 },
+    { label: "T4", value: 0 },
+    { label: "T5", value: 0 },
+    { label: "T6", value: 0 },
+    { label: "T7", value: 0 },
+    { label: "CN", value: 0 },
   ],
 };
 
@@ -184,11 +167,10 @@ export function AdminReportsPanel() {
 
   useEffect(() => {
     setLoading(true);
-    // Try to fetch from API, fallback to mock
     api
       .get("/bookings/admin/stats", { params: { period } })
-      .then(({ data }) => setStats(data.stats || MOCK_STATS))
-      .catch(() => setStats(MOCK_STATS))
+      .then(({ data }) => setStats(data.stats || DEFAULT_STATS))
+      .catch(() => setStats(DEFAULT_STATS))
       .finally(() => setLoading(false));
   }, [period]);
 
@@ -201,18 +183,18 @@ export function AdminReportsPanel() {
     );
   }
 
-  const s = stats?.overview || MOCK_STATS.overview;
-  const admin = stats?.adminOverview || MOCK_STATS.adminOverview;
+  const s = stats?.overview || DEFAULT_STATS.overview;
+  const admin = stats?.adminOverview || DEFAULT_STATS.adminOverview;
   const revenueSeries =
-    stats?.revenueSeries || stats?.monthly || MOCK_STATS.monthly;
-  const topRoutes = stats?.topRoutes || MOCK_STATS.topRoutes;
-  const trainTypes = stats?.trainTypes || MOCK_STATS.trainTypes;
-  const byDay = stats?.bookingByDay || MOCK_STATS.bookingByDay;
+    stats?.revenueSeries || stats?.monthly || DEFAULT_STATS.monthly;
+  const topRoutes = stats?.topRoutes || DEFAULT_STATS.topRoutes;
+  const trainTypes = stats?.trainTypes || DEFAULT_STATS.trainTypes;
+  const byDay = stats?.bookingByDay || DEFAULT_STATS.bookingByDay;
   const currentPeriod =
     periodLabels[stats?.period || period] || periodLabels.monthly;
 
   const maxRevenue = Math.max(...revenueSeries.map((m) => m.value), 0);
-  const maxByDay = Math.max(...byDay.map((d) => d.value));
+  const maxByDay = Math.max(...byDay.map((d) => d.value), 0);
   const totalBookings = Math.max(s.totalBookings || 0, 1);
   const circumference = 251.2;
   const confirmedArc = (s.confirmedBookings / totalBookings) * circumference;

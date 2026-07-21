@@ -406,6 +406,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     totalCustomers,
     totalAdmins,
     totalTrains,
+    activeTrainsCount,
     totalRoutes,
     totalSchedules,
     activeSchedules,
@@ -413,10 +414,20 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     totalWalletBalance,
     pendingWithdrawals,
     refundThisMonth,
+    allRoutesFromDb,
   ] = await Promise.all([
     prisma.booking.findMany({
       orderBy: { createdAt: "asc" },
       include: {
+        fromStation: { select: { stationName: true } },
+        toStation: { select: { stationName: true } },
+        passengers: {
+          include: {
+            seat: {
+              include: { carriage: true },
+            },
+          },
+        },
         schedule: {
           include: {
             route: {
@@ -454,6 +465,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
       },
     }),
     prisma.train.count(),
+    prisma.train.count({ where: { status: "ACTIVE" } }),
     prisma.route.count({ where: { isActive: true } }),
     prisma.schedule.count(),
     prisma.schedule.count({ where: { status: "ACTIVE" } }),
@@ -469,6 +481,14 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
         createdAt: { gte: startOfMonth },
       },
       _sum: { amount: true },
+    }),
+    prisma.route.findMany({
+      where: { isActive: true },
+      take: 5,
+      include: {
+        startStation: { select: { stationName: true } },
+        endStation: { select: { stationName: true } },
+      },
     }),
   ]);
 
@@ -560,8 +580,23 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     }
   }
 
+  const mapCarriageTypeName = (rawType) => {
+    if (!rawType) return "Ghế mềm điều hòa (AC Soft)";
+    const upper = String(rawType).toUpperCase();
+    if (upper.includes("SLEEPER") || upper.includes("NẰM"))
+      return "Giường nằm (Sleeper)";
+    if (upper.includes("AC") || upper.includes("SOFT") || upper.includes("MỀM"))
+      return "Ghế mềm điều hòa (AC Soft)";
+    if (upper.includes("HARD") || upper.includes("CỨNG"))
+      return "Ghế cứng (Hard Seat)";
+    return "Ghế tiêu chuẩn (Standard)";
+  };
+
   for (const booking of completedReportBookings) {
     const route =
+      (booking.fromStation?.stationName &&
+        booking.toStation?.stationName &&
+        `${booking.fromStation.stationName} → ${booking.toStation.stationName}`) ||
       booking.schedule?.route?.routeName ||
       [
         booking.schedule?.route?.startStation?.stationName,
@@ -577,7 +612,11 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
       totalCapacity: 0,
       scheduleIds: new Set(),
     };
-    const ticketCount = booking.bookingDetails?.length || 0;
+    const ticketCount =
+      booking.passengers?.length ||
+      booking.bookingDetails?.length ||
+      booking.totalPassengers ||
+      1;
     routeStats.bookings += ticketCount;
     routeStats.revenue += booking.totalAmount || 0;
 
@@ -587,15 +626,59 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
     }
     routeMap.set(route, routeStats);
 
-    for (const detail of booking.bookingDetails || []) {
-      const type = detail.carriageType || "Chưa xác định";
-      const typeStats = carriageMap.get(type) || {
-        name: type,
-        count: 0,
-      };
-      typeStats.count += 1;
-      carriageMap.set(type, typeStats);
+    // Collect carriage types from passengers or bookingDetails
+    if (booking.passengers && booking.passengers.length > 0) {
+      for (const passenger of booking.passengers) {
+        const rawType = passenger.seat?.carriage?.carriageType || "AC_SEAT";
+        const typeName = mapCarriageTypeName(rawType);
+        const typeStats = carriageMap.get(typeName) || {
+          name: typeName,
+          count: 0,
+        };
+        typeStats.count += 1;
+        carriageMap.set(typeName, typeStats);
+      }
+    } else if (booking.bookingDetails && booking.bookingDetails.length > 0) {
+      for (const detail of booking.bookingDetails) {
+        const typeName = mapCarriageTypeName(detail.carriageType);
+        const typeStats = carriageMap.get(typeName) || {
+          name: typeName,
+          count: 0,
+        };
+        typeStats.count += 1;
+        carriageMap.set(typeName, typeStats);
+      }
     }
+  }
+
+  // Fallback: If no completed bookings yielded route data, populate top routes from DB active routes
+  if (routeMap.size === 0 && allRoutesFromDb.length > 0) {
+    for (const r of allRoutesFromDb) {
+      const name = `${r.startStation?.stationName || "Ga đi"} → ${r.endStation?.stationName || "Ga đến"}`;
+      routeMap.set(name, {
+        name,
+        bookings: 0,
+        revenue: 0,
+        totalCapacity: 100,
+        scheduleIds: new Set(),
+      });
+    }
+  }
+
+  // Fallback carriage types if empty
+  if (carriageMap.size === 0) {
+    carriageMap.set("Giường nằm (Sleeper)", {
+      name: "Giường nằm (Sleeper)",
+      count: 0,
+    });
+    carriageMap.set("Ghế mềm điều hòa (AC Soft)", {
+      name: "Ghế mềm điều hòa (AC Soft)",
+      count: 0,
+    });
+    carriageMap.set("Ghế cứng (Hard Seat)", {
+      name: "Ghế cứng (Hard Seat)",
+      count: 0,
+    });
   }
 
   const carriageTotal = [...carriageMap.values()].reduce(
@@ -718,6 +801,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
         totalCustomers,
         totalAdmins,
         totalTrains,
+        activeTrains: activeTrainsCount,
         totalRoutes,
         totalSchedules,
         activeSchedules,
