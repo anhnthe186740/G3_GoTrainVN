@@ -332,6 +332,18 @@ export async function getChatbotResponse(message, userContext = {}) {
             return `${c.carriageType}: còn ${total - booked}/${total} chỗ trống`;
           });
           dbContext += `  + Ghế trống: ${availabilities.join(", ")}.\n`;
+
+          const stopsSorted = [...(sch.scheduleStops || [])].sort(
+            (a, b) => a.stopOrder - b.stopOrder,
+          );
+          const stopsStr = stopsSorted
+            .map((s) => s.station.stationName)
+            .join(" -> ");
+          if (stopsStr) {
+            dbContext += `  + Các ga trung gian đi qua và dừng đỗ: ${stopsStr}.\n`;
+          } else {
+            dbContext += `  + Các ga trung gian đi qua và dừng đỗ: Không có (Chạy suốt).\n`;
+          }
         });
       } else {
         const routeStr = toStation
