@@ -446,19 +446,17 @@ export async function cancelBookingTickets({
     throw httpError(409, "Không có số tiền hợp lệ để hoàn cho các vé đã chọn.");
   }
 
-  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
-  const isGuestRequest = requesterType === "GUEST";
-  const normalizedBankInfo = isGuestRequest
-    ? normalizeGuestBankInfo(bankInfo)
-    : {
-        bankName: bankInfo?.bankName?.trim() || null,
-        bankAccount:
-          String(bankInfo?.bankAccount || "").replace(/\s/g, "") || null,
-        accountHolder: bankInfo?.accountHolder?.trim() || null,
-      };
-  if (isGuestRequest) {
-    method = "BANK_TRANSFER";
+  if (!booking.userId) {
+    throw httpError(
+      400,
+      "Hệ thống hiện chỉ hỗ trợ hoàn tiền về ví điện tử GoTrain. Vé của bạn được đặt dưới dạng khách vãng lai (không có tài khoản), vui lòng liên hệ CSKH để được hỗ trợ hoàn tiền.",
+    );
   }
+
+  // Force method to WALLET since we only support wallet refunds now
+  method = "WALLET";
+
+  const requesterType = identity?.userId ? "REGISTERED" : "GUEST";
 
   const requestReason = reason || "Yêu cầu hủy vé trực tuyến";
 
@@ -477,9 +475,9 @@ export async function cancelBookingTickets({
     requestReason,
     refundAmount: totalRefundAmount,
     refundMethod: method,
-    refundBankName: normalizedBankInfo.bankName,
-    refundBankAccount: normalizedBankInfo.bankAccount,
-    refundAccountHolder: normalizedBankInfo.accountHolder,
+    refundBankName: null,
+    refundBankAccount: null,
+    refundAccountHolder: null,
     rejectionReason: null,
     approvedBy: null,
     approvedAt: null,
@@ -493,6 +491,7 @@ export async function cancelBookingTickets({
         data: { bookingId, ...requestData },
       });
 
+  request.booking = booking;
   const approvedResult = await processApprovedCancellation(request);
 
   return {

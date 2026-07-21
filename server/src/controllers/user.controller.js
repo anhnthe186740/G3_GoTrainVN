@@ -19,6 +19,9 @@ export const profile = asyncHandler(async (req, res) => {
       isActive: true,
       createdAt: true,
       updatedAt: true,
+      bankName: true,
+      bankAccount: true,
+      accountHolder: true,
     },
   });
   res.json({ user });
@@ -33,6 +36,9 @@ export const updateProfile = asyncHandler(async (req, res) => {
     dateOfBirth,
     gender,
     address,
+    bankName,
+    bankAccount,
+    accountHolder,
   } = req.body;
 
   const dataToUpdate = {};
@@ -44,6 +50,9 @@ export const updateProfile = asyncHandler(async (req, res) => {
     dataToUpdate.nationalIdType = nationalIdType;
   if (address !== undefined) dataToUpdate.address = address;
   if (gender !== undefined) dataToUpdate.gender = gender;
+  if (bankName !== undefined) dataToUpdate.bankName = bankName;
+  if (bankAccount !== undefined) dataToUpdate.bankAccount = bankAccount;
+  if (accountHolder !== undefined) dataToUpdate.accountHolder = accountHolder;
 
   if (dateOfBirth !== undefined) {
     dataToUpdate.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;

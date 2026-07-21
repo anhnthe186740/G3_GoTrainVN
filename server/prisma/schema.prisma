@@ -11,6 +11,10 @@ generator client {
   output   = "../../node_modules/@gotrain/prisma-client-v2"
 }
 
+generator dbml {
+  provider = "prisma-dbml-generator"
+}
+
 // ============================================
 // 1. USER & AUTHENTICATION ENTITIES (Simplified)
 // ============================================
@@ -42,6 +46,9 @@ model User {
   seatHoldSessions      SeatHoldSession[]
   seatHolds             SeatHold[]
   approvedCancellations CancellationRequest[]
+  bankAccount           String?
+  bankName              String?
+  accountHolder         String?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   isActive              Boolean               @default(true)

@@ -1,0 +1,784 @@
+//// ------------------------------------------------------
+//// THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+//// ------------------------------------------------------
+
+Table User {
+  id String [pk]
+  email String [unique, not null]
+  password String [not null]
+  fullName String [not null]
+  phoneNumber String [not null]
+  nationalId String
+  nationalIdType String
+  nationalIdExpiry DateTime
+  address String
+  dateOfBirth DateTime
+  gender String
+  userType String [not null, default: 'CUSTOMER']
+  loyaltyPoints Int [not null, default: 0]
+  wallet Wallet
+  bookings Booking [not null]
+  passengers Passenger [not null]
+  notifications Notification [not null]
+  reviews Review [not null]
+  searchHistory SearchHistory [not null]
+  loyaltyHistory LoyaltyPoint [not null]
+  adminLogs AdminLog [not null]
+  securityLogs SecurityLog [not null]
+  selectedSeats Seat [not null]
+  seatHoldSessions SeatHoldSession [not null]
+  seatHolds SeatHold [not null]
+  approvedCancellations CancellationRequest [not null]
+  bankAccount String
+  bankName String
+  accountHolder String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  isActive Boolean [not null, default: true]
+  lockReason String
+  deletedAt DateTime
+  lastLogin DateTime
+  resetPasswordToken String
+  resetPasswordExpires DateTime
+}
+
+Table LoyaltyPoint {
+  id String [pk]
+  userId String [not null]
+  user User [not null]
+  points Int [not null]
+  type String [not null]
+  source String [not null]
+  relatedBookingId String
+  expiresAt DateTime
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Wallet {
+  id String [pk]
+  userId String [unique, not null]
+  user User [not null]
+  balance Float [not null, default: 0]
+  currency String [not null, default: 'VND']
+  transactions WalletTransaction [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table WalletTransaction {
+  id String [pk]
+  walletId String [not null]
+  wallet Wallet [not null]
+  type String [not null]
+  amount Float [not null]
+  description String
+  relatedBookingId String
+  relatedBooking Booking
+  status String [not null, default: 'PENDING']
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Train {
+  id String [pk]
+  trainName String [unique, not null]
+  trainCode String [unique, not null]
+  trainType String [not null]
+  operatingCompany String
+  totalCarriages Int [not null]
+  carriages Carriage [not null]
+  schedules Schedule [not null]
+  routeTemplates RouteTemplate [not null]
+  totalCapacity Int [not null]
+  status String [not null, default: 'ACTIVE']
+  maintenance VehicleMaintenance [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table VehicleMaintenance {
+  id String [pk]
+  trainId String [not null]
+  train Train [not null]
+  maintenanceType String [not null]
+  description String [not null]
+  startDate DateTime [not null]
+  endDate DateTime [not null]
+  affectedScheduleIds String[] [not null]
+  status String [not null, default: 'SCHEDULED']
+  notes String
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Carriage {
+  id String [pk]
+  trainId String [not null]
+  train Train [not null]
+  carriageNumber Int [not null]
+  carriageType String [not null]
+  totalSeats Int [not null]
+  seats Seat [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+
+  indexes {
+    (trainId, carriageNumber) [unique]
+  }
+}
+
+Table Seat {
+  id String [pk]
+  carriageId String [not null]
+  carriage Carriage [not null]
+  seatNumber String [not null]
+  seatType String [not null]
+  status String [not null, default: 'AVAILABLE']
+  basePrice Float [not null]
+  selectedBy String
+  selectedUser User
+  selectedAt DateTime
+  selectionExpiry DateTime
+  blockReason String
+  blockUntil DateTime
+  bookings BookingDetail [not null]
+  passengers Passenger [not null]
+  seatHolds SeatHold [not null]
+  createdAt DateTime [default: `now()`, not null]
+
+  indexes {
+    (carriageId, seatNumber) [unique]
+  }
+}
+
+Table Station {
+  id String [pk]
+  stationCode String [unique, not null]
+  stationName String [not null]
+  city String [not null]
+  province String [not null]
+  country String [not null, default: 'Vietnam']
+  latitude Float
+  longitude Float
+  isActive Boolean [not null, default: true]
+  schedulesAsStart Schedule [not null]
+  schedulesAsEnd Schedule [not null]
+  scheduleStops ScheduleStop [not null]
+  routesAsStart Route [not null]
+  routesAsEnd Route [not null]
+  bookingsFrom Booking [not null]
+  bookingsTo Booking [not null]
+  bookingsReturnFrom Booking [not null]
+  bookingsReturnTo Booking [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Route {
+  id String [pk]
+  routeName String [not null]
+  startStationId String [not null]
+  startStation Station [not null]
+  endStationId String [not null]
+  endStation Station [not null]
+  distance Int [not null]
+  estimatedDuration Int [not null]
+  stations RouteStation[] [not null]
+  schedules Schedule [not null]
+  routeTemplates RouteTemplate [not null]
+  pricingPolicies PricingPolicy [not null]
+  popularity Int [not null, default: 0]
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+
+  indexes {
+    (startStationId, endStationId) [unique]
+  }
+}
+
+Table Schedule {
+  id String [pk]
+  trainId String [not null]
+  train Train [not null]
+  routeId String [not null]
+  route Route [not null]
+  startStationId String [not null]
+  startStation Station [not null]
+  endStationId String [not null]
+  endStation Station [not null]
+  departureTime DateTime [not null]
+  arrivalTime DateTime [not null]
+  distance Int
+  duration Int
+  scheduleStops ScheduleStop [not null]
+  bookings Booking [not null]
+  returnBookings Booking [not null]
+  pricing PricingPolicy [not null]
+  availabilitySnapshots AvailabilitySnapshot [not null]
+  bookingDetails BookingDetail [not null]
+  seatHolds SeatHold [not null]
+  status String [not null, default: 'ACTIVE']
+  delayMinutes Int [not null, default: 0]
+  notes String
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+
+  indexes {
+    (trainId, startStationId, endStationId, departureTime) [unique]
+  }
+}
+
+Table ScheduleStop {
+  id String [pk]
+  scheduleId String [not null]
+  schedule Schedule [not null]
+  stationId String [not null]
+  station Station [not null]
+  stopOrder Int [not null]
+  arrivalTime DateTime [not null]
+  departureTime DateTime
+
+  indexes {
+    (scheduleId, stationId) [unique]
+  }
+}
+
+Table RouteTemplate {
+  id String [pk]
+  routeId String [not null]
+  route Route [not null]
+  trainId String [not null]
+  train Train [not null]
+  departureTimes String[] [not null]
+  bufferMinutes Int [not null, default: 60]
+  isActive Boolean [not null, default: true]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+
+  indexes {
+    (routeId, trainId) [unique]
+  }
+}
+
+Table PricingPolicy {
+  id String [pk]
+  policyCode String
+  policyName String
+  scopeType String [not null, default: 'SCHEDULE']
+  scopeKey String
+  routeId String
+  route Route
+  scheduleId String
+  schedule Schedule
+  passengerType String [not null]
+  carriageType String [not null]
+  basePrice Float [not null]
+  pricePerKm Float
+  classSurcharge Float [not null, default: 0]
+  discountPercentage Float [not null, default: 0]
+  taxPercentage Float [not null, default: 0]
+  minPrice Float
+  maxPrice Float
+  active Boolean [not null, default: true]
+  effectiveFrom DateTime [not null]
+  effectiveTo DateTime
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table TicketType {
+  id String [pk]
+  code String [unique, not null]
+  name String [not null]
+  shortLabel String
+  description String
+  discountType String [not null, default: 'PERCENTAGE']
+  discountValue Float [not null, default: 0]
+  minAge Int
+  maxAgeExclusive Int
+  seatMode String [not null, default: 'REQUIRED']
+  publicSelectable Boolean [not null, default: true]
+  autoApply Boolean [not null, default: false]
+  requiresDocument Boolean [not null, default: true]
+  requiresStudent Boolean [not null, default: false]
+  priority Int [not null, default: 100]
+  active Boolean [not null, default: true]
+  effectiveFrom DateTime [default: `now()`, not null]
+  effectiveTo DateTime
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table Voucher {
+  id String [pk]
+  voucherCode String [unique, not null]
+  description String
+  discountType String [not null]
+  discountValue Float [not null]
+  maxUsageCount Int
+  currentUsageCount Int [not null, default: 0]
+  minBookingAmount Float
+  maxDiscountAmount Float
+  applicableTo String
+  validFrom DateTime [not null]
+  validTo DateTime [not null]
+  active Boolean [not null, default: true]
+  isPublic Boolean [not null, default: true]
+  bookings Booking [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Promotion {
+  id String [pk]
+  title String [not null]
+  description String
+  discountType String [not null]
+  discountValue Float [not null]
+  routeIds String[] [not null]
+  trainIds String[] [not null]
+  validFrom DateTime [not null]
+  validTo DateTime [not null]
+  maxBudget Float
+  usedBudget Float [not null, default: 0]
+  status String [not null, default: 'ACTIVE']
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Booking {
+  id String [pk]
+  bookingCode String [unique, not null]
+  userId String
+  user User
+  guestToken String
+  scheduleId String [not null]
+  schedule Schedule [not null]
+  fromStationId String
+  fromStation Station
+  toStationId String
+  toStation Station
+  passengers Passenger [not null]
+  bookingDetails BookingDetail [not null]
+  voucherId String
+  voucher Voucher
+  bookingType String [not null]
+  returnScheduleId String
+  returnSchedule Schedule
+  returnFromStationId String
+  returnFromStation Station
+  returnToStationId String
+  returnToStation Station
+  totalPassengers Int [not null]
+  subtotal Float [not null]
+  discountAmount Float [not null, default: 0]
+  taxAmount Float [not null, default: 0]
+  totalAmount Float [not null]
+  paymentMethod String [not null]
+  paymentStatus String [not null, default: 'PENDING']
+  paymentId String
+  payosOrderCode String
+  payosPaymentLinkId String
+  payosCheckoutUrl String
+  payosQrCode String
+  payosReference String
+  paidAt DateTime
+  paymentHistory BookingPaymentHistory [not null]
+  status String [not null, default: 'PENDING']
+  confirmationEmail String
+  cancelReason String
+  cancelledAt DateTime
+  refundAmount Float
+  cancellationRequest CancellationRequest
+  refund Refund
+  reviews Review [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+  expiresAt DateTime
+  walletTransactions WalletTransaction [not null]
+}
+
+Table BookingPaymentHistory {
+  id String [pk]
+  bookingId String [not null]
+  booking Booking [not null]
+  paymentMethod String [not null]
+  amount Float [not null]
+  status String [not null]
+  failureReason String
+  transactionId String
+  attemptNumber Int [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Passenger {
+  id String [pk]
+  bookingId String [not null]
+  booking Booking [not null]
+  userId String
+  user User
+  fullName String [not null]
+  nationalId String
+  nationalIdType String
+  dateOfBirth DateTime
+  phoneNumber String
+  email String
+  passengerType String [not null]
+  discountPercentage Float [not null, default: 0]
+  discountReason String
+  ticketCode String
+  seat Seat
+  seatId String
+  carriageNumber Int
+  specialNeeds String
+  boardingAt DateTime
+  bookingDetails BookingDetail [not null]
+  cancellationRequest CancellationRequest
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table BookingDetail {
+  id String [pk]
+  bookingId String [not null]
+  booking Booking [not null]
+  passengerId String [not null]
+  passenger Passenger [not null]
+  seatId String [not null]
+  seat Seat [not null]
+  scheduleId String
+  schedule Schedule
+  carriageType String [not null]
+  basePrice Float [not null]
+  discountAmount Float [not null, default: 0]
+  finalPrice Float [not null]
+  status String [not null, default: 'CONFIRMED']
+}
+
+Table CancellationPolicy {
+  id String [pk]
+  name String [not null]
+  description String
+  rules CancellationRule [not null]
+  isDefault Boolean [not null, default: false]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table CancellationRule {
+  id String [pk]
+  policyId String [not null]
+  policy CancellationPolicy [not null]
+  hoursBeforeDeparture Int [not null]
+  refundPercentage Float [not null]
+  minRefundAmount Float
+  description String
+
+  indexes {
+    (policyId, hoursBeforeDeparture) [unique]
+  }
+}
+
+Table CancellationRequest {
+  id String [pk]
+  bookingId String [unique, not null]
+  booking Booking [not null]
+  passengerId String [unique, not null]
+  passenger Passenger [not null]
+  status String [not null, default: 'PENDING']
+  requesterType String
+  requestReason String
+  passengerIds String[] [not null]
+  refundMethod String [default: 'WALLET']
+  refundBankName String
+  refundBankAccount String
+  refundAccountHolder String
+  rejectionReason String
+  refundReason RefundReason
+  refundAmount Float
+  approvedBy String
+  approvedByAdmin User
+  approvedAt DateTime
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table RefundReason {
+  id String [pk]
+  cancellationRequestId String [unique, not null]
+  cancellationRequest CancellationRequest [not null]
+  reason String [not null]
+  details String
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Refund {
+  id String [pk]
+  bookingId String [unique, not null]
+  booking Booking [not null]
+  refundAmount Float [not null]
+  refundMethod String [not null]
+  status String [not null, default: 'PENDING']
+  transactionId String
+  reason String
+  processedAt DateTime
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table AvailabilitySnapshot {
+  id String [pk]
+  scheduleId String [not null]
+  schedule Schedule [not null]
+  carriageType String [not null]
+  availableSeats Int [not null]
+  bookedSeats Int [not null]
+  occupancyPercentage Float [not null]
+  snapshotTime DateTime [default: `now()`, not null]
+}
+
+Table SeatHoldSession {
+  id String [pk]
+  userId String
+  user User
+  guestToken String
+  bookingType String [not null, default: 'ONE_WAY']
+  outboundScheduleId String [not null]
+  outboundFromStationId String [not null]
+  outboundToStationId String [not null]
+  returnScheduleId String
+  returnFromStationId String
+  returnToStationId String
+  status String [not null, default: 'ACTIVE']
+  expiresAt DateTime [not null]
+  holds SeatHold [not null]
+  createdAt DateTime [default: `now()`, not null]
+  updatedAt DateTime [not null]
+}
+
+Table SeatHold {
+  id String [pk]
+  sessionId String [not null]
+  session SeatHoldSession [not null]
+  userId String
+  user User
+  guestToken String
+  scheduleId String [not null]
+  schedule Schedule [not null]
+  seatId String [not null]
+  seat Seat [not null]
+  carriageType String [not null]
+  priceSnapshot Float [not null]
+  expiresAt DateTime [not null]
+  createdAt DateTime [default: `now()`, not null]
+
+  indexes {
+    (scheduleId, seatId) [unique]
+  }
+}
+
+Table Notification {
+  id String [pk]
+  userId String [not null]
+  user User [not null]
+  type String [not null]
+  title String [not null]
+  message String [not null]
+  relatedBookingId String
+  relatedScheduleId String
+  status String [not null, default: 'UNREAD']
+  readAt DateTime
+  deliveryMethod String[] [not null]
+  deliveryStatus String [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table LiveTracking {
+  id String [pk]
+  scheduleId String [not null]
+  trainId String [not null]
+  currentLocation String
+  currentStation String
+  delayMinutes Int [not null, default: 0]
+  status String [not null]
+  speed Float [not null, default: 0]
+  temperature Float [not null, default: 25]
+  passengerCount Int [not null, default: 0]
+  latitude Float
+  longitude Float
+  lastUpdated DateTime [default: `now()`, not null]
+}
+
+Table SearchHistory {
+  id String [pk]
+  userId String [not null]
+  user User [not null]
+  fromStationId String
+  toStationId String
+  departureDate DateTime
+  returnDate DateTime
+  filtersApplied String
+  resultCount Int [not null, default: 0]
+  schedulesClicked String[] [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table Review {
+  id String [pk]
+  bookingId String [not null]
+  booking Booking [not null]
+  userId String [not null]
+  user User [not null]
+  rating Int [not null]
+  comment String
+  categories String[] [not null]
+  isAnonymous Boolean [not null, default: false]
+  helpful Int [not null, default: 0]
+  status String [not null, default: 'PENDING']
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table AdminLog {
+  id String [pk]
+  adminId String [not null]
+  admin User [not null]
+  action String [not null]
+  entity String [not null]
+  entityId String
+  changes String
+  description String
+  ipAddress String
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table SecurityLog {
+  id String [pk]
+  userId String
+  user User
+  eventType String [not null]
+  description String [not null]
+  ipAddress String
+  userAgent String
+  status String [not null]
+  createdAt DateTime [default: `now()`, not null]
+}
+
+Table RevenueReport {
+  id String [pk]
+  period String [not null]
+  periodStart DateTime [not null]
+  periodEnd DateTime [not null]
+  totalBookings Int [not null]
+  completedBookings Int [not null]
+  cancelledBookings Int [not null]
+  totalRevenue Float [not null]
+  totalRefunds Float [not null]
+  netRevenue Float [not null]
+  trainsData String
+  routesData String
+  generatedAt DateTime [default: `now()`, not null]
+
+  indexes {
+    (period, periodStart) [unique]
+  }
+}
+
+Ref: LoyaltyPoint.userId > User.id [delete: Cascade]
+
+Ref: Wallet.userId - User.id [delete: Cascade]
+
+Ref: WalletTransaction.walletId > Wallet.id [delete: Cascade]
+
+Ref: WalletTransaction.relatedBookingId > Booking.id
+
+Ref: VehicleMaintenance.trainId > Train.id [delete: Cascade]
+
+Ref: Carriage.trainId > Train.id [delete: Cascade]
+
+Ref: Seat.carriageId > Carriage.id [delete: Cascade]
+
+Ref: Seat.selectedBy > User.id
+
+Ref: Route.startStationId > Station.id
+
+Ref: Route.endStationId > Station.id
+
+Ref: Schedule.trainId > Train.id [delete: Cascade]
+
+Ref: Schedule.routeId > Route.id [delete: Cascade]
+
+Ref: Schedule.startStationId > Station.id
+
+Ref: Schedule.endStationId > Station.id
+
+Ref: ScheduleStop.scheduleId > Schedule.id [delete: Cascade]
+
+Ref: ScheduleStop.stationId > Station.id
+
+Ref: RouteTemplate.routeId > Route.id [delete: Cascade]
+
+Ref: RouteTemplate.trainId > Train.id [delete: Cascade]
+
+Ref: PricingPolicy.routeId > Route.id
+
+Ref: PricingPolicy.scheduleId > Schedule.id [delete: Cascade]
+
+Ref: Booking.userId > User.id
+
+Ref: Booking.scheduleId > Schedule.id
+
+Ref: Booking.fromStationId > Station.id
+
+Ref: Booking.toStationId > Station.id
+
+Ref: Booking.voucherId > Voucher.id
+
+Ref: Booking.returnScheduleId > Schedule.id
+
+Ref: Booking.returnFromStationId > Station.id
+
+Ref: Booking.returnToStationId > Station.id
+
+Ref: BookingPaymentHistory.bookingId > Booking.id [delete: Cascade]
+
+Ref: Passenger.bookingId > Booking.id [delete: Cascade]
+
+Ref: Passenger.userId > User.id
+
+Ref: Passenger.seatId > Seat.id
+
+Ref: BookingDetail.bookingId > Booking.id [delete: Cascade]
+
+Ref: BookingDetail.passengerId > Passenger.id [delete: Cascade]
+
+Ref: BookingDetail.seatId > Seat.id
+
+Ref: BookingDetail.scheduleId > Schedule.id
+
+Ref: CancellationRule.policyId > CancellationPolicy.id [delete: Cascade]
+
+Ref: CancellationRequest.bookingId - Booking.id [delete: Cascade]
+
+Ref: CancellationRequest.passengerId - Passenger.id
+
+Ref: CancellationRequest.approvedBy > User.id
+
+Ref: RefundReason.cancellationRequestId - CancellationRequest.id [delete: Cascade]
+
+Ref: Refund.bookingId - Booking.id [delete: Cascade]
+
+Ref: AvailabilitySnapshot.scheduleId > Schedule.id [delete: Cascade]
+
+Ref: SeatHoldSession.userId > User.id [delete: Cascade]
+
+Ref: SeatHold.sessionId > SeatHoldSession.id [delete: Cascade]
+
+Ref: SeatHold.userId > User.id [delete: Cascade]
+
+Ref: SeatHold.scheduleId > Schedule.id [delete: Cascade]
+
+Ref: SeatHold.seatId > Seat.id [delete: Cascade]
+
+Ref: Notification.userId > User.id [delete: Cascade]
+
+Ref: SearchHistory.userId > User.id [delete: Cascade]
+
+Ref: Review.bookingId > Booking.id [delete: Cascade]
+
+Ref: Review.userId > User.id
+
+Ref: AdminLog.adminId > User.id
+
+Ref: SecurityLog.userId > User.id

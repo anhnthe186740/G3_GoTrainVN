@@ -53,17 +53,7 @@ export function TicketLookup() {
   const [refundReason, setRefundReason] = useState(
     "Thay đổi lịch trình cá nhân",
   );
-  const [refundMethod, setRefundMethod] = useState(user ? "WALLET" : "BANK");
-  const [bankName, setBankName] = useState("");
-  const [bankAccount, setBankAccount] = useState("");
-  const [accountHolder, setAccountHolder] = useState("");
   const [refundLoading, setRefundLoading] = useState(false);
-
-  useEffect(() => {
-    if (activeTicket) {
-      setRefundMethod(isGuest ? "BANK" : "WALLET");
-    }
-  }, [activeTicket, isGuest]);
 
   // Load recent searches and pre-fill logged-in user info
   useEffect(() => {
@@ -513,7 +503,8 @@ export function TicketLookup() {
     activeTicket?.booking?.paymentStatus === "COMPLETED" &&
     activeTicket?.booking?.cancellationRequest?.status !== "PENDING" &&
     isVerifiedLookup &&
-    activeJourneyState === "UPCOMING";
+    activeJourneyState === "UPCOMING" &&
+    Boolean(activeTicket?.booking?.userId);
   const canExchangeTicket =
     Boolean(user) &&
     activeTicket?.booking?.status === "CONFIRMED" &&
@@ -539,14 +530,6 @@ export function TicketLookup() {
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     if (!activeTicket || !activeTicket.booking) return;
-    if (
-      isGuest &&
-      (!bankName.trim() || !bankAccount.trim() || !accountHolder.trim())
-    ) {
-      toast.error("Vui lòng nhập đầy đủ thông tin tài khoản nhận hoàn tiền.");
-      return;
-    }
-
     setRefundLoading(true);
     try {
       const response = await api.post(
@@ -559,17 +542,7 @@ export function TicketLookup() {
             ticketCode,
           contactInfo,
           reason: refundReason,
-          refundMethod: isGuest ? "BANK" : refundMethod,
-          bankName:
-            isGuest || refundMethod === "BANK" ? bankName.trim() : undefined,
-          bankAccount:
-            isGuest || refundMethod === "BANK"
-              ? bankAccount.replace(/\s/g, "")
-              : undefined,
-          accountHolder:
-            isGuest || refundMethod === "BANK"
-              ? accountHolder.trim()
-              : undefined,
+          refundMethod: "WALLET",
         },
       );
       toast.success(
@@ -1330,7 +1303,6 @@ export function TicketLookup() {
         onClose={() => setIsPolicyModalOpen(false)}
         onAccept={() => {
           setIsPolicyModalOpen(false);
-          if (isGuest) setRefundMethod("BANK");
           setIsRefundModalOpen(true);
         }}
       />
@@ -1407,97 +1379,15 @@ export function TicketLookup() {
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
                   Hình thức nhận tiền hoàn
                 </label>
-                {isGuest ? (
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3.5 text-center">
-                    <span className="text-sm font-extrabold text-blue-800">
-                      Chuyển khoản ngân hàng
-                    </span>
-                    <span className="mt-1 block text-[10px] text-blue-600">
-                      Hệ thống sẽ ghi nhận hoàn tiền về tài khoản ngân hàng
-                    </span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div
-                      onClick={() => setRefundMethod("WALLET")}
-                      className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
-                        refundMethod === "WALLET"
-                          ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
-                          : "border-slate-200 hover:border-slate-300 text-slate-600"
-                      }`}
-                    >
-                      <span className="text-sm font-extrabold">
-                        Ví điện tử GoTrain
-                      </span>
-                      <span className="text-[10px] opacity-80 block">
-                        Nhận ngay lập tức
-                      </span>
-                    </div>
-                    <div
-                      onClick={() => setRefundMethod("BANK")}
-                      className={`p-3.5 rounded-2xl border cursor-pointer text-center flex flex-col items-center justify-center gap-1 transition-all ${
-                        refundMethod === "BANK"
-                          ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
-                          : "border-slate-200 hover:border-slate-300 text-slate-600"
-                      }`}
-                    >
-                      <span className="text-sm font-extrabold">
-                        Tài khoản ngân hàng
-                      </span>
-                      <span className="text-[10px] opacity-80 block">
-                        Xử lý trong 1-3 ngày
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Conditional Bank inputs */}
-              {(isGuest || refundMethod === "BANK") && (
-                <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-100 animate-slide-down">
-                  <div className="col-span-2 flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">
-                      Tên chủ tài khoản
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Nhập đúng tên trên tài khoản ngân hàng"
-                      value={accountHolder}
-                      onChange={(e) => setAccountHolder(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary uppercase"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">
-                      Tên ngân hàng
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ví dụ: Vietcombank"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">
-                      Số tài khoản
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9 ]{6,24}"
-                      placeholder="Nhập số tài khoản"
-                      value={bankAccount}
-                      onChange={(e) => setBankAccount(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary"
-                    />
-                  </div>
+                <div className="rounded-2xl border border-primary bg-primary/5 p-3.5 text-center text-primary ring-1 ring-primary">
+                  <span className="text-sm font-extrabold">
+                    Ví điện tử GoTrain
+                  </span>
+                  <span className="text-[10px] opacity-80 block">
+                    Nhận ngay lập tức
+                  </span>
                 </div>
-              )}
+              </div>
 
               {/* Reason input */}
               <div className="flex flex-col gap-1.5">

@@ -58,7 +58,16 @@ const STATUS_META = {
 };
 
 /* ── Confirm Dialog ──────────────────────────────────── */
-function ConfirmDialog({ message, onConfirm, onCancel, loading }) {
+function ConfirmDialog({
+  message,
+  onConfirm,
+  onCancel,
+  loading,
+  bankInfo,
+  requiresReason,
+}) {
+  const [reason, setReason] = useState("");
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-[0px_20px_60px_rgba(0,98,157,0.15)] border border-[#bec7d4]/20 w-full max-w-sm p-6">
@@ -73,6 +82,54 @@ function ConfirmDialog({ message, onConfirm, onCancel, loading }) {
             <p className="text-[#3f4852] text-sm leading-relaxed">{message}</p>
           </div>
         </div>
+
+        {bankInfo && (
+          <div className="mb-5 bg-[#f2f4f6] p-4 rounded-xl text-sm text-[#3f4852] flex flex-col gap-1.5 border border-[#bec7d4]/30">
+            <p className="text-xs font-bold text-[#191c1e] mb-1 uppercase tracking-wide">
+              Thông tin chuyển khoản
+            </p>
+            <p>
+              <span className="font-medium text-[#6f7883] inline-block w-24">
+                Ngân hàng:
+              </span>{" "}
+              <span className="font-bold">
+                {bankInfo.bankName || "Chưa cập nhật"}
+              </span>
+            </p>
+            <p>
+              <span className="font-medium text-[#6f7883] inline-block w-24">
+                Số tài khoản:
+              </span>{" "}
+              <span className="font-bold">
+                {bankInfo.bankAccount || "Chưa cập nhật"}
+              </span>
+            </p>
+            <p>
+              <span className="font-medium text-[#6f7883] inline-block w-24">
+                Chủ tài khoản:
+              </span>{" "}
+              <span className="font-bold uppercase">
+                {bankInfo.accountHolder || "Chưa cập nhật"}
+              </span>
+            </p>
+          </div>
+        )}
+
+        {requiresReason && (
+          <div className="mb-5">
+            <label className="block text-xs font-bold text-[#3f4852] mb-1.5 uppercase tracking-wide">
+              Lý do từ chối (Tùy chọn)
+            </label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Nhập lý do từ chối..."
+              className="w-full px-3 py-2 border border-[#bec7d4] rounded-lg text-sm text-[#191c1e] outline-none focus:border-[#00629d] focus:ring-1 focus:ring-[#00629d] transition-all"
+            />
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -81,7 +138,7 @@ function ConfirmDialog({ message, onConfirm, onCancel, loading }) {
             Huỷ bỏ
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => onConfirm(reason)}
             disabled={loading}
             className="flex-1 py-2.5 rounded-xl bg-[#00629d] hover:bg-[#00629d]/90 text-white text-sm font-semibold transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60"
           >
@@ -177,7 +234,7 @@ export function AdminWalletPanel() {
   });
 
   const rejectMut = useMutation({
-    mutationFn: (id) => walletApi.rejectWithdrawal(id, "Không đủ điều kiện"),
+    mutationFn: ({ id, reason }) => walletApi.rejectWithdrawal(id, reason),
     onSuccess: () => {
       toast.success("Đã từ chối và hoàn tiền về ví người dùng");
       [
@@ -394,6 +451,11 @@ export function AdminWalletPanel() {
                               id: txn.id,
                               action: "approve",
                               label: `Duyệt yêu cầu rút ${fmt(txn.amount)} của ${txn.wallet?.user?.fullName}?`,
+                              bankInfo: {
+                                bankName: txn.wallet?.user?.bankName,
+                                bankAccount: txn.wallet?.user?.bankAccount,
+                                accountHolder: txn.wallet?.user?.accountHolder,
+                              },
                             })
                           }
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-100 text-green-700 hover:bg-green-200 text-xs font-semibold transition-all active:scale-95 cursor-pointer"
@@ -409,6 +471,11 @@ export function AdminWalletPanel() {
                               id: txn.id,
                               action: "reject",
                               label: `Từ chối và hoàn ${fmt(txn.amount)} về ví của ${txn.wallet?.user?.fullName}?`,
+                              bankInfo: {
+                                bankName: txn.wallet?.user?.bankName,
+                                bankAccount: txn.wallet?.user?.bankAccount,
+                                accountHolder: txn.wallet?.user?.accountHolder,
+                              },
                             })
                           }
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#ffdad6] text-[#ba1a1a] hover:bg-[#ffb4ab] text-xs font-semibold transition-all active:scale-95 cursor-pointer"
@@ -674,9 +741,11 @@ export function AdminWalletPanel() {
         <ConfirmDialog
           message={confirm.label}
           loading={isMutating}
-          onConfirm={() => {
+          bankInfo={confirm.bankInfo}
+          requiresReason={confirm.action === "reject"}
+          onConfirm={(reason) => {
             if (confirm.action === "approve") approveMut.mutate(confirm.id);
-            else rejectMut.mutate(confirm.id);
+            else rejectMut.mutate({ id: confirm.id, reason });
           }}
           onCancel={() => !isMutating && setConfirm(null)}
         />
