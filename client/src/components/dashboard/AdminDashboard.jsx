@@ -1293,23 +1293,6 @@ export function AdminDashboard() {
           </footer>
         </div>
       </main>
-
-      {/* Floating AI Assistant Button */}
-      <button
-        onClick={handleAiAssistant}
-        onMouseEnter={() => setShowAiTooltip(true)}
-        onMouseLeave={() => setShowAiTooltip(false)}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-tr from-[#00629d] to-[#00a3ff] text-white rounded-full shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 animate-float group border-none cursor-pointer"
-      >
-        <span className="material-symbols-outlined text-[28px]">smart_toy</span>
-        <div
-          className={`absolute right-full mr-4 bg-white px-4 py-2 rounded-xl shadow-lg border border-[#bec7d4]/20 pointer-events-none transition-opacity duration-300 whitespace-nowrap ${showAiTooltip ? "opacity-100" : "opacity-0"}`}
-        >
-          <p className="font-label-md text-[#00629d] text-sm font-semibold">
-            Hỏi AI Trợ Lý
-          </p>
-        </div>
-      </button>
     </div>
   );
 }
