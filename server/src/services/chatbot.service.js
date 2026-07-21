@@ -374,9 +374,9 @@ export async function getChatbotResponse(message, userContext = {}) {
   try {
     const ai = new GoogleGenerativeAI(apiKey);
 
-    // Sử dụng model gemini-3.5-flash tốc độ cao
+    // Sử dụng model gemini-3.1-flash-lite (cùng hệ 3.x tương thích API key, chạy nhanh và không bị nghẽn 503)
     const model = ai.getGenerativeModel({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.1-flash-lite",
       systemInstruction: SYSTEM_INSTRUCTION,
     });
 
