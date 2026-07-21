@@ -401,7 +401,67 @@ export async function getChatbotResponse(message, userContext = {}) {
       }
     }
 
-    // 2. Tra cứu giá vé của đoàn tàu
+    // 2. Tra cứu khuyến mãi & voucher
+    const isPromoQuery =
+      msgLower.includes("khuyến mãi") ||
+      msgLower.includes("khuyen mai") ||
+      msgLower.includes("mã giảm giá") ||
+      msgLower.includes("ma giam gia") ||
+      msgLower.includes("voucher") ||
+      msgLower.includes("discount") ||
+      msgLower.includes("ưu đãi") ||
+      msgLower.includes("uu dai");
+
+    if (isPromoQuery) {
+      const now = new Date();
+      const [promotions, vouchers] = await Promise.all([
+        prisma.promotion.findMany({
+          where: {
+            status: "ACTIVE",
+            validFrom: { lte: now },
+            validTo: { gte: now },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.voucher.findMany({
+          where: {
+            active: true,
+            isPublic: true,
+            validFrom: { lte: now },
+            validTo: { gte: now },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
+
+      dbContext += `\n[DANH SÁCH CÁC CHƯƠNG TRÌNH KHUYẾN MÃI VÀ VOUCHER HOẠT ĐỘNG]\n`;
+      if (promotions.length === 0 && vouchers.length === 0) {
+        dbContext += `Hiện tại không có chương trình khuyến mãi hay mã voucher công khai nào đang hoạt động trên hệ thống.\n`;
+      } else {
+        if (promotions.length > 0) {
+          dbContext += `* Khuyến mãi tự động (áp dụng trực tiếp khi thỏa mãn lộ trình/mác tàu):\n`;
+          promotions.forEach((p) => {
+            const valStr =
+              p.discountType === "PERCENTAGE"
+                ? `${p.discountValue}%`
+                : `${p.discountValue.toLocaleString("vi-VN")} VND`;
+            dbContext += `- ${p.title}: Giảm ${valStr}. Mô tả: ${p.description || "Không có"}. Hạn dùng: ${new Date(p.validTo).toLocaleDateString("vi-VN")}.\n`;
+          });
+        }
+        if (vouchers.length > 0) {
+          dbContext += `* Mã Voucher công khai (khách hàng nhập tay khi thanh toán):\n`;
+          vouchers.forEach((v) => {
+            const valStr =
+              v.discountType === "PERCENTAGE"
+                ? `${v.discountValue}%`
+                : `${v.discountValue.toLocaleString("vi-VN")} VND`;
+            dbContext += `- Mã: ${v.voucherCode} (Giảm ${valStr}). Mô tả: ${v.description || "Giảm giá vé tàu"}. Đơn tối thiểu: ${v.minBookingAmount ? v.minBookingAmount.toLocaleString("vi-VN") + " VND" : "Không giới hạn"}. Cực đại giảm: ${v.maxDiscountAmount ? v.maxDiscountAmount.toLocaleString("vi-VN") + " VND" : "Không giới hạn"}. Hạn dùng: ${new Date(v.validTo).toLocaleDateString("vi-VN")}.\n`;
+          });
+        }
+      }
+    }
+
+    // 3. Tra cứu giá vé của đoàn tàu
     const trainCodeMatch = msgLower.match(/\b(se|tn)\d+\b/i);
     if (trainCodeMatch) {
       const trainCode = trainCodeMatch[0].toUpperCase();
