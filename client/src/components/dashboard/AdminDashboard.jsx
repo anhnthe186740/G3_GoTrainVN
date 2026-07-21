@@ -273,87 +273,44 @@ export function AdminDashboard() {
     }, 1500);
   };
 
-  // Fallback structures for stats
+  // Dynamic statistics from API
   const overviewStats = stats?.overview || {
-    totalBookings: 8432,
-    confirmedBookings: 7890,
-    cancelledBookings: 421,
-    pendingBookings: 121,
-    totalRevenue: 1240000000,
-    netRevenue: 1115000000,
-    totalRefunds: 125000000,
-    totalPassengers: 12847,
-    avgBookingValue: 820000,
+    totalBookings: 0,
+    confirmedBookings: 0,
+    cancelledBookings: 0,
+    pendingBookings: 0,
+    totalRevenue: 0,
+    netRevenue: 0,
+    totalRefunds: 0,
+    totalPassengers: 0,
+    avgBookingValue: 0,
+    avgUtilization: 0,
   };
 
   const adminOverview = stats?.adminOverview || {
-    totalUsers: 128,
-    totalCustomers: 121,
-    totalAdmins: 7,
-    totalTrains: 48,
-    totalRoutes: 18,
-    totalSchedules: 326,
-    activeSchedules: 301,
-    delayedSchedules: 4,
-    totalWalletBalance: 920000000,
-    pendingWithdrawals: 6,
-    refundThisMonth: 125000000,
+    totalUsers: 0,
+    totalCustomers: 0,
+    totalAdmins: 0,
+    totalTrains: 0,
+    activeTrains: 0,
+    totalRoutes: 0,
+    totalSchedules: 0,
+    activeSchedules: 0,
+    delayedSchedules: 0,
+    totalWalletBalance: 0,
+    pendingWithdrawals: 0,
+    refundThisMonth: 0,
   };
 
-  const revenueSeries = stats?.revenueSeries ||
-    stats?.monthly || [
-      { label: "T1", value: 142000000 },
-      { label: "T2", value: 98000000 },
-      { label: "T3", value: 165000000 },
-      { label: "T4", value: 190000000 },
-      { label: "T5", value: 210000000 },
-      { label: "T6", value: 240000000 },
-    ];
+  const revenueSeries = stats?.revenueSeries || stats?.monthly || [];
 
-  const topRoutes = stats?.topRoutes || [
-    {
-      name: "Hà Nội → Đà Nẵng",
-      bookings: 2341,
-      revenue: 320000000,
-      occupancy: 92,
-    },
-    {
-      name: "TP.HCM → Nha Trang",
-      bookings: 1892,
-      revenue: 280000000,
-      occupancy: 78,
-    },
-    {
-      name: "Hà Nội → Lào Cai",
-      bookings: 1203,
-      revenue: 180000000,
-      occupancy: 65,
-    },
-    {
-      name: "Huế → Quy Nhơn",
-      bookings: 987,
-      revenue: 145000000,
-      occupancy: 42,
-    },
-    {
-      name: "Đà Nẵng → TP.HCM",
-      bookings: 756,
-      revenue: 120000000,
-      occupancy: 81,
-    },
-  ];
+  const topRoutes = stats?.topRoutes || [];
 
-  const trainTypes = stats?.trainTypes || [
-    { name: "Giường nằm (Sleeper)", count: 4120, pct: 48.9 },
-    { name: "Ghế mềm điều hòa (AC Soft)", count: 2310, pct: 27.4 },
-    { name: "Ghế cứng (Hard Seat)", count: 1456, pct: 17.3 },
-    { name: "Khác (Others)", count: 546, pct: 6.4 },
-  ];
+  const trainTypes = stats?.trainTypes || [];
 
-  const totalTrains = adminOverview.totalTrains || 48;
-  const activeTrains =
-    Math.min(totalTrains, Math.round(totalTrains * 0.88)) || 42;
-  const trainUtilization = overviewStats.avgUtilization || 85; // Average utilization rate
+  const totalTrains = adminOverview.totalTrains || 0;
+  const activeTrains = adminOverview.activeTrains ?? totalTrains;
+  const trainUtilization = overviewStats.avgUtilization ?? 0;
 
   const circumference = 251.2;
   const totalBookingsVal = Math.max(overviewStats.totalBookings || 1, 1);
@@ -365,26 +322,33 @@ export function AdminDashboard() {
   );
   const pendingPct = Math.max(0, 100 - successPct - cancelledPct);
 
-  const sleeperPct = trainTypes[0]?.pct || 48.9;
-  const seatPct = trainTypes[1]?.pct || 27.4;
-  const hardPct = trainTypes[2]?.pct || 17.3;
-  const otherPct = 100 - sleeperPct - seatPct - hardPct;
-
-  const sleeperArc = (sleeperPct / 100) * circumference;
-  const seatArc = (seatPct / 100) * circumference;
-  const hardArc = (hardPct / 100) * circumference;
-  const otherArc = (otherPct / 100) * circumference;
+  // Dynamic Donut Arc calculations for Train Types
+  const donutColors = [
+    "#10b981",
+    "#3b82f6",
+    "#f59e0b",
+    "#9ca3af",
+    "#8b5cf6",
+    "#ec4899",
+  ];
+  let cumulativeArc = 0;
+  const trainTypeArcs = trainTypes.map((t, idx) => {
+    const pct = t.pct || 0;
+    const arcLength = (pct / 100) * circumference;
+    const offset = cumulativeArc;
+    cumulativeArc += arcLength;
+    return {
+      name: t.name,
+      pct,
+      count: t.count,
+      color: donutColors[idx % donutColors.length],
+      arcLength,
+      offset,
+    };
+  });
 
   // Heatmap Data (Days vs 4 slots)
-  const heatmapData = stats?.heatmap || [
-    { day: "Thứ 2", slots: [32, 54, 45, 60] },
-    { day: "Thứ 3", slots: [28, 48, 40, 52] },
-    { day: "Thứ 4", slots: [35, 52, 42, 58] },
-    { day: "Thứ 5", slots: [40, 62, 50, 68] },
-    { day: "Thứ 6", slots: [55, 82, 75, 89] },
-    { day: "Thứ 7", slots: [78, 94, 90, 96] },
-    { day: "Chủ Nhật", slots: [82, 96, 92, 98] },
-  ];
+  const heatmapData = stats?.heatmap || [];
   const slotLabels = [
     "00:00-06:00",
     "06:00-12:00",
@@ -849,85 +813,53 @@ export function AdminDashboard() {
                             stroke="#f2f4f6"
                             strokeWidth="12"
                           />
-                          {/* Sleeper */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            fill="none"
-                            stroke="#10b981"
-                            strokeWidth="12"
-                            strokeDasharray={`${sleeperArc} ${circumference}`}
-                            strokeDashoffset="0"
-                            strokeLinecap="round"
-                          />
-                          {/* AC Soft Seat */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            fill="none"
-                            stroke="#3b82f6"
-                            strokeWidth="12"
-                            strokeDasharray={`${seatArc} ${circumference}`}
-                            strokeDashoffset={`-${sleeperArc}`}
-                            strokeLinecap="round"
-                          />
-                          {/* Hard Seat */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            fill="none"
-                            stroke="#f59e0b"
-                            strokeWidth="12"
-                            strokeDasharray={`${hardArc} ${circumference}`}
-                            strokeDashoffset={`-${sleeperArc + seatArc}`}
-                            strokeLinecap="round"
-                          />
-                          {/* Other */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            fill="none"
-                            stroke="#9ca3af"
-                            strokeWidth="12"
-                            strokeDasharray={`${otherArc} ${circumference}`}
-                            strokeDashoffset={`-${sleeperArc + seatArc + hardArc}`}
-                            strokeLinecap="round"
-                          />
+                          {trainTypeArcs.map((arc, i) => (
+                            <circle
+                              key={i}
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke={arc.color}
+                              strokeWidth="12"
+                              strokeDasharray={`${arc.arcLength} ${circumference}`}
+                              strokeDashoffset={`-${arc.offset}`}
+                              strokeLinecap="round"
+                            />
+                          ))}
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                           <p className="text-lg font-extrabold text-[#191c1e] leading-none">
-                            {sleeperPct}%
+                            {trainTypeArcs[0]?.pct || 0}%
                           </p>
-                          <p className="text-[9px] text-[#6f7883] font-bold uppercase mt-1">
-                            Nằm
+                          <p className="text-[9px] text-[#6f7883] font-bold uppercase mt-1 truncate max-w-[80px] text-center">
+                            {trainTypeArcs[0]?.name?.split(" ")[0] || "Hạng vé"}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-                        <span className="w-2 h-2 rounded-full bg-[#10b981]" />
-                        <span className="truncate">Nằm: {sleeperPct}%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-                        <span className="w-2 h-2 rounded-full bg-[#3b82f6]" />
-                        <span className="truncate">Mềm: {seatPct}%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-                        <span className="w-2 h-2 rounded-full bg-[#f59e0b]" />
-                        <span className="truncate">Cứng: {hardPct}%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-                        <span className="w-2 h-2 rounded-full bg-[#9ca3af]" />
-                        <span className="truncate">
-                          Khác: {otherPct.toFixed(1)}%
+                      {trainTypeArcs.length === 0 ? (
+                        <span className="col-span-2 text-center text-slate-400 text-xs">
+                          Chưa có dữ liệu hạng vé
                         </span>
-                      </div>
+                      ) : (
+                        trainTypeArcs.map((arc, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-1.5 font-semibold text-slate-700"
+                          >
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: arc.color }}
+                            />
+                            <span className="truncate" title={arc.name}>
+                              {arc.name.split(" ")[0]}: {arc.pct}%
+                            </span>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>

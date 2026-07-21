@@ -1,0 +1,196 @@
+﻿Total Project Tracking
+Information in the columns A-E are filled in the project initiation; columns F-J to be filled by the end of each development iteration
+Screen/Function
+Feature
+Actor
+Screen/Function Description
+In Charge
+Status
+Actual
+Updated
+Update Details
+Đăng ký tài khoản (Register)
+Authentication & Account Management
+Guest
+Allows non-registered walk-in visitors to create a formal account, automatically triggering the setup of an integrated digital wallet with a 0 VND balance.
+Đạt
+Done
+iter1
+iter2
+Đăng nhập hệ thống (Login)
+ALL
+Validates credentials using secured JWT tokens. The system dynamically routes users to their dedicated interface via role-based access control (RBAC).
+none
+Đăng xuất tài khoản (Logout)
+User/Staff/Admin
+Terminates the active session and clears local session tokens securely from the client device.
+Quản lý thông tin cá nhân (Manage Profile)
+User
+Enables premium registered users to update personal data (Full name, phone, email, ID card number) for seamless auto-filling during future checkouts.
+Chuyển đổi ngôn ngữ (Switch Language)
+System Configuration
+Allows real-time localized localization toggles across the entire software application layout (Vietnamese / English).
+Lực
+Doing
+iter3
+Xem thông tin liên hệ & hỗ trợ (View Support)
+Displays emergency help hotline, terms of service, national railway policies, and standard refund guidelines.
+Tìm kiếm hành trình (Search Schedules)
+Trip Search & Selection
+Guest/User
+Queries available train trips based on user criteria such as Departure Station, Arrival Station, Ticket Type (One-way / Round-trip), and Travel Date.
+Lọc & Sắp xếp chuyến tàu (Filter & Sort)
+Filters search results by time slots (Morning/Afternoon/Evening), train designator series (SE express, TN slow trains), and sorts by lowest/highest base fares.
+Xem sơ đồ toa tàu Real-time (View Live Seat Map)
+Seat Selection Map
+Renders a responsive visual layout of train carriages distinguishing seat variants (Standard, Soft, Sleeper) and live states (Available, Selected, Sold).
+Thế Anh
+Quản lý Giỏ vé tập trung (Manage Booking Cart)
+Booking & Cart Management
+Manages multi-seat temporary reservations for group bookings in a single transaction block, enforcing a 10-minute hold countdown via Socket.io.
+Nhập form thông tin hành khách (Input Passenger Info)
+Passenger Data Entry
+Captures critical dynamic fields (Full Name, National ID/Passport number) for each reserved seat to enforce legal e-ticket identification.
+Tự động tính giá vé ưu đãi (Auto-Pricing)
+Automated Fare Calculation
+Dynamically calculates specialized fare models across categories (Adults, Children, Students, Seniors) to deduct corresponding discounts automatically.
+Áp dụng mã giảm giá (Apply Voucher)
+Discount & Promotions
+Validates and applies marketing coupon deductions to the absolute invoice amount. Guests are restricted from using this feature to boost user acquisition.
+Thực hiện thanh toán đơn hàng (Process Payment)
+Payment Gateway Integration
+Integrates with a mock payment gateway. Users can leverage internal wallet balances or electronic banking, whereas Guests are restricted to bank options.
+Tra cứu/Kiểm tra vé (Check Ticket)
+Ticket Query & Verification
+Allows e-ticket tracking. Members browse their persistent Booking History dashboard; Guests must manual query using PNR code + phone number.
+Linh
+Yêu cầu trả vé / Hủy vé trực tuyến (Cancel Ticket)
+Ticket Cancellation & Refunds
+Allows automated cancellations within valid time frames. Member refunds are sent directly to their internal wallet; Guests must process cash recovery at a physical gate counter.
+Duyệt Yêu cầu hủy vé
+Admin
+Allows the Administrator to review and approve or reject online ticket cancellation requests submitted by passengers. Approved requests trigger an automatic refund to the member's internal wallet, while rejected requests are notified to the passenger with a reason.
+Yêu cầu rút tiền từ ví (Withdraw Wallet Funds)
+Wallet Capital Payouts
+Permits registered members to issue secure payout extractions from their internal wallet to verified personal bank accounts using OTP authentication.
+Tra cứu nhanh tại quầy (Quick Counter Search)
+Station Counter Operations
+Staff
+Provides a persistent top search engine bar for station operators to instantaneously pull up real-time ticketing files via passenger ID or PNR code.
+Xử lý hoàn tiền mặt tại quầy cho Guest (Cash Refund)
+Retrieves Guest online refund files from the 'Refund Hub' interface, matches physical ID documentation, issues physical cash, and updates database records.
+Cập nhật trạng thái tàu Delay/Sự cố (Live Trip Update)
+Live Schedule Operations
+Staff/Admin
+Enables railway agents within the 'Live Trip Hub' to log trip delay intervals, instantly recalculating and cascading updated schedules across downline terminals.
+khánh
+Hỗ trợ in phôi vé giấy (Print Physical Ticket)
+Physical Ticket Processing
+Facilitates counter ticket processing by rendering high-fidelity barcode/QR layouts onto physical paper stubs for digitally offline passengers.
+Quét mã QR soát vé tại cửa/toa (Scan QR Ticket Check-in)
+Boarding Pass Controls
+Processes real-time boarding credentials via camera scanning, updating ticket system flags to 'USED' to eliminate ticket duplication or fraudulent entries.
+Quản lý Tuyến đường & Ga tàu (Manage Routes)
+Route & Infrastructure Admin
+Administrator
+Maintains reference master catalogs of train routes and intermediate stations, configuring absolute cumulative distances (km) for algorithmic fare rendering.
+Quản lý cấu trúc Tàu & Toa tàu (Manage Trains & Carriages)
+Train Fleet Configurations
+Structures physics-based train compositions (e.g., SE1, TN2 models) and maps layout distributions (Hard seat, soft seat, sleeper cabin matrices).
+Quản lý Lịch trình chuyến tàu (Manage Schedules)
+Live Itinerary Scheduling
+Schedules precise calendar itineraries, configuring absolute arrival, waiting, and departure time allocations per intermediate transit hub.
+Cấu hình ma trận Chính sách giá vé (Pricing Configuration)
+Dynamic Pricing & Rates Admin
+Establishes pricing formulas based on base fare rates per kilometer (basePricePerKm), seat multipliers, and specialized passenger category discount factors.
+Quản lý chiến dịch Mã giảm giá (Manage Vouchers)
+Campaigns & Vouchers Admin
+Configures coupon logic including structural deduction values, budget limits, expirations, and minimum order thresholds for targeted promotional campaigns.
+Quản lý Người dùng và Phân quyền (Manage User Accounts)
+User Accounts & RBAC Controls
+Monitors user indexes and executes administrative account actions (Activate / Suspend) across employee profiles (Staff) and registered customers (User).
+Phê duyệt yêu cầu rút tiền từ Ví (Approve Withdrawals)
+Financial Ledger Governance
+Reviews pending withdrawal requests filed by customers, audits mock ledger systems, and executes explicit Administrative approvals or rejections.
+Thống kê báo cáo Doanh thu (BI Revenue Analytics)
+Business Intelligence Analytics
+Compiles real-time order ledgers into business intelligence reports and interactive revenue charts filterable by calendar timelines or specific train designations.
+Biểu đồ nhiệt hiển thị tỷ lệ lấp đầy ghế (Seat Heatmap)
+Capacity Optimization Tools
+Renders interactive seat occupancy heatmaps across segment combinations to empower administrative vehicle allocation and dynamic inventory management.
+Xem lịch sử hệ thống (View Audit Logs)
+Security & System Compliance
+Tracks comprehensive chronological ledger footprints capturing system changes and live delay logs dispatched by the Staff crew for platform accountability.
+Quản lý danh mục đối tượng khách hàng (Passenger Categories)
+Manages fixed percentage discounts and regulatory eligibility rules for distinct passenger archetypes (e.g., Students, Children, Seniors).
+Bảng điều khiển khách hàng (User Dashboard / My Account)
+Customer Dashboard & Booking Overview
+Displays a personalized account dashboard with greeting, booking statistics, upcoming trip summary, booking history, wallet balance, loyalty points, and quick actions such as Book Ticket, View Profile, Search Ticket, and Cancel Ticket.
+Huỷ vé và hoàn tiền cho khách hàng tại quầy
+Allow staff to cancel tickets and issue refunds to customers if they come directly to the counter.
+Dịch vụ gửi gmail từ hệ thống đến tài khoản gmail của khách hàng
+Gmail Service
+Allow the system to send emails via Reddit using the noreply service. This includes all events such as: account creation, successful booking, forgotten password, successful ticket cancellation notification, etc.
+Đăng nhập bằng Google
+Google Oauth Login
+Allow customers to log in using their Google account.
+Reset mật khẩu
+Reset password
+User/Administrator
+Allows users to reset their password if they forget it. If a staff member forgets their password, they need to inform the administrator to reset it.
+Đổi Vé
+ Allows passengers to modify the details of an already booked ticket (e.g., travel date, train trip, or seat) before departure, automatically recalculating any fare difference and applying time-based exchange fees per railway policy. Member exchanges are processed online with adjustments settled via their internal wallet; Guests must visit a physical counter to complete the exchange.
+gen lịch trình tự động
+Adminstrator
+tạo mẫu gen lịch tự động
+Đổi vé cho khách tại quầy
+Staff Exchange
+Iteration Tracking - Iteration 1
+Information in the columns A-F must be provided as the planned scope for the iteration
+Columns B-D are copied from the sheet Product
+Columns E-J are updated/filled by the end of the iteration
+ID
+Screen / Function
+SRS
+SDS
+Notes
+Allows non-registered walk-in visitors to create a formal account, triggering a 0 VND digital wallet.
+Validates credentials using secured JWT tokens and routes users via RBAC.
+Terminates the active session and clears local session tokens securely.
+Filters search results by time slots, train designator series, and sorts by fares.
+Renders a responsive visual layout distinguishing seat variants and live states.
+Allows e-ticket tracking via Booking History or manual query using PNR code.
+Allows automated cancellations and refunds based on user roles and time frames.
+Provides a top search engine bar to pull up real-time ticketing files via ID or PNR.
+Renders high-fidelity barcode/QR layouts onto physical paper stubs.
+Processes boarding credentials via camera scanning to update flags to 'USED'.
+Maintains catalogs of train routes and configures absolute cumulative distances.
+Monitors user indexes and executes administrative account actions.
+Compiles order ledgers into business intelligence reports and revenue charts.
+Tracks chronological ledger footprints capturing system changes and delay logs.
+Manages discounts and rules for passenger archetypes (Students, Seniors, etc.).
+Displays account dashboard with stats, history, wallet balance, and quick actions.
+Allow staff to cancel tickets and issue refunds to customers directly at the counter.
+Dịch vụ gửi gmail từ hệ thống
+Sends emails for account creation, successful booking, reset password, etc.
+Allows users to reset their password if forgotten.
+Allows passengers to modify ticket details before departure, adjusting fares automatically.
+Iteration Tracking - Iteration 2
+Enables premium users to update personal data for auto-filling during checkouts.
+Queries available train trips based on Departure, Arrival, Type, and Date.
+Manages multi-seat temporary reservations enforcing a 10-minute hold countdown.
+Captures dynamic fields (Name, ID) for reserved seats to enforce legal e-ticket ID.
+Dynamically calculates specialized fare models to deduct discounts automatically.
+Validates and applies marketing coupons (restricted to registered Users).
+Integrates with mock payment gateway via internal wallet or electronic banking.
+Retrieves online refund files, matches ID, issues cash, and updates records.
+Structures physics-based train compositions and maps layout distributions.
+Schedules calendar itineraries, configuring absolute time allocations per transit hub.
+Establishes pricing formulas based on base fare rates and specialized discounts.
+Configures coupon logic, values, expirations, and thresholds for campaigns.
+Reviews pending withdrawal requests and executes administrative approvals.
+Iteration Tracking - Iteration 3
+Displays emergency hotline, terms of service, and refund guidelines.
+Permits members to issue payout extractions to bank accounts using OTP.
+Enables railway agents to log trip delays and recalculate downline schedules.
+Renders interactive seat occupancy heatmaps for dynamic inventory management.
