@@ -56,6 +56,9 @@ export function Profile() {
     gender: "MALE",
     loyaltyPoints: 0,
     walletBalance: 0,
+    bankName: "",
+    bankAccount: "",
+    accountHolder: "",
   });
 
   // Bookings list state
@@ -101,6 +104,9 @@ export function Profile() {
         gender: u.gender || "MALE",
         loyaltyPoints: u.loyaltyPoints || 0,
         walletBalance: balance,
+        bankName: u.bankName || "",
+        bankAccount: u.bankAccount || "",
+        accountHolder: u.accountHolder || "",
       });
 
       // Update auth store user details to match
@@ -313,6 +319,9 @@ export function Profile() {
           ? new Date(profileData.dateOfBirth).toISOString()
           : null,
         gender: profileData.gender,
+        bankName: profileData.bankName.trim() || null,
+        bankAccount: profileData.bankAccount.trim() || null,
+        accountHolder: profileData.accountHolder.trim() || null,
       });
 
       // Update local profile state
@@ -328,6 +337,9 @@ export function Profile() {
           : "",
         gender: data.user.gender || "MALE",
         loyaltyPoints: data.user.loyaltyPoints || 0,
+        bankName: data.user.bankName || "",
+        bankAccount: data.user.bankAccount || "",
+        accountHolder: data.user.accountHolder || "",
       }));
 
       // Update authStore to sync local state
@@ -871,6 +883,49 @@ export function Profile() {
                     onChange={handleInputChange}
                     placeholder="Nhập số nhà, tên đường, phường/xã, quận/huyện, tỉnh/TP"
                     className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Thông tin Ngân hàng */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Tên ngân hàng
+                  </label>
+                  <input
+                    type="text"
+                    name="bankName"
+                    value={profileData.bankName}
+                    onChange={handleInputChange}
+                    placeholder="VD: Vietcombank"
+                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Số tài khoản
+                  </label>
+                  <input
+                    type="text"
+                    name="bankAccount"
+                    value={profileData.bankAccount}
+                    onChange={handleInputChange}
+                    placeholder="VD: 1012345678"
+                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Tên chủ tài khoản
+                  </label>
+                  <input
+                    type="text"
+                    name="accountHolder"
+                    value={profileData.accountHolder}
+                    onChange={handleInputChange}
+                    placeholder="VD: NGUYEN VAN A"
+                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm uppercase"
                   />
                 </div>
               </div>

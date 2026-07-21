@@ -6,8 +6,9 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { walletApi } from "../../services/walletApi.js";
+import { api } from "../../services/api.js";
 import { toast } from "sonner";
 
 const fmt = (n) =>
@@ -19,6 +20,11 @@ export function WithdrawModal({ balance = 0, onClose }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState("form"); // form | success
+
+  const { data: profileData, isLoading: profileLoading } = useQuery({
+    queryKey: ["userProfile"],
+    queryFn: () => api.get("/users/profile").then((r) => r.data.user),
+  });
 
   const mutation = useMutation({
     mutationFn: (amt) => walletApi.withdraw(amt),
@@ -112,6 +118,60 @@ export function WithdrawModal({ balance = 0, onClose }) {
                 </p>
               </div>
 
+              {/* Bank info display */}
+              <div className="mb-5 border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Thông tin nhận tiền
+                  </span>
+                </div>
+                <div className="p-4 bg-white text-sm">
+                  {profileLoading ? (
+                    <div className="text-center text-slate-400 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                    </div>
+                  ) : profileData?.bankAccount ? (
+                    <div className="flex flex-col gap-1 text-slate-700">
+                      <p>
+                        <span className="font-semibold text-slate-500 w-28 inline-block">
+                          Ngân hàng:
+                        </span>
+                        <span className="font-bold">
+                          {profileData.bankName}
+                        </span>
+                      </p>
+                      <p>
+                        <span className="font-semibold text-slate-500 w-28 inline-block">
+                          Số tài khoản:
+                        </span>
+                        <span className="font-bold">
+                          {profileData.bankAccount}
+                        </span>
+                      </p>
+                      <p>
+                        <span className="font-semibold text-slate-500 w-28 inline-block">
+                          Chủ tài khoản:
+                        </span>
+                        <span className="font-bold uppercase">
+                          {profileData.accountHolder}
+                        </span>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <p className="text-amber-600 mb-2">
+                        Chưa cập nhật thông tin ngân hàng
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Vui lòng cập nhật trong phần{" "}
+                        <span className="font-bold">Hồ sơ cá nhân</span> trước
+                        khi rút tiền.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Amount input */}
               <p className="text-sm font-semibold text-on-surface mb-2">
                 Số tiền muốn rút
@@ -156,7 +216,9 @@ export function WithdrawModal({ balance = 0, onClose }) {
 
               <button
                 onClick={handleSubmit}
-                disabled={!isValid || mutation.isPending}
+                disabled={
+                  !isValid || mutation.isPending || !profileData?.bankAccount
+                }
                 className="w-full py-3.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                 style={{ backgroundColor: "#374151" }}
               >

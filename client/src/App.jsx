@@ -14,6 +14,7 @@ import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
 import { TicketExchange } from "./pages/TicketExchange";
 import { Promotions } from "./pages/Promotions";
+import { Regulations } from "./pages/Regulations";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
 import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
@@ -102,8 +103,11 @@ export default function App() {
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
         <Route path="doi-ve" element={<TicketExchange />} />
         <Route path="promotions" element={<Promotions />} />
+
+        <Route path="quy-dinh" element={<Regulations />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
         <Route path="terms" element={<TermsOfService />} />
+
 
         <Route
           path="dashboard"

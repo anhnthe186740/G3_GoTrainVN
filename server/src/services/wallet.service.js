@@ -641,7 +641,16 @@ export async function getAllTransactions({
       include: {
         wallet: {
           include: {
-            user: { select: { id: true, fullName: true, email: true } },
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                bankAccount: true,
+                bankName: true,
+                accountHolder: true,
+              },
+            },
           },
         },
       },

@@ -27,6 +27,7 @@ export function Navbar() {
     { to: "/", label: "Trang Chủ" },
     { to: "/tra-cuu-ve", label: "Tra Cứu Vé" },
     { to: "/promotions", label: "Khuyến Mãi" },
+    { to: "/quy-dinh", label: "Các Quy Định" },
   ];
 
   const userNavLinks = user
