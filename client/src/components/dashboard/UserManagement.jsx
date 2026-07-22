@@ -987,21 +987,11 @@ export function UserManagement() {
               <h4 className="font-label-md text-slate-800 text-sm mb-1 font-semibold">
                 Quản Trị Viên (Admin)
               </h4>
-              <p className="text-slate-500 text-xs leading-relaxed mb-6">
+              <p className="text-slate-500 text-xs leading-relaxed">
                 Toàn quyền truy cập hệ thống, quản lý tài khoản người dùng và
                 doanh thu.
               </p>
             </div>
-            <button
-              onClick={() =>
-                toast.info(
-                  "Tính năng chỉnh sửa phân quyền sẽ có ở phiên bản tiếp theo",
-                )
-              }
-              className="w-full py-2 rounded-xl border border-[#00629d] text-[#00629d] font-semibold text-xs hover:bg-[#00629d] hover:text-white transition-all cursor-pointer"
-            >
-              Chỉnh sửa quyền
-            </button>
           </div>
 
           {/* Card 2: Staff */}
@@ -1020,21 +1010,11 @@ export function UserManagement() {
               <h4 className="font-label-md text-slate-800 text-sm mb-1 font-semibold">
                 Nhân Viên (Staff)
               </h4>
-              <p className="text-slate-500 text-xs leading-relaxed mb-6">
+              <p className="text-slate-500 text-xs leading-relaxed">
                 Quản lý lịch trình tàu chạy, xử lý yêu cầu hủy/hoàn vé và hỗ trợ
                 khách hàng.
               </p>
             </div>
-            <button
-              onClick={() =>
-                toast.info(
-                  "Tính năng chỉnh sửa phân quyền sẽ có ở phiên bản tiếp theo",
-                )
-              }
-              className="w-full py-2 rounded-xl border border-[#00629d] text-[#00629d] font-semibold text-xs hover:bg-[#00629d] hover:text-white transition-all cursor-pointer"
-            >
-              Chỉnh sửa quyền
-            </button>
           </div>
         </div>
       </section>
