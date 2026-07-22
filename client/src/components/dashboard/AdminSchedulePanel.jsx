@@ -1968,7 +1968,7 @@ export function AdminSchedulePanel() {
                         const occupiedTimes = activeRouteTemplates.flatMap(
                           (t) => t.departureTimes,
                         );
-                        nextTime = findNextSafeTime("08:00", occupiedTimes, 20);
+                        nextTime = findNextSafeTime("08:00", occupiedTimes, 30);
                       }
                     }
                     setTemplateForm({
@@ -2051,10 +2051,17 @@ export function AdminSchedulePanel() {
                         ),
                       );
                       return (
-                        <p className="mt-1 text-[11px] text-[#3f4852]/60">
-                          Các giờ chạy đã có trên tuyến này:{" "}
-                          {allTimes.join(", ")}
-                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-[11px] text-[#3f4852]/70">
+                            Các giờ chạy đã có trên tuyến này:{" "}
+                            {allTimes.join(", ")}
+                          </p>
+                          <p className="text-[11px] text-[#00629d] font-semibold flex items-center gap-1">
+                            💡 Khuyến nghị:Nên đặt các chuyến tàu cùng chiều
+                            cách nhau tối thiểu 30 - 60 phút để tạo khoảng đệm
+                            an toàn khi chậm chuyến.
+                          </p>
+                        </div>
                       );
                     }
                     return null;

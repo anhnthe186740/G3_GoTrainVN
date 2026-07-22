@@ -64,17 +64,28 @@ export async function validateSameDirectionGap({
       id: true,
       departureTime: true,
       arrivalTime: true,
+      delayMinutes: true,
+      status: true,
       train: { select: { trainCode: true } },
     },
   });
 
   for (const existing of sameDirectionSchedules) {
     const exDepMs = new Date(existing.departureTime).getTime();
-    const exArrMs = new Date(existing.arrivalTime).getTime();
 
     // Vi phạm nếu: khoảng cách giờ xuất phát giữa 2 tàu < MIN_GAP_MINUTES
     const gap = Math.abs(depTime - exDepMs);
     if (gap < gapMs) {
+      const nextSafeTimeDate = new Date(exDepMs + gapMs);
+      const safeTimeStr = nextSafeTimeDate.toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const delayInfo =
+        existing.delayMinutes > 0
+          ? ` (đang trễ ${existing.delayMinutes} phút)`
+          : "";
+
       return {
         valid: false,
         conflict: {
@@ -82,9 +93,11 @@ export async function validateSameDirectionGap({
           conflictingScheduleId: existing.id,
           conflictingTrain: existing.train?.trainCode,
           conflictingDeparture: existing.departureTime,
+          delayMinutes: existing.delayMinutes || 0,
           gapMinutes: Math.floor(gap / 60000),
           requiredGapMinutes: gapMinutes,
-          message: `Tàu ${existing.train?.trainCode || "khác"} xuất phát lúc ${new Date(existing.departureTime).toLocaleString("vi-VN")} cùng tuyến này. Khoảng giãn cách hiện tại chỉ ${Math.floor(gap / 60000)} phút (yêu cầu tối thiểu ${gapMinutes} phút).`,
+          suggestedSafeTime: safeTimeStr,
+          message: `Tàu ${existing.train?.trainCode || "khác"} xuất phát lúc ${new Date(existing.departureTime).toLocaleString("vi-VN")}${delayInfo} trên tuyến này. Khoảng giãn cách hiện tại chỉ ${Math.floor(gap / 60000)} phút (yêu cầu tối thiểu ${gapMinutes} phút). Gợi ý giờ chạy an toàn tiếp theo: ${safeTimeStr}.`,
         },
       };
     }

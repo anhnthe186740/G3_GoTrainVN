@@ -81,127 +81,152 @@ export async function generateSchedulesByTemplate(targetDate) {
 
       // Tạo lịch trình cho từng giờ xuất phát trong mẫu
       for (const timeStr of template.departureTimes) {
-        const [hourStr, minStr] = timeStr.split(":");
-        const hour = parseInt(hourStr, 10);
-        const minute = parseInt(minStr, 10);
+        try {
+          const [hourStr, minStr] = timeStr.split(":");
+          const hour = parseInt(hourStr, 10);
+          const minute = parseInt(minStr, 10);
 
-        const speedFactor = getTrainTypeSpeedFactor(train.trainType);
-        const bufferMins = template.bufferMinutes || 60;
-        const numStops = route.stations ? route.stations.length : 0;
-        const totalDurationMins =
-          Math.round(route.estimatedDuration * speedFactor) +
-          numStops * bufferMins;
+          const speedFactor = getTrainTypeSpeedFactor(train.trainType);
+          const bufferMins = template.bufferMinutes || 60;
+          const numStops = route.stations ? route.stations.length : 0;
+          const totalDurationMins =
+            Math.round(route.estimatedDuration * speedFactor) +
+            numStops * bufferMins;
 
-        const departure = new Date(targetDay);
-        departure.setHours(hour, minute, 0, 0);
+          const departure = new Date(targetDay);
+          departure.setHours(hour, minute, 0, 0);
 
-        // Kiểm tra thời gian thực (Real-time Validation)
-        if (departure.getTime() <= Date.now()) {
-          skippedCount++;
-          continue;
-        }
-
-        const arrival = new Date(
-          departure.getTime() + totalDurationMins * 60 * 1000,
-        );
-
-        // Kiểm tra xung đột (giãn cách bufferMinutes)
-        const bufferMs = bufferMins * 60 * 1000;
-        const windowStart = departure.getTime() - bufferMs;
-        const windowEnd = arrival.getTime() + bufferMs;
-
-        // Truy vấn lịch hiện có của tàu trong vòng 2 ngày xung quanh ngày target
-        const startRange = new Date(targetDay);
-        startRange.setDate(startRange.getDate() - 1);
-        const endRange = new Date(targetDay);
-        endRange.setDate(endRange.getDate() + 2);
-
-        const existingSchedules = await prisma.schedule.findMany({
-          where: {
-            trainId: train.id,
-            status: { not: "CANCELLED" },
-            departureTime: {
-              gte: startRange,
-              lte: endRange,
-            },
-          },
-        });
-
-        let hasConflict = false;
-        for (const cs of existingSchedules) {
-          const csStart = new Date(cs.departureTime).getTime();
-          const csEnd = new Date(cs.arrivalTime).getTime();
-          if (windowStart < csEnd && windowEnd > csStart) {
-            hasConflict = true;
-            break;
+          // Kiểm tra thời gian thực (Real-time Validation)
+          if (departure.getTime() <= Date.now()) {
+            skippedCount++;
+            continue;
           }
-        }
 
-        if (hasConflict) {
-          skippedCount++;
-          continue;
-        }
-
-        // Tạo lịch trình trong Transaction
-        await prisma.$transaction(async (tx) => {
-          const schedule = await tx.schedule.create({
-            data: {
+          // Kiểm tra xem đã tồn tại lịch trùng khớp bộ 4 khóa chính hay chưa (kể cả bị CANCELLED)
+          const exactDup = await prisma.schedule.findFirst({
+            where: {
               trainId: train.id,
-              routeId: route.id,
               startStationId: route.startStationId,
               endStationId: route.endStationId,
               departureTime: departure,
-              arrivalTime: arrival,
-              distance: route.distance,
-              duration: totalDurationMins,
-              status: "ACTIVE",
+            },
+          });
+          if (exactDup) {
+            skippedCount++;
+            continue;
+          }
+
+          const arrival = new Date(
+            departure.getTime() + totalDurationMins * 60 * 1000,
+          );
+
+          // Kiểm tra xung đột (giãn cách bufferMinutes)
+          const bufferMs = bufferMins * 60 * 1000;
+          const windowStart = departure.getTime() - bufferMs;
+          const windowEnd = arrival.getTime() + bufferMs;
+
+          // Truy vấn lịch hiện có của tàu trong vòng 2 ngày xung quanh ngày target
+          const startRange = new Date(targetDay);
+          startRange.setDate(startRange.getDate() - 1);
+          const endRange = new Date(targetDay);
+          endRange.setDate(endRange.getDate() + 2);
+
+          const existingSchedules = await prisma.schedule.findMany({
+            where: {
+              trainId: train.id,
+              status: { not: "CANCELLED" },
+              departureTime: {
+                gte: startRange,
+                lte: endRange,
+              },
             },
           });
 
-          // Tạo ScheduleStops
-          if (route.stations && route.stations.length > 0) {
-            const sortedStations = [...route.stations].sort(
-              (a, b) => a.stopOrder - b.stopOrder,
-            );
-            await tx.scheduleStop.createMany({
-              data: sortedStations.map((stop, index) => {
-                const progress =
-                  route.distance > 0
-                    ? Math.min(
-                        1,
-                        Math.max(0, stop.distanceFromStart / route.distance),
-                      )
-                    : 0;
-                const movingTimeMs =
-                  route.estimatedDuration * speedFactor * progress * 60 * 1000;
-                const restingTimeMs = index * bufferMins * 60 * 1000;
-                const stopArrivalTime = new Date(
-                  departure.getTime() + movingTimeMs + restingTimeMs,
-                );
-                const stopDepartureTime = new Date(
-                  stopArrivalTime.getTime() + bufferMins * 60 * 1000,
-                );
-
-                return {
-                  scheduleId: schedule.id,
-                  stationId: stop.stationId,
-                  stopOrder: stop.stopOrder,
-                  arrivalTime: stopArrivalTime,
-                  departureTime: stopDepartureTime,
-                };
-              }),
-            });
+          let hasConflict = false;
+          for (const cs of existingSchedules) {
+            const csStart = new Date(cs.departureTime).getTime();
+            const csEnd = new Date(cs.arrivalTime).getTime();
+            if (windowStart < csEnd && windowEnd > csStart) {
+              hasConflict = true;
+              break;
+            }
           }
-        });
 
-        createdCount++;
+          if (hasConflict) {
+            skippedCount++;
+            continue;
+          }
+
+          // Tạo lịch trình trong Transaction
+          await prisma.$transaction(async (tx) => {
+            const schedule = await tx.schedule.create({
+              data: {
+                trainId: train.id,
+                routeId: route.id,
+                startStationId: route.startStationId,
+                endStationId: route.endStationId,
+                departureTime: departure,
+                arrivalTime: arrival,
+                distance: route.distance,
+                duration: totalDurationMins,
+                status: "ACTIVE",
+              },
+            });
+
+            // Tạo ScheduleStops
+            if (route.stations && route.stations.length > 0) {
+              const sortedStations = [...route.stations].sort(
+                (a, b) => a.stopOrder - b.stopOrder,
+              );
+              await tx.scheduleStop.createMany({
+                data: sortedStations.map((stop, index) => {
+                  const progress =
+                    route.distance > 0
+                      ? Math.min(
+                          1,
+                          Math.max(0, stop.distanceFromStart / route.distance),
+                        )
+                      : 0;
+                  const movingTimeMs =
+                    route.estimatedDuration *
+                    speedFactor *
+                    progress *
+                    60 *
+                    1000;
+                  const restingTimeMs = index * bufferMins * 60 * 1000;
+                  const stopArrivalTime = new Date(
+                    departure.getTime() + movingTimeMs + restingTimeMs,
+                  );
+                  const stopDepartureTime = new Date(
+                    stopArrivalTime.getTime() + bufferMins * 60 * 1000,
+                  );
+
+                  return {
+                    scheduleId: schedule.id,
+                    stationId: stop.stationId,
+                    stopOrder: stop.stopOrder,
+                    arrivalTime: stopArrivalTime,
+                    departureTime: stopDepartureTime,
+                  };
+                }),
+              });
+            }
+          });
+
+          createdCount++;
+        } catch (slotErr) {
+          console.warn(
+            `[AutoSchedule] Bỏ qua lịch bị trùng/xung đột (P2002) cho tàu ${train.trainCode} lúc ${timeStr}:`,
+            slotErr.message || slotErr,
+          );
+          skippedCount++;
+        }
       }
     } catch (err) {
       console.error(
         `[AutoSchedule] Lỗi tạo lịch từ Template cho ngày ${targetDay.toLocaleDateString("vi-VN")}:`,
         err,
       );
-      skippedCount += template.departureTimes.length;
     }
   }
 
@@ -356,8 +381,16 @@ export async function generateSchedulesByBaseline(targetDate) {
       const departure = new Date(targetDay);
       departure.setHours(pattern.hour, pattern.minute, 0, 0);
 
-      // Kiểm tra thời gian thực (Real-time Validation)
-      if (departure.getTime() <= Date.now()) {
+      // Kiểm tra xem đã tồn tại lịch trùng khớp bộ 4 khóa chính hay chưa (kể cả bị CANCELLED)
+      const exactDup = await prisma.schedule.findFirst({
+        where: {
+          trainId: train.id,
+          startStationId: route.startStationId,
+          endStationId: route.endStationId,
+          departureTime: departure,
+        },
+      });
+      if (exactDup) {
         skippedCount++;
         continue;
       }

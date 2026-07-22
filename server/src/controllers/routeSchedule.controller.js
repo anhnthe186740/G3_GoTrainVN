@@ -1169,9 +1169,9 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
           for (const occTime of activeTpl.departureTimes) {
             const diff = getMinutesDifference(propTime, occTime);
             if (diff < 20) {
-              const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+              const safeTime = findNextSafeTime(propTime, occupiedTimes, 30);
               return res.status(400).json({
-                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
+                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút, khuyến nghị khoảng đệm 30 - 60 phút dự phòng khi trễ). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
               });
             }
           }
@@ -1969,6 +1969,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           startStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -1978,6 +1979,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           endStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -1991,6 +1993,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           station: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
