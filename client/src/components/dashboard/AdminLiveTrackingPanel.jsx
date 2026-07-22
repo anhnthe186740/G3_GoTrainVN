@@ -418,9 +418,13 @@ export function AdminLiveTrackingPanel() {
     let delayed = 0;
 
     processedTrackings.forEach(({ schedule, tracking }) => {
-      const status = tracking?.status || schedule?.status;
-      if (status === "DELAYED") {
-        disabled: delayed++;
+      const isDelayed =
+        schedule?.status === "DELAYED" ||
+        Boolean(schedule?.delayMinutes && schedule.delayMinutes > 0) ||
+        tracking?.status === "DELAYED";
+
+      if (isDelayed) {
+        delayed++;
       } else {
         onTime++;
       }
@@ -785,8 +789,10 @@ export function AdminLiveTrackingPanel() {
             {/* Active Trains (Real-time pins) */}
             {processedTrackings.map((item) => {
               const { schedule, tracking } = item;
-              const status = tracking?.status || schedule?.status;
-              const isDelayed = status === "DELAYED";
+              const isDelayed =
+                schedule?.status === "DELAYED" ||
+                Boolean(schedule?.delayMinutes && schedule.delayMinutes > 0) ||
+                tracking?.status === "DELAYED";
 
               // Resolve coordinates: SVG x, y -> GPS -> station label fallback
               let trainX = STATION_COORDS.HAN.x;
@@ -892,8 +898,12 @@ export function AdminLiveTrackingPanel() {
               <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[300px] overflow-y-auto pr-1">
                 {processedTrackings.map((item) => {
                   const { schedule, tracking } = item;
-                  const status = tracking?.status || schedule?.status;
-                  const isDelayed = status === "DELAYED";
+                  const isDelayed =
+                    schedule?.status === "DELAYED" ||
+                    Boolean(
+                      schedule?.delayMinutes && schedule.delayMinutes > 0,
+                    ) ||
+                    tracking?.status === "DELAYED";
                   const isSelected = selectedTrainId === schedule.id;
 
                   return (
