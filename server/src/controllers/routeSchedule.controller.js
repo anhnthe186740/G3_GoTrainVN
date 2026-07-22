@@ -1969,6 +1969,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           startStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -1978,6 +1979,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           endStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -1991,6 +1993,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           station: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
