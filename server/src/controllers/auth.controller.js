@@ -57,7 +57,12 @@ export const login = asyncHandler(async (req, res) => {
     },
   });
 
-  res.cookie("token", result.token, { httpOnly: true, sameSite: "lax" });
+  const isProduction = process.env.NODE_ENV === "production";
+  res.cookie("token", result.token, {
+    httpOnly: true,
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
+  });
   res.json({ user: result.user, token: result.token });
 });
 
@@ -304,7 +309,12 @@ export const googleLogin = asyncHandler(async (req, res) => {
       },
     });
 
-    res.cookie("token", token, { httpOnly: true, sameSite: "lax" });
+    const isProduction = process.env.NODE_ENV === "production";
+    res.cookie("token", token, {
+      httpOnly: true,
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction,
+    });
     res.json({
       success: true,
       token,
