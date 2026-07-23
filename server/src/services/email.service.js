@@ -9,124 +9,111 @@ const __dirname = path.dirname(__filename);
 // Store sent emails in the root of the server folder: server/sent_emails.json
 const emailsFilePath = path.join(__dirname, "../../../sent_emails.json");
 
-let smtpTransporter = null;
+let smtpTransporter465 = null;
+let smtpTransporter587 = null;
 
-function getSmtpTransporter() {
-  if (!smtpTransporter && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    smtpTransporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      family: 4, // Force IPv4 to prevent ENETUNREACH on environments without IPv6 support (e.g., Render)
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
+function createSmtpTransporter(port, secure) {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    family: 4, // Force IPv4
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
+  });
+}
+
+function getTransporter465() {
+  if (!smtpTransporter465) {
+    smtpTransporter465 = createSmtpTransporter(465, true);
   }
-  return smtpTransporter;
+  return smtpTransporter465;
+}
+
+function getTransporter587() {
+  if (!smtpTransporter587) {
+    smtpTransporter587 = createSmtpTransporter(587, false);
+  }
+  return smtpTransporter587;
 }
 
 export async function sendEmail({ to, subject, html }) {
-  const isVercelServerless = Boolean(
-    process.env.VERCEL ||
-    process.env.VERCEL_ENV ||
-    process.env.AWS_LAMBDA_FUNCTION_NAME,
-  );
+  const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
+  const from = `"${senderName}" <${process.env.SMTP_USER}>`;
 
-  // Helper: send via Resend API
-  async function tryResend() {
-    if (!process.env.RESEND_API_KEY) return null;
+  // 1. Primary Attempt: SMTP Port 465 (SSL/TLS)
+  const preferredPort = parseInt(process.env.SMTP_PORT || "465");
+  const isSecurePreferred = process.env.SMTP_SECURE !== "false";
+
+  const primaryTransporter =
+    preferredPort === 465 && isSecurePreferred
+      ? getTransporter465()
+      : getTransporter587();
+  const secondaryTransporter =
+    preferredPort === 465 && isSecurePreferred
+      ? getTransporter587()
+      : getTransporter465();
+
+  if (primaryTransporter) {
     try {
-      const fromEmail =
-        process.env.EMAIL_FROM || "GoTrain VN <onboarding@resend.dev>";
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [to],
-          subject,
-          html,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(
-          data.message || `Resend API Error (HTTP ${response.status})`,
-        );
-      }
-
-      console.log(
-        `✉️  [RESEND EMAIL SENT] ID: ${data.id} | To: ${to} | Subject: ${subject}`,
-      );
-      return { success: true, provider: "RESEND", emailId: data.id };
-    } catch (err) {
-      console.error("❌ Gửi email qua Resend API thất bại:", err.message);
-      if (
-        err.message.includes("validation_error") ||
-        err.message.includes("can only send to your own email")
-      ) {
-        console.warn(
-          "💡 Lưu ý Vercel/Resend Free Tier: Tài khoản Resend thử nghiệm (onboarding@resend.dev) chỉ gửi được tới Email chủ tài khoản Resend. Cần verify domain trên resend.com để gửi cho mọi khách hàng.",
-        );
-      }
-      return null;
-    }
-  }
-
-  // Helper: send via SMTP Nodemailer
-  async function trySmtp() {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-    try {
-      const transporter = getSmtpTransporter();
-      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
-      const info = await transporter.sendMail({
-        from: `"${senderName}" <${process.env.SMTP_USER}>`,
+      const info = await primaryTransporter.sendMail({
+        from,
         to,
         subject,
         html,
       });
-
       console.log(
-        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
+        `✉️  [SMTP SENT] Port ${preferredPort} | MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
       );
-      return { success: true, provider: "SMTP", emailId: info.messageId };
+      return {
+        success: true,
+        provider: `SMTP-${preferredPort}`,
+        emailId: info.messageId,
+      };
     } catch (err) {
-      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
-      if (isVercelServerless) {
-        console.warn(
-          "💡 Lưu ý Vercel Serverless: Vercel chặn cổng SMTP 587 outbound. Hãy cấu hình RESEND_API_KEY trong Vercel Environment Variables.",
-        );
-      }
-      return null;
+      console.error(
+        `❌ Gửi email qua SMTP Port ${preferredPort} thất bại:`,
+        err.message,
+      );
     }
   }
 
-  // On Vercel, HTTPS REST API (Resend) is prioritized because Vercel firewall blocks port 587 SMTP
-  if (isVercelServerless) {
-    const resendResult = await tryResend();
-    if (resendResult) return resendResult;
-
-    const smtpResult = await trySmtp();
-    if (smtpResult) return smtpResult;
-  } else {
-    // On Local / Standard Server, try SMTP first, then Resend
-    const smtpResult = await trySmtp();
-    if (smtpResult) return smtpResult;
-
-    const resendResult = await tryResend();
-    if (resendResult) return resendResult;
+  // 2. Secondary Attempt: Fallback SMTP Port (587 STARTTLS or 465 SSL)
+  const fallbackPort = preferredPort === 465 ? 587 : 465;
+  if (secondaryTransporter) {
+    try {
+      console.log(
+        `🔄 Đang thử lại gửi qua SMTP Cổng dự phòng ${fallbackPort}...`,
+      );
+      const info = await secondaryTransporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+      });
+      console.log(
+        `✉️  [SMTP FALLBACK SENT] Port ${fallbackPort} | MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
+      );
+      return {
+        success: true,
+        provider: `SMTP-${fallbackPort}`,
+        emailId: info.messageId,
+      };
+    } catch (err) {
+      console.error(
+        `❌ Gửi email qua SMTP Port dự phòng ${fallbackPort} thất bại:`,
+        err.message,
+      );
+    }
   }
 
-  // Option 3: Priority 3 - Mock Email Fallback
+  // 3. Fallback: Mock Email Record
   const timestamp = new Date().toISOString();
   const emailRecord = {
     id: `email-${Math.random().toString(36).substr(2, 9)}`,
