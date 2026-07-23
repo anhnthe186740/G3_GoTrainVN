@@ -191,6 +191,40 @@ export const resetPassword = asyncHandler(async (req, res) => {
     },
   });
 
+  // Send password change notification email
+  sendEmail({
+    to: user.email,
+    subject:
+      "[GoTrain VN] Mật khẩu tài khoản của bạn đã được thay đổi thành công",
+    html: `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+        <div style="text-align: center; margin-bottom: 25px;">
+          <h1 style="color: #00629d; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+          <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Cảnh báo bảo mật tài khoản</p>
+        </div>
+        <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+          <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Thay đổi mật khẩu thành công</h2>
+          <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+            Xin chào <strong>${user.fullName}</strong>,<br/>
+            Mật khẩu cho tài khoản GoTrain VN (<strong>${user.email}</strong>) của bạn vừa được cập nhật thành công vào lúc <strong>${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</strong>.
+          </p>
+        </div>
+        <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px;">
+          <p style="margin: 0; font-size: 13px; color: #991b1b; line-height: 1.5;">
+            <strong>Lưu ý bảo mật:</strong> Nếu bạn không thực hiện yêu cầu thay đổi mật khẩu này, vui lòng liên hệ ngay với bộ phận hỗ trợ GoTrain VN để được hỗ trợ khóa và bảo vệ tài khoản khẩn cấp.
+          </p>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+          <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+          <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+        </div>
+      </div>
+    `,
+  }).catch((err) =>
+    console.error("❌ Gửi email cảnh báo đổi mật khẩu thất bại:", err.message),
+  );
+
   res.json({
     success: true,
     message:
