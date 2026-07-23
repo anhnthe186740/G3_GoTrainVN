@@ -45,9 +45,49 @@ function getTransporter587() {
 
 export async function sendEmail({ to, subject, html }) {
   const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
-  const from = `"${senderName}" <${process.env.SMTP_USER}>`;
+  const senderEmail = process.env.SMTP_USER || "trandat0601dh@gmail.com";
+  const from = `"${senderName}" <${senderEmail}>`;
 
-  // 1. Primary Attempt: SMTP Port 465 (SSL/TLS)
+  // Option 1: Brevo HTTP REST API (100% Free 300 mails/day, sends to ANY recipient on Render Free)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.message || `Brevo API Error (HTTP ${response.status})`,
+        );
+      }
+
+      console.log(
+        `✉️  [BREVO API SENT] MessageID: ${data.messageId || data.id} | To: ${to} | Subject: ${subject}`,
+      );
+      return {
+        success: true,
+        provider: "BREVO",
+        emailId: data.messageId || data.id,
+      };
+    } catch (err) {
+      console.error("❌ Gửi email qua Brevo API thất bại:", err.message);
+      console.log("⚠️  Đang chuyển sang kiểm tra cổng SMTP...");
+    }
+  }
+
+  // Option 2: SMTP Nodemailer (Port 465 SSL & Port 587 STARTTLS)
   const preferredPort = parseInt(process.env.SMTP_PORT || "465");
   const isSecurePreferred = process.env.SMTP_SECURE !== "false";
 
@@ -84,7 +124,6 @@ export async function sendEmail({ to, subject, html }) {
     }
   }
 
-  // 2. Secondary Attempt: Fallback SMTP Port (587 STARTTLS or 465 SSL)
   const fallbackPort = preferredPort === 465 ? 587 : 465;
   if (secondaryTransporter) {
     try {
@@ -110,6 +149,39 @@ export async function sendEmail({ to, subject, html }) {
         `❌ Gửi email qua SMTP Port dự phòng ${fallbackPort} thất bại:`,
         err.message,
       );
+    }
+  }
+
+  // Option 3: Resend API
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const fromEmail =
+        process.env.EMAIL_FROM || "GoTrain VN <onboarding@resend.dev>";
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+
+      console.log(
+        `✉️  [RESEND API SENT] ID: ${data.id} | To: ${to} | Subject: ${subject}`,
+      );
+      return { success: true, provider: "RESEND", emailId: data.id };
+    } catch (err) {
+      console.error("❌ Gửi email qua Resend API thất bại:", err.message);
     }
   }
 
