@@ -31,30 +31,15 @@ function getSmtpTransporter() {
 }
 
 export async function sendEmail({ to, subject, html }) {
-  // Option 1: Priority 1 - Send via SMTP (Nodemailer) if SMTP_USER is configured
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      const transporter = getSmtpTransporter();
-      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
-      const info = await transporter.sendMail({
-        from: `"${senderName}" <${process.env.SMTP_USER}>`,
-        to,
-        subject,
-        html,
-      });
+  const isVercelServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME,
+  );
 
-      console.log(
-        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
-      );
-      return { success: true, provider: "SMTP", emailId: info.messageId };
-    } catch (err) {
-      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
-      console.log("⚠️  Đang tự động chuyển sang kiểm tra cấu hình Resend...");
-    }
-  }
-
-  // Option 2: Priority 2 - Send via Resend API
-  if (process.env.RESEND_API_KEY) {
+  // Helper: send via Resend API
+  async function tryResend() {
+    if (!process.env.RESEND_API_KEY) return null;
     try {
       const fromEmail =
         process.env.EMAIL_FROM || "GoTrain VN <onboarding@resend.dev>";
@@ -90,13 +75,55 @@ export async function sendEmail({ to, subject, html }) {
         err.message.includes("can only send to your own email")
       ) {
         console.warn(
-          "💡 Ghi chú Resend Free Tier: Tài khoản Resend thử nghiệm (onboarding@resend.dev) chỉ cho phép gửi tới Email đăng ký tài khoản Resend.",
+          "💡 Lưu ý Vercel/Resend Free Tier: Tài khoản Resend thử nghiệm (onboarding@resend.dev) chỉ gửi được tới Email chủ tài khoản Resend. Cần verify domain trên resend.com để gửi cho mọi khách hàng.",
         );
       }
-      console.log(
-        "⚠️  Đang tự động chuyển sang lưu email giả lập (sent_emails.json)...",
-      );
+      return null;
     }
+  }
+
+  // Helper: send via SMTP Nodemailer
+  async function trySmtp() {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+    try {
+      const transporter = getSmtpTransporter();
+      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
+      const info = await transporter.sendMail({
+        from: `"${senderName}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html,
+      });
+
+      console.log(
+        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
+      );
+      return { success: true, provider: "SMTP", emailId: info.messageId };
+    } catch (err) {
+      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
+      if (isVercelServerless) {
+        console.warn(
+          "💡 Lưu ý Vercel Serverless: Vercel chặn cổng SMTP 587 outbound. Hãy cấu hình RESEND_API_KEY trong Vercel Environment Variables.",
+        );
+      }
+      return null;
+    }
+  }
+
+  // On Vercel, HTTPS REST API (Resend) is prioritized because Vercel firewall blocks port 587 SMTP
+  if (isVercelServerless) {
+    const resendResult = await tryResend();
+    if (resendResult) return resendResult;
+
+    const smtpResult = await trySmtp();
+    if (smtpResult) return smtpResult;
+  } else {
+    // On Local / Standard Server, try SMTP first, then Resend
+    const smtpResult = await trySmtp();
+    if (smtpResult) return smtpResult;
+
+    const resendResult = await tryResend();
+    if (resendResult) return resendResult;
   }
 
   // Option 3: Priority 3 - Mock Email Fallback
