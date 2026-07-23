@@ -421,3 +421,91 @@ export function getScheduleCancelledEmailTemplate(booking, notes) {
     </div>
   `;
 }
+
+/**
+ * Template 7: Refund Approved Notification (Thông báo chấp nhận hoàn tiền)
+ */
+export function getRefundApprovedEmailTemplate(
+  booking,
+  refundAmount,
+  method = "WALLET",
+) {
+  const trainName = booking.schedule?.train?.trainName || "Tàu hỏa";
+  const trainCode = booking.schedule?.train?.trainCode || "";
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #bbf7d0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #dcfce7; color: #15803d; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Hoàn tiền thành công</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Mã đặt chỗ: <strong style="color: #00629d; font-size: 16px;">${booking.bookingCode}</strong></p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Yêu cầu hủy vé & hoàn tiền đã được chấp nhận</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào quý khách. Yêu cầu hủy vé cho chuyến tàu <strong>${trainCode} (${trainName})</strong> của quý khách đã được bộ phận chăm sóc khách hàng phê duyệt.
+        </p>
+      </div>
+
+      <div style="background-color: #f0fdf4; border: 1px solid #dcfce7; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #15803d; text-transform: uppercase;">Chi tiết hoàn tiền</h3>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Số tiền hoàn trả:</strong> <span style="color: #15803d; font-size: 18px; font-weight: 800;">${formatPrice(refundAmount)}</span></p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Phương thức hoàn:</strong> ${method === "WALLET" ? "Ví điện tử GoTrain" : "Chuyển khoản ngân hàng"}</p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Thời gian duyệt:</strong> ${formatDate(new Date())}</p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
+        Nếu hoàn qua Ví điện tử GoTrain, số dư đã được cộng trực tiếp vào ví của bạn. Nếu hoàn qua ngân hàng, giao dịch xử lý từ 1-3 ngày làm việc.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 8: Refund Rejected Notification (Thông báo từ chối hoàn tiền)
+ */
+export function getRefundRejectedEmailTemplate(booking, reason) {
+  const trainName = booking.schedule?.train?.trainName || "Tàu hỏa";
+  const trainCode = booking.schedule?.train?.trainCode || "";
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fed7aa; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #ffedd5; color: #c2410c; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Yêu cầu bị từ chối</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Mã đặt chỗ: <strong style="color: #00629d; font-size: 16px;">${booking.bookingCode}</strong></p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Thông báo kết quả xử lý yêu cầu hủy vé</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào quý khách. Yêu cầu hủy vé cho chuyến tàu <strong>${trainCode} (${trainName})</strong> của quý khách đã bị từ chối vì chưa đủ điều kiện theo quy định của đường sắt.
+        </p>
+      </div>
+
+      <div style="background-color: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #c2410c; text-transform: uppercase;">Lý do từ chối</h3>
+        <p style="margin: 5px 0; font-size: 14px; color: #9a3412;">${reason || "Yêu cầu không thỏa mãn điều kiện quy định đổi/trả vé trước giờ khởi hành."}</p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
+        Quý khách vui lòng liên hệ tổng đài hỗ trợ hoặc quầy vé tại ga nếu cần thêm thông tin giải đáp.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
