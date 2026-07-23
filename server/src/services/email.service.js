@@ -21,6 +21,7 @@ export async function sendEmail({ to, subject, html }) {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS,
         },
+        family: 4, // Force IPv4 to prevent ENETUNREACH on environments without IPv6 support (e.g., Render)
       });
 
       const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
