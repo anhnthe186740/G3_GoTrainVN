@@ -24,11 +24,12 @@ export function bookingIdentity(req, res, next) {
 
   const guestToken =
     req.cookies?.[GUEST_COOKIE] || randomBytes(24).toString("hex");
+  const isProduction = process.env.NODE_ENV === "production";
   if (!req.cookies?.[GUEST_COOKIE]) {
     res.cookie(GUEST_COOKIE, guestToken, {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction,
       maxAge: 24 * 60 * 60 * 1000,
     });
   }
