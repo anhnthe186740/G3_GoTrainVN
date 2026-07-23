@@ -934,8 +934,7 @@ async function matchCustomerUsers(passengers) {
 const MAX_TOTAL_PASSENGERS = 8;
 
 export async function checkoutBooking(identity, payload) {
-
-  if (identity.userId) {
+  if (identity.userId && typeof prisma.user?.findUnique === "function") {
     const user = await prisma.user.findUnique({
       where: { id: identity.userId },
       select: { isActive: true, lockReason: true },
@@ -947,7 +946,6 @@ export async function checkoutBooking(identity, payload) {
       );
     }
   }
-
 
   const isStaffCounter = payload.salesChannel === "STAFF_COUNTER";
 
@@ -1076,6 +1074,28 @@ export async function checkoutBooking(identity, payload) {
       });
     }
 
+    let userEmail = null;
+    const targetUserId = customerUserId || identity.userId;
+    if (targetUserId && typeof tx.user?.findUnique === "function") {
+      const u = await tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { email: true },
+      });
+      userEmail = u?.email;
+    }
+
+    const resolvedConfirmationEmail =
+      (typeof payload.email === "string" && payload.email.trim()) ||
+      (typeof payload.confirmationEmail === "string" &&
+        payload.confirmationEmail.trim()) ||
+      (typeof payload.contactEmail === "string" &&
+        payload.contactEmail.trim()) ||
+      passengers
+        .find((passenger) => passenger.email && passenger.email.trim())
+        ?.email?.trim() ||
+      userEmail ||
+      null;
+
     const booking = await tx.booking.create({
       data: {
         bookingCode: code,
@@ -1110,8 +1130,7 @@ export async function checkoutBooking(identity, payload) {
         payosCheckoutUrl: payosPayment?.checkoutUrl || null,
         payosQrCode: payosPayment?.qrCode || null,
         status: immediatePayment ? "CONFIRMED" : "PENDING",
-        confirmationEmail:
-          passengers.find((passenger) => passenger.email)?.email || null,
+        confirmationEmail: resolvedConfirmationEmail,
         expiresAt: immediatePayment ? null : quote.session.expiresAt,
         paidAt: immediatePayment ? now : null,
       },
@@ -1561,9 +1580,9 @@ async function sendBookingEmail(bookingId, type) {
     }
 
     const toEmail =
-      booking.confirmationEmail ||
-      booking.user?.email ||
-      booking.passengers.find((p) => p.email)?.email;
+      (booking.confirmationEmail && booking.confirmationEmail.trim()) ||
+      (booking.user?.email && booking.user.email.trim()) ||
+      booking.passengers.find((p) => p.email && p.email.trim())?.email?.trim();
 
     if (!toEmail) {
       console.warn(
@@ -1583,6 +1602,9 @@ async function sendBookingEmail(bookingId, type) {
       html = getPaymentSuccessEmailTemplate(booking);
     }
 
+    console.log(
+      `✉️  [GỬI MAIL ĐẶT VÉ] Đang gửi email (${type}) tới: ${toEmail} cho đơn vé ${booking.bookingCode}`,
+    );
     await sendEmail({ to: toEmail, subject, html });
   } catch (err) {
     console.error(`❌ Gửi email booking (${type}) thất bại:`, err.message);
