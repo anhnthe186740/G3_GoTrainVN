@@ -31,7 +31,29 @@ function getSmtpTransporter() {
 }
 
 export async function sendEmail({ to, subject, html }) {
-  // Option 1: Priority 1 - Send via Resend API
+  // Option 1: Priority 1 - Send via SMTP (Nodemailer) if SMTP_USER is configured
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = getSmtpTransporter();
+      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
+      const info = await transporter.sendMail({
+        from: `"${senderName}" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        html,
+      });
+
+      console.log(
+        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
+      );
+      return { success: true, provider: "SMTP", emailId: info.messageId };
+    } catch (err) {
+      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
+      console.log("⚠️  Đang tự động chuyển sang kiểm tra cấu hình Resend...");
+    }
+  }
+
+  // Option 2: Priority 2 - Send via Resend API
   if (process.env.RESEND_API_KEY) {
     try {
       const fromEmail =
@@ -71,30 +93,6 @@ export async function sendEmail({ to, subject, html }) {
           "💡 Ghi chú Resend Free Tier: Tài khoản Resend thử nghiệm (onboarding@resend.dev) chỉ cho phép gửi tới Email đăng ký tài khoản Resend.",
         );
       }
-      console.log(
-        "⚠️  Đang tự động chuyển sang kiểm tra cấu hình SMTP Nodemailer...",
-      );
-    }
-  }
-
-  // Option 2: Priority 2 - Send via SMTP (Nodemailer) if SMTP_USER is configured
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      const transporter = getSmtpTransporter();
-      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
-      const info = await transporter.sendMail({
-        from: `"${senderName}" <${process.env.SMTP_USER}>`,
-        to,
-        subject,
-        html,
-      });
-
-      console.log(
-        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
-      );
-      return { success: true, provider: "SMTP", emailId: info.messageId };
-    } catch (err) {
-      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
       console.log(
         "⚠️  Đang tự động chuyển sang lưu email giả lập (sent_emails.json)...",
       );
