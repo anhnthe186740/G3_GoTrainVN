@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "../config/database.js";
+import { sendEmail } from "./email.service.js";
+import {
+  getRefundApprovedEmailTemplate,
+  getRefundRejectedEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 const REFUND_METHODS = ["WALLET", "BANK", "BANK_TRANSFER"];
 const ACTIVE_BOOKING_DETAIL_STATUSES = ["CONFIRMED", "PENDING"];
@@ -587,15 +592,72 @@ export async function reviewCancellationRequest({
   }
 
   if (decision === "REJECT") {
-    return prisma.cancellationRequest.update({
+    const reasonText = rejectionReason?.trim() || "Không đủ điều kiện hủy vé";
+    const updated = await prisma.cancellationRequest.update({
       where: { id: requestId },
       data: {
         status: "REJECTED",
-        rejectionReason: rejectionReason?.trim() || "Không đủ điều kiện hủy vé",
+        rejectionReason: reasonText,
       },
-      include: { booking: true },
+      include: {
+        booking: {
+          include: {
+            user: { select: { email: true } },
+            passengers: { select: { email: true } },
+            schedule: { include: { train: true } },
+          },
+        },
+      },
     });
+
+    const targetEmail =
+      updated.booking?.confirmationEmail ||
+      updated.booking?.user?.email ||
+      updated.booking?.passengers?.find((p) => p.email)?.email;
+
+    if (targetEmail) {
+      sendEmail({
+        to: targetEmail,
+        subject: `[GoTrain VN] Kết quả xử lý yêu cầu hủy vé ${updated.booking.bookingCode}`,
+        html: getRefundRejectedEmailTemplate(updated.booking, reasonText),
+      }).catch((err) =>
+        console.error("❌ Gửi email từ chối hủy vé thất bại:", err.message),
+      );
+    }
+
+    return updated;
   }
 
-  return processApprovedCancellation(request, { adminId });
+  const result = await processApprovedCancellation(request, { adminId });
+
+  // Send approved refund email asynchronously
+  const fullBooking = await prisma.booking.findUnique({
+    where: { id: request.bookingId },
+    include: {
+      user: { select: { email: true } },
+      passengers: { select: { email: true } },
+      schedule: { include: { train: true } },
+    },
+  });
+
+  const targetEmail =
+    fullBooking?.confirmationEmail ||
+    fullBooking?.user?.email ||
+    fullBooking?.passengers?.find((p) => p.email)?.email;
+
+  if (targetEmail) {
+    sendEmail({
+      to: targetEmail,
+      subject: `[GoTrain VN] Chấp nhận hoàn tiền vé ${fullBooking.bookingCode}`,
+      html: getRefundApprovedEmailTemplate(
+        fullBooking,
+        result.refundAmount,
+        result.refundMethod,
+      ),
+    }).catch((err) =>
+      console.error("❌ Gửi email duyệt hoàn tiền thất bại:", err.message),
+    );
+  }
+
+  return result;
 }

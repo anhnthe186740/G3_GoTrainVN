@@ -103,8 +103,14 @@ export async function notifyScheduleChange(
           );
         })
         .catch((err) => {
-          console.error(`[Notification] Lỗi khi gửi email tới ${email}:`, err);
+          console.error(
+            `[Notification] Lỗi khi gửi email tới ${email}:`,
+            err.message || err,
+          );
         });
+
+      // Tránh vi phạm rate limit khi gửi mail hàng loạt
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
   } catch (error) {
     console.error(
