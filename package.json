@@ -15,7 +15,7 @@
     "lint": "npm run lint --workspace client && npm run lint --workspace server",
     "test": "npm run test --workspace server",
     "format": "prettier --write \"**/*.{js,jsx,json,md,css,prisma,yml,yaml}\"",
-    "prepare": "husky"
+    "prepare": "node -e \"try { require('child_process').execSync('husky', { stdio: 'inherit' }) } catch (e) {}\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
