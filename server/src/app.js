@@ -18,10 +18,31 @@ import { blogRoutes } from "./routes/blog.routes.js";
 
 import chatbotRoutes from "./routes/chatbot.routes.js";
 
-
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((url) => url.trim())
+  : [];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Cho phép các request không có origin (như Postman, curl, thiết bị di động)
+      if (!origin) return callback(null, true);
+
+      // Kiểm tra xem origin có nằm trong danh sách được phép hoặc là localhost
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.startsWith("http://localhost:")
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(cookieParser());
 app.use(logger);
@@ -41,7 +62,6 @@ app.use("/api/v1/maintenance", maintenanceRoutes);
 app.use("/api/v1/blogs", blogRoutes);
 
 app.use("/api/v1/chatbot", chatbotRoutes);
-
 
 app.use(notFound);
 app.use(errorHandler);
