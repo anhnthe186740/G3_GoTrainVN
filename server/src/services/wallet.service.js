@@ -4,6 +4,8 @@ import {
   createPayosPaymentRequest,
   getPayosPaymentRequest,
 } from "./payos.service.js";
+import { sendEmail } from "./email.service.js";
+import { getWalletDepositEmailTemplate } from "../utils/emailTemplates.js";
 
 const DEPOSIT_EXPIRY_MINUTES = 15;
 
@@ -156,10 +158,10 @@ async function completeWalletDeposit(tx, transaction, webhookData) {
     data: { balance: { increment: transaction.amount } },
   });
 
-  // Notification
+  // Notification & Email
   const wallet = await tx.wallet.findUnique({
     where: { id: transaction.walletId },
-    select: { userId: true },
+    include: { user: true },
   });
   if (wallet) {
     await tx.notification.create({
@@ -172,6 +174,21 @@ async function completeWalletDeposit(tx, transaction, webhookData) {
         deliveryStatus: "SENT",
       },
     });
+
+    if (wallet.user?.email) {
+      sendEmail({
+        to: wallet.user.email,
+        subject: "[GoTrain VN] Xác nhận nạp tiền vào ví thành công",
+        html: getWalletDepositEmailTemplate(
+          wallet.user.fullName,
+          transaction.amount,
+          wallet.balance,
+          transaction.id,
+        ),
+      }).catch((err) => {
+        console.error("❌ Gửi email thông báo nạp ví thất bại:", err.message);
+      });
+    }
   }
 
   return tx.walletTransaction.findUnique({ where: { id: transaction.id } });
