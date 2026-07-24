@@ -1,4 +1,6 @@
 import { prisma } from "../config/database.js";
+import { sendEmail } from "./email.service.js";
+import { getCheckInEmailTemplate } from "../utils/emailTemplates.js";
 
 function httpError(statusCode, message) {
   const error = new Error(message);
@@ -13,6 +15,7 @@ const UNDO_WINDOW_MS = 5 * 60 * 1000; // Cho phép hoàn tác trong 5 phút
 const passengerInclude = {
   booking: {
     include: {
+      user: true,
       schedule: {
         include: {
           train: true,
@@ -134,6 +137,29 @@ export async function processTicketCheckIn({ ticketCode, staffId, ipAddress }) {
 
     return { updatedPassenger, updatedBookingDetail };
   });
+
+  // Send check-in boarding confirmation email asynchronously
+  const email =
+    passenger.booking.confirmationEmail ||
+    passenger.booking.user?.email ||
+    passenger.email;
+  if (email) {
+    sendEmail({
+      to: email,
+      subject: `[GoTrain VN] Xác nhận Check-in lên tàu thành công - Vé ${passenger.ticketCode}`,
+      html: getCheckInEmailTemplate(
+        passenger.fullName,
+        passenger.ticketCode,
+        passenger.booking.schedule.train.trainCode,
+        passenger.seat?.seatNumber || "N/A",
+        passenger.carriageNumber ||
+          passenger.seat?.carriage?.carriageNumber ||
+          "N/A",
+      ),
+    }).catch((err) => {
+      console.error("❌ Gửi email check-in lên tàu thất bại:", err.message);
+    });
+  }
 
   return {
     ticketCode: passenger.ticketCode,
