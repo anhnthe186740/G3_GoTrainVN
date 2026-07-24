@@ -1,6 +1,11 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import bcrypt from "bcryptjs";
+import { sendEmail } from "../services/email.service.js";
+import {
+  getAccountLockedEmailTemplate,
+  getAccountUnlockedEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 // Helper filter to match active (non-deleted) users in MongoDB
 const notDeleted = {
@@ -259,6 +264,25 @@ export const updateAdminUser = asyncHandler(async (req, res) => {
     where: { id },
     data,
   });
+
+  // Send lock/unlock email notification
+  if (isActive === false && user.isActive === true) {
+    sendEmail({
+      to: updated.email,
+      subject: "[GoTrain VN] Thông báo khóa tài khoản tạm thời",
+      html: getAccountLockedEmailTemplate(updated.fullName, data.lockReason),
+    }).catch((err) => {
+      console.error("❌ Gửi email khóa tài khoản thất bại:", err.message);
+    });
+  } else if (isActive === true && user.isActive === false) {
+    sendEmail({
+      to: updated.email,
+      subject: "[GoTrain VN] Thông báo mở khóa tài khoản thành công",
+      html: getAccountUnlockedEmailTemplate(updated.fullName),
+    }).catch((err) => {
+      console.error("❌ Gửi email mở khóa tài khoản thất bại:", err.message);
+    });
+  }
 
   let successMessage = "Cập nhật người dùng thành công";
   if (isActive === false && user.isActive === true) {
