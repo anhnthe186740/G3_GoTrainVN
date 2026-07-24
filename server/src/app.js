@@ -30,9 +30,10 @@ app.use(
       // Cho phép các request không có origin (như Postman, curl, thiết bị di động)
       if (!origin) return callback(null, true);
 
-      // Kiểm tra xem origin có nằm trong danh sách được phép hoặc là localhost
+      // Kiểm tra xem origin có nằm trong danh sách được phép, là localhost hoặc thuộc tên miền gotrainvn.io.vn
       if (
         allowedOrigins.includes(origin) ||
+        origin.endsWith("gotrainvn.io.vn") ||
         origin.startsWith("http://localhost:")
       ) {
         return callback(null, true);
