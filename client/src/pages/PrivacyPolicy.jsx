@@ -207,19 +207,22 @@ export function PrivacyPolicy() {
               </span>
             </div>
             <div className="flex gap-3 shrink-0">
-              <a
-                href="mailto:support@gotrain.vn"
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-primary/20 text-slate-700 hover:text-primary rounded-xl font-bold text-xs shadow-sm transition-all"
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent("open-contact-modal"));
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-primary/20 text-slate-700 hover:text-primary rounded-xl font-bold text-xs shadow-sm transition-all border-none cursor-pointer"
               >
                 <Mail className="w-4 h-4 text-primary" />
                 Email hỗ trợ
-              </a>
+              </button>
               <a
-                href="tel:19001234"
+                href="tel:0975230204"
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-primary hover:bg-primary-container text-white rounded-xl font-bold text-xs shadow-md transition-all"
               >
                 <Phone className="w-4 h-4" />
-                Hotline 1900 1234
+                Hotline 0975 230 204
               </a>
             </div>
           </div>

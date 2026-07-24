@@ -238,19 +238,22 @@ export function TermsOfService() {
             </div>
             <div className="flex gap-3 shrink-0">
               <a
-                href="tel:19001234"
+                href="tel:0975230204"
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-primary/20 text-slate-700 hover:text-primary rounded-xl font-bold text-xs shadow-sm transition-all"
               >
                 <Phone className="w-4 h-4 text-primary" />
-                Tổng đài: 1900 1234
+                Tổng đài: 0975 230 204
               </a>
-              <a
-                href="mailto:support@gotrain.vn"
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-primary hover:bg-primary-container text-white rounded-xl font-bold text-xs shadow-md transition-all"
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent("open-contact-modal"));
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-primary hover:bg-[#00527f] text-white rounded-xl font-bold text-xs shadow-md transition-all border-none cursor-pointer"
               >
                 <Mail className="w-4 h-4" />
                 Gửi Email hỗ trợ
-              </a>
+              </button>
             </div>
           </div>
         </div>

@@ -1,11 +1,30 @@
+import { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { useAuth } from "../../hooks/useAuth";
 import { ChatbotWidget } from "../ui/ChatbotWidget";
+import { ContactModal } from "../ui/ContactModal";
+import { BookingGuideModal } from "../ui/BookingGuideModal";
 
 export function AppLayout() {
   const location = useLocation();
   const { user } = useAuth();
+  const [isContactOpen, setIsContactOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenContact = () => setIsContactOpen(true);
+    const handleOpenGuide = () => setIsGuideOpen(true);
+
+    window.addEventListener("open-contact-modal", handleOpenContact);
+    window.addEventListener("open-booking-guide-modal", handleOpenGuide);
+
+    return () => {
+      window.removeEventListener("open-contact-modal", handleOpenContact);
+      window.removeEventListener("open-booking-guide-modal", handleOpenGuide);
+    };
+  }, []);
+
   const isHomePage = location.pathname === "/";
   const isFullPage =
     location.pathname === "/wallet" || location.pathname === "/dashboard";
@@ -42,6 +61,14 @@ export function AppLayout() {
         </main>
       )}
       <ChatbotWidget />
+      <ContactModal
+        isOpen={isContactOpen}
+        onClose={() => setIsContactOpen(false)}
+      />
+      <BookingGuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
     </div>
   );
 }

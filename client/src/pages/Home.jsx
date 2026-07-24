@@ -1356,18 +1356,26 @@ export function Home() {
             <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
               Hỗ trợ
             </h4>
-            <a
-              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
-              href="#"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                window.dispatchEvent(new CustomEvent("open-contact-modal"));
+              }}
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4 text-left border-none bg-transparent cursor-pointer p-0"
             >
               Thông tin liên hệ
-            </a>
-            <a
-              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
-              href="#"
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                window.dispatchEvent(
+                  new CustomEvent("open-booking-guide-modal"),
+                );
+              }}
+              className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4 text-left border-none bg-transparent cursor-pointer p-0"
             >
               Hướng dẫn đặt vé
-            </a>
+            </button>
           </div>
         </div>
       </footer>

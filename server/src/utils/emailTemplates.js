@@ -423,6 +423,7 @@ export function getScheduleCancelledEmailTemplate(booking, notes) {
 }
 
 /**
+<<<<<<< HEAD
  * Template 7: Refund Approved Notification (Thông báo chấp nhận hoàn tiền)
  */
 export function getRefundApprovedEmailTemplate(
@@ -457,12 +458,92 @@ export function getRefundApprovedEmailTemplate(
 
       <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
         Nếu hoàn qua Ví điện tử GoTrain, số dư đã được cộng trực tiếp vào ví của bạn. Nếu hoàn qua ngân hàng, giao dịch xử lý từ 1-3 ngày làm việc.
+=======
+ * Template 7: Wallet Deposit Success (Nạp tiền vào ví thành công)
+ */
+export function getWalletDepositEmailTemplate(fullName, amount, balance, txId) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #cbd5e1; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Giao dịch thành công</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Thông báo biến động số dư</p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Nạp tiền vào ví thành công!</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào <strong>${fullName}</strong>, ví điện tử GoTrain của bạn đã được ghi nhận một giao dịch nạp tiền thành công. Chi tiết giao dịch như sau:
+        </p>
+      </div>
+
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; font-size: 14px;">
+        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Số tiền nạp:</span> <strong style="color: #16a34a; font-size: 16px;">+${formatPrice(amount)}</strong></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between;"><span>Số dư ví hiện tại:</span> <strong>${formatPrice(balance)}</strong></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between; color: #64748b;"><span>Mã giao dịch:</span> <span>${txId || "N/A"}</span></p>
+        <p style="margin: 5px 0; display: flex; justify-content: space-between; color: #64748b;"><span>Thời gian:</span> <span>${formatDate(new Date())}</span></p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; color: #475569;">
+        Bạn có thể sử dụng số dư ví này để thực hiện đặt mua vé trực tuyến nhanh chóng mà không cần qua cổng ngân hàng.
       </p>
 
       <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
       
       <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Cảm ơn bạn đã sử dụng dịch vụ của GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 8: Check-In Success (Boarding confirmation)
+ */
+export function getCheckInEmailTemplate(
+  fullName,
+  ticketCode,
+  trainCode,
+  seatNumber,
+  carriageNumber,
+) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #dbeafe; color: #1d4ed8; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Check-in thành công</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Chúc bạn có một hành trình vui vẻ</p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Lên tàu thành công!</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Kính chào hành khách <strong>${fullName}</strong>, hệ thống đã ghi nhận bạn hoàn tất soát vé và lên tàu thành công.
+        </p>
+      </div>
+
+      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; font-size: 14px;">
+        <p style="margin: 5px 0;"><strong>Mã vé:</strong> ${ticketCode}</p>
+        <p style="margin: 5px 0;"><strong>Chuyến tàu:</strong> ${trainCode}</p>
+        <p style="margin: 5px 0;"><strong>Toa tàu:</strong> Toa số ${carriageNumber}</p>
+        <p style="margin: 5px 0;"><strong>Vị trí ghế:</strong> Ghế ${seatNumber}</p>
+        <p style="margin: 5px 0; color: #64748b;"><strong>Thời gian check-in:</strong> ${formatDate(new Date())}</p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; color: #475569;">
+        Vui lòng tìm đúng toa và số ghế của mình. Hành lý cá nhân vui lòng sắp xếp gọn gàng ở khoang để đồ trên cao. Chúc quý khách có một chuyến đi an toàn và thoải mái cùng GoTrain VN!
+>>>>>>> d40cb0a (feat(policy-routing): implement contact form modal, booking guide modal, update hotline to 0975230204, and add backend contact endpoint with resend email triggers)
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+<<<<<<< HEAD
         <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
+=======
+        <p style="margin: 0 0 5px 0;">Thư xác nhận từ GoTrain VN.</p>
+>>>>>>> d40cb0a (feat(policy-routing): implement contact form modal, booking guide modal, update hotline to 0975230204, and add backend contact endpoint with resend email triggers)
         <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
       </div>
     </div>
@@ -509,3 +590,192 @@ export function getRefundRejectedEmailTemplate(booking, reason) {
     </div>
   `;
 }
+
+/**
+ * Template 9: Account Locked (Khóa tài khoản)
+ */
+export function getAccountLockedEmailTemplate(fullName, reason) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fecaca; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #fee2e2; color: #991b1b; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Bảo mật tài khoản</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #b91c1c; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Tài khoản của bạn đã bị khóa tạm thời</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào <strong>${fullName}</strong>, chúng tôi rất tiếc phải thông báo rằng tài khoản GoTrain VN của bạn đã bị tạm khóa bởi quản trị viên hệ thống.
+        </p>
+      </div>
+
+      <div style="background-color: #fff5f5; border: 1px solid #feb2b2; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; font-size: 14px;">
+        <p style="margin: 0; font-weight: bold; color: #c53030;">Lý do khóa tài khoản:</p>
+        <p style="margin: 5px 0 0 0; color: #4a5568; font-style: italic;">"${reason || "Không xác định hoặc vi phạm điều khoản dịch vụ"}"</p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; color: #475569;">
+        Nếu bạn cho rằng đây là một sự nhầm lẫn hoặc muốn thực hiện yêu cầu mở khóa tài khoản, vui lòng liên hệ ngay với bộ phận chăm sóc khách hàng của GoTrain VN để được hỗ trợ giải quyết.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Mọi thắc mắc vui lòng gửi về hòm thư hỗ trợ chính thức.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+
+/**
+ * Template 10: Account Unlocked (Mở khóa tài khoản)
+ */
+export function getAccountUnlockedEmailTemplate(fullName) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #cbd5e1; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Tài khoản kích hoạt</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #15803d; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Tài khoản đã được mở khóa!</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào <strong>${fullName}</strong>, chúng tôi vui mừng thông báo tài khoản GoTrain VN của bạn đã được mở khóa thành công.
+        </p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; color: #475569;">
+        Hiện tại bạn đã có thể đăng nhập lại vào hệ thống, quản lý ví và thực hiện đặt vé tàu như bình thường.
+      </p>
+
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${process.env.CLIENT_URL || "http://localhost:5173"}/login" style="background-color: #00629d; color: #ffffff; padding: 10px 25px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Đăng nhập ngay</a>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Chúc quý khách có trải nghiệm tốt cùng GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 11: Profile Updated Alert (Cảnh báo hồ sơ thay đổi)
+ */
+export function getProfileUpdatedEmailTemplate(fullName, updateTime) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fef3c7; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #fef3c7; color: #d97706; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Cảnh báo bảo mật</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #d97706; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Hồ sơ cá nhân vừa được thay đổi</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào <strong>${fullName}</strong>, hệ thống ghi nhận thông tin tài khoản của bạn (Họ tên, SĐT, CCCD...) vừa được cập nhật vào lúc <strong>${updateTime}</strong>.
+        </p>
+      </div>
+
+      <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 15px; margin-bottom: 25px; font-size: 13.5px; color: #78350f; line-height: 1.5;">
+        <strong>Lưu ý bảo mật:</strong> Nếu bạn chính là người thực hiện cập nhật này, bạn có thể bỏ qua email cảnh báo này. Tuy nhiên, nếu bạn không thực hiện đổi thông tin, vui lòng đổi mật khẩu ngay lập tức hoặc liên hệ hỗ trợ để khóa tài khoản khẩn cấp tránh bị mất vé.
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Hệ thống bảo mật GoTrain VN.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 12: Support Form Confirmation (Xác nhận khách hàng gửi hỗ trợ)
+ */
+export function getContactFormConfirmationEmailTemplate(
+  name,
+  subject,
+  message,
+) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #cbd5e1; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #e0f2fe; color: #0369a1; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Đã tiếp nhận yêu cầu</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Chúng tôi đã nhận được tin nhắn từ bạn!</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Xin chào <strong>${name}</strong>, cảm ơn bạn đã gửi liên hệ tới bộ phận chăm sóc khách hàng của GoTrain VN. Chúng tôi sẽ phản hồi lại bạn qua địa chỉ email này trong vòng 24 giờ.
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; font-size: 14px; border: 1px solid #f1f5f9;">
+        <p style="margin: 5px 0;"><strong>Chủ đề:</strong> ${subject || "Hỗ trợ dịch vụ"}</p>
+        <p style="margin: 5px 0;"><strong>Nội dung đã gửi:</strong></p>
+        <p style="margin: 5px 0 0 0; color: #475569; font-style: italic; background-color: #ffffff; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">"${message}"</p>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Cảm ơn bạn đã kiên nhẫn chờ đợi.</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Template 13: Support Admin Notification (Thông báo có yêu cầu hỗ trợ mới cho Admin)
+ */
+export function getAdminContactFormNotificationEmailTemplate(
+  name,
+  email,
+  subject,
+  message,
+) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #f1f5f9; color: #475569; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Yêu cầu hỗ trợ mới</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Hệ thống nhận được liên hệ mới</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Kính gửi Admin, một khách hàng vừa gửi biểu mẫu liên hệ/yêu cầu trợ giúp từ website:
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; font-size: 14px; border: 1px solid #f1f5f9;">
+        <p style="margin: 5px 0;"><strong>Họ tên khách:</strong> ${name}</p>
+        <p style="margin: 5px 0;"><strong>Email khách:</strong> <a href="mailto:${email}" style="color: #00629d; text-decoration: none;">${email}</a></p>
+        <p style="margin: 5px 0;"><strong>Chủ đề:</strong> ${subject}</p>
+        <p style="margin: 5px 0;"><strong>Nội dung tin nhắn:</strong></p>
+        <p style="margin: 5px 0 0 0; color: #334155; background-color: #ffffff; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">"${message}"</p>
+      </div>
+
+      <p style="line-height: 1.6; font-size: 14px; color: #475569;">
+        Vui lòng xem xét nội dung và phản hồi lại cho khách hàng sớm nhất qua email của họ.
+      </p>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN Administration.</p>
+      </div>
+    </div>
+  `;
+}
+

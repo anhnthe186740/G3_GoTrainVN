@@ -1279,11 +1279,11 @@ export function TicketLookup() {
 
             <div className="flex flex-wrap gap-4 mt-2">
               <a
-                href="tel:19001234"
+                href="tel:0975230204"
                 className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-5 py-3 rounded-2xl border border-slate-200/80 shadow-sm font-bold text-sm transition-all"
               >
                 <Phone className="h-4.5 w-4.5 text-primary" />
-                <span>Hotline: 1900 1234</span>
+                <span>Hotline: 0975 230 204</span>
               </a>
               <button
                 onClick={() =>
