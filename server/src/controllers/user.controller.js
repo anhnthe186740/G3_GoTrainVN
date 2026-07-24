@@ -1,5 +1,11 @@
 import { prisma } from "../config/database.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { sendEmail } from "../services/email.service.js";
+import {
+  getProfileUpdatedEmailTemplate,
+  getContactFormConfirmationEmailTemplate,
+  getAdminContactFormNotificationEmailTemplate,
+} from "../utils/emailTemplates.js";
 
 export const profile = asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({
@@ -63,6 +69,22 @@ export const updateProfile = asyncHandler(async (req, res) => {
     data: dataToUpdate,
   });
 
+  if (updatedUser.email) {
+    sendEmail({
+      to: updatedUser.email,
+      subject: "[GoTrain VN] Cảnh báo: Thông tin hồ sơ cá nhân đã thay đổi",
+      html: getProfileUpdatedEmailTemplate(
+        updatedUser.fullName,
+        new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }),
+      ),
+    }).catch((err) => {
+      console.error(
+        "❌ Gửi email cảnh báo thay đổi thông tin thất bại:",
+        err.message,
+      );
+    });
+  }
+
   res.json({
     success: true,
     message: "Cập nhật hồ sơ thành công",
@@ -98,4 +120,81 @@ export const searchCustomerForStaff = asyncHandler(async (req, res) => {
   });
 
   res.json({ user });
+});
+
+export const submitContactForm = asyncHandler(async (req, res) => {
+  const { name, email, subject, message } = req.body;
+
+  if (!name || !email || !message) {
+    return res.status(400).json({
+      message: "Vui lòng điền đầy đủ họ tên, email và nội dung liên hệ.",
+    });
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanSubject = String(subject || "Hỗ trợ dịch vụ GoTrain VN").trim();
+  const cleanMessage = String(message).trim();
+
+  // 1. Send confirmation email to Customer
+  sendEmail({
+    to: cleanEmail,
+    subject: `[GoTrain VN] Tiếp nhận yêu cầu hỗ trợ: ${cleanSubject}`,
+    html: getContactFormConfirmationEmailTemplate(
+      name,
+      cleanSubject,
+      cleanMessage,
+    ),
+  }).catch((err) => {
+    console.error(
+      "❌ Gửi email xác nhận hỗ trợ cho khách hàng thất bại:",
+      err.message,
+    );
+  });
+
+  // 2. Fetch admins and send notification emails to them
+  try {
+    const admins = await prisma.user.findMany({
+      where: {
+        userType: "ADMIN",
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        email: true,
+      },
+    });
+
+    if (admins && admins.length > 0) {
+      for (const admin of admins) {
+        if (admin.email) {
+          sendEmail({
+            to: admin.email,
+            subject: `[GoTrain VN] [Admin Notice] Yêu cầu hỗ trợ mới từ khách hàng ${name}`,
+            html: getAdminContactFormNotificationEmailTemplate(
+              name,
+              cleanEmail,
+              cleanSubject,
+              cleanMessage,
+            ),
+          }).catch((err) => {
+            console.error(
+              `❌ Gửi email thông báo liên hệ tới admin ${admin.email} thất bại:`,
+              err.message,
+            );
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      "❌ Truy vấn danh sách Admin để gửi mail liên hệ thất bại:",
+      error.message,
+    );
+  }
+
+  res.json({
+    success: true,
+    message:
+      "Gửi yêu cầu hỗ trợ thành công. Một email xác nhận đã được gửi tới bạn.",
+  });
 });

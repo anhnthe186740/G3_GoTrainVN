@@ -1208,12 +1208,15 @@ export function AdminDashboard() {
                 >
                   Chính Sách
                 </Link>
-                <Link
-                  className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
-                  to="/"
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent("open-contact-modal"));
+                  }}
+                  className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors border-none bg-transparent cursor-pointer p-0 text-left font-sans"
                 >
                   Hỗ Trợ
-                </Link>
+                </button>
                 <Link
                   className="font-label-sm text-[#3f4852] hover:text-[#00629d] transition-colors"
                   to="/terms"
