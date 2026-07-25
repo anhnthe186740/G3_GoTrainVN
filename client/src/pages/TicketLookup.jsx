@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../services/api";
 import { toast } from "sonner";
+import { useLanguage } from "../context/LanguageContext";
 import {
   Search,
   Ticket,
@@ -29,6 +30,7 @@ import { QRCodeSVG } from "qrcode.react";
 export function TicketLookup() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
   const initialTicketCode = searchParams.get("ticketCode") || "";
   const initialContactInfo = searchParams.get("contactInfo") || "";
@@ -110,7 +112,9 @@ export function TicketLookup() {
   const clearRecentSearches = () => {
     setRecentSearches([]);
     localStorage.removeItem("recentTicketSearches");
-    toast.success("Đã xóa lịch sử tra cứu");
+    toast.success(
+      language === "vi" ? "Đã xóa lịch sử tra cứu" : "Lookup history cleared",
+    );
   };
 
   // Perform search
@@ -125,12 +129,20 @@ export function TicketLookup() {
     const searchContact = forcedContact ?? contactInfo;
 
     if (!searchCode && !searchContact) {
-      setError("Vui lòng nhập mã đặt chỗ và email để tìm kiếm.");
+      setError(
+        language === "vi"
+          ? "Vui lòng nhập mã đặt chỗ và email để tìm kiếm."
+          : "Please enter booking code and email to search.",
+      );
       return;
     }
 
     if (!user && (!searchCode || !searchContact)) {
-      setError("Vui lòng nhập cả mã đặt chỗ và email đã dùng khi đặt vé.");
+      setError(
+        language === "vi"
+          ? "Vui lòng nhập cả mã đặt chỗ và email đã dùng khi đặt vé."
+          : "Please enter both booking code and email used when booking.",
+      );
       return;
     }
 
@@ -159,12 +171,18 @@ export function TicketLookup() {
         selectInitialTicket(data.tickets);
         if (searchCode) saveRecentSearch(searchCode);
       }
-      toast.success("Đã tìm thấy thông tin vé!");
+      toast.success(
+        language === "vi"
+          ? "Đã tìm thấy thông tin vé!"
+          : "Ticket information found!",
+      );
     } catch (err) {
       console.error(err);
       const msg =
         err.response?.data?.message ||
-        "Không thể tải thông tin vé. Vui lòng kiểm tra lại.";
+        (language === "vi"
+          ? "Không thể tải thông tin vé. Vui lòng kiểm tra lại."
+          : "Could not load ticket information. Please check again.");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -339,28 +357,30 @@ export function TicketLookup() {
     if (state === "COMPLETED") {
       return (
         <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-full">
-          Chuyến tàu đã hoàn thành
+          {language === "vi"
+            ? "Chuyến tàu đã hoàn thành"
+            : "Train journey completed"}
         </span>
       );
     }
     if (state === "CANCELLED") {
       return (
         <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 px-2.5 py-1 rounded-full">
-          Chuyến đi đã bị hủy
+          {language === "vi" ? "Chuyến đi đã bị hủy" : "Journey cancelled"}
         </span>
       );
     }
     if (state === "IN_PROGRESS") {
       return (
         <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
-          Tàu đang trong hành trình
+          {language === "vi" ? "Tàu đang trong hành trình" : "Train in transit"}
         </span>
       );
     }
     return (
       <span className="text-xs font-semibold text-primary bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
-        Chưa khởi hành
+        {language === "vi" ? "Chưa khởi hành" : "Not departed"}
       </span>
     );
   };
@@ -378,7 +398,7 @@ export function TicketLookup() {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <Clock className="h-3.5 w-3.5" />
-          Đã ghi nhận hủy
+          {language === "vi" ? "Đã ghi nhận hủy" : "Cancellation recorded"}
         </span>
       );
     }
@@ -387,7 +407,9 @@ export function TicketLookup() {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          Trễ tàu (Quá hạn soát vé)
+          {language === "vi"
+            ? "Trễ tàu (Quá hạn soát vé)"
+            : "Delayed (Expired)"}
         </span>
       );
     }
@@ -396,7 +418,7 @@ export function TicketLookup() {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
           <CheckCircle className="h-3.5 w-3.5" />
-          Đã sử dụng
+          {language === "vi" ? "Đã sử dụng" : "Used"}
         </span>
       );
     }
@@ -406,7 +428,7 @@ export function TicketLookup() {
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-            Đã xác nhận
+            {language === "vi" ? "Đã xác nhận" : "Confirmed"}
           </span>
         );
       case "CANCELLED":
@@ -414,14 +436,14 @@ export function TicketLookup() {
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-            Đã hủy / Hoàn tiền
+            {language === "vi" ? "Đã hủy / Hoàn tiền" : "Cancelled / Refunded"}
           </span>
         );
       case "COMPLETED":
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-            Đã xác nhận
+            {language === "vi" ? "Đã xác nhận" : "Confirmed"}
           </span>
         );
       default:
@@ -447,7 +469,10 @@ export function TicketLookup() {
     if (diffHours < 0) {
       return {
         allowed: false,
-        message: "Tàu đã khởi hành. Không thể hoàn vé.",
+        message:
+          language === "vi"
+            ? "Tàu đã khởi hành. Không thể hoàn vé."
+            : "Train has departed. Refund is not allowed.",
         rate: 0,
         refund: 0,
       };
@@ -455,7 +480,9 @@ export function TicketLookup() {
       return {
         allowed: false,
         message:
-          "Hủy vé sát giờ khởi hành (dưới 4 tiếng). Không thể hoàn vé trực tuyến.",
+          language === "vi"
+            ? "Hủy vé sát giờ khởi hành (dưới 4 tiếng). Không thể hoàn vé trực tuyến."
+            : "Cancellation close to departure (under 4 hours). Online refund not allowed.",
         rate: 0,
         refund: 0,
       };
@@ -463,14 +490,19 @@ export function TicketLookup() {
       return {
         allowed: true,
         message:
-          "Hoàn 50% giá trị vé (Từ 4h đến dưới 24h trước khi khởi hành).",
+          language === "vi"
+            ? "Hoàn 50% giá trị vé (Từ 4h đến dưới 24h trước khi khởi hành)."
+            : "50% refund (From 4h to under 24h before departure).",
         rate: 50,
         refund: price * 0.5,
       };
     } else {
       return {
         allowed: true,
-        message: "Hoàn 80% giá trị vé (Hơn 24h trước khi khởi hành).",
+        message:
+          language === "vi"
+            ? "Hoàn 80% giá trị vé (Hơn 24h trước khi khởi hành)."
+            : "80% refund (More than 24h before departure).",
         rate: 80,
         refund: price * 0.8,
       };
@@ -489,10 +521,26 @@ export function TicketLookup() {
     (ticket) => getTicketCategory(ticket) === ticketCategory,
   );
   const ticketTabs = [
-    { value: "UPCOMING", label: "Chưa chạy", icon: Clock },
-    { value: "USED", label: "Đã sử dụng", icon: CheckCircle },
-    { value: "EXPIRED", label: "Trễ tàu / Quá hạn", icon: AlertTriangle },
-    { value: "CANCELLED", label: "Đã hủy", icon: X },
+    {
+      value: "UPCOMING",
+      label: language === "vi" ? "Chưa chạy" : "Upcoming",
+      icon: Clock,
+    },
+    {
+      value: "USED",
+      label: language === "vi" ? "Đã sử dụng" : "Used",
+      icon: CheckCircle,
+    },
+    {
+      value: "EXPIRED",
+      label: language === "vi" ? "Trễ tàu / Quá hạn" : "Expired",
+      icon: AlertTriangle,
+    },
+    {
+      value: "CANCELLED",
+      label: language === "vi" ? "Đã hủy" : "Cancelled",
+      icon: X,
+    },
   ];
 
   const handleTicketCategoryChange = (category) => {
@@ -566,7 +614,10 @@ export function TicketLookup() {
         },
       );
       toast.success(
-        response.data.message || "Đã hủy vé và hoàn tiền thành công!",
+        response.data.message ||
+          (language === "vi"
+            ? "Đã hủy vé và hoàn tiền thành công!"
+            : "Ticket cancelled and refunded successfully!"),
       );
       setIsRefundModalOpen(false);
 
@@ -578,7 +629,10 @@ export function TicketLookup() {
       }
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.message || "Lỗi khi hủy vé.");
+      toast.error(
+        err.response?.data?.message ||
+          (language === "vi" ? "Lỗi khi hủy vé." : "Error cancelling ticket."),
+      );
     } finally {
       setRefundLoading(false);
     }
@@ -626,11 +680,9 @@ export function TicketLookup() {
           <div className="mb-2">
             <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
               <Ticket className="h-7 w-7 text-primary" />
-              Tra Cứu Vé Tàu
+              {t("lookup_header")}
             </h1>
-            <p className="text-slate-500 text-sm mt-1">
-              Nhập mã đặt chỗ và email để xem toàn bộ vé trong đơn của bạn.
-            </p>
+            <p className="text-slate-500 text-sm mt-1">{t("lookup_sub")}</p>
           </div>
 
           {/* Search Card */}
@@ -641,7 +693,7 @@ export function TicketLookup() {
               {/* Booking Code input */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Mã đặt chỗ (Booking Code)
+                  {t("lookup_pnr")}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -651,7 +703,11 @@ export function TicketLookup() {
                     type="text"
                     value={ticketCode}
                     onChange={(e) => setTicketCode(e.target.value)}
-                    placeholder="Ví dụ: GT2026368F2E22"
+                    placeholder={
+                      language === "vi"
+                        ? "Ví dụ: GT2026368F2E22"
+                        : "E.g. GT2026368F2E22"
+                    }
                     className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   />
                 </div>
@@ -661,14 +717,16 @@ export function TicketLookup() {
               <div className="relative my-1 flex items-center justify-center">
                 <div className="absolute w-full border-t border-dashed border-slate-200" />
                 <span className="relative px-3 bg-white text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
-                  Xác thực bằng
+                  {language === "vi" ? "Xác thực bằng" : "Verify with"}
                 </span>
               </div>
 
               {/* Email input */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Email đã dùng khi đặt vé
+                  {language === "vi"
+                    ? "Email đã dùng khi đặt vé"
+                    : "Email used when booking"}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -678,7 +736,11 @@ export function TicketLookup() {
                     type="email"
                     value={contactInfo}
                     onChange={(e) => setContactInfo(e.target.value)}
-                    placeholder="Nhập email mua vé"
+                    placeholder={
+                      language === "vi"
+                        ? "Nhập email mua vé"
+                        : "Enter booking email"
+                    }
                     className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   />
                 </div>
@@ -695,7 +757,9 @@ export function TicketLookup() {
                 ) : (
                   <>
                     <Search className="h-5 w-5" />
-                    <span>Tra cứu vé</span>
+                    <span>
+                      {language === "vi" ? "Tra cứu vé" : "Lookup ticket"}
+                    </span>
                   </>
                 )}
               </button>
@@ -716,13 +780,15 @@ export function TicketLookup() {
               <div className="flex justify-between items-center">
                 <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
                   <History className="h-4 w-4 text-slate-400" />
-                  Lịch sử tra cứu gần đây
+                  {language === "vi"
+                    ? "Lịch sử tra cứu gần đây"
+                    : "Recent searches"}
                 </span>
                 <button
                   onClick={clearRecentSearches}
-                  className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+                  className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer border-none bg-transparent"
                 >
-                  Xóa tất cả
+                  {language === "vi" ? "Xóa tất cả" : "Clear all"}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -744,19 +810,23 @@ export function TicketLookup() {
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-3xl p-6 border border-blue-100/50 flex flex-col gap-3">
             <span className="text-xs font-extrabold text-primary uppercase tracking-wider flex items-center gap-1.5">
               <HelpCircle className="h-4.5 w-4.5 text-primary" />
-              Hướng dẫn tra cứu
+              {language === "vi" ? "Hướng dẫn tra cứu" : "Lookup guidelines"}
             </span>
             <ul className="text-xs text-slate-600 space-y-2 list-disc list-inside">
               <li>
-                Mã đặt chỗ bắt đầu bằng GT và được hiển thị sau khi thanh toán
-                thành công.
+                {language === "vi"
+                  ? "Mã đặt chỗ bắt đầu bằng GT và được hiển thị sau khi thanh toán thành công."
+                  : "Booking code starts with GT and is shown after successful payment."}
               </li>
               <li>
-                Nếu không tìm thấy, vui lòng kiểm tra kỹ cả hộp thư rác (Spam).
+                {language === "vi"
+                  ? "Nếu không tìm thấy, vui lòng kiểm tra kỹ cả hộp thư rác (Spam)."
+                  : "If not found, please check your spam folder carefully."}
               </li>
               <li>
-                Mỗi mã đặt chỗ sẽ hiển thị toàn bộ vé của các hành khách trong
-                cùng đơn sau khi email được xác thực.
+                {language === "vi"
+                  ? "Mỗi mã đặt chỗ sẽ hiển thị toàn bộ vé của các hành khách trong cùng đơn sau khi email được xác thực."
+                  : "Each booking code displays all passenger tickets in the same order after email verification."}
               </li>
             </ul>
           </div>
@@ -771,7 +841,9 @@ export function TicketLookup() {
             <div className="bg-white rounded-3xl p-12 shadow-sm border border-slate-100 flex flex-col items-center justify-center min-h-[400px]">
               <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-slate-500 font-medium">
-                Đang tải thông tin vé...
+                {language === "vi"
+                  ? "Đang tải thông tin vé..."
+                  : "Loading ticket information..."}
               </p>
             </div>
           )}
@@ -783,11 +855,12 @@ export function TicketLookup() {
                 <Search className="h-8 w-8 text-slate-400" />
               </div>
               <h3 className="text-lg font-bold text-slate-800">
-                Kết quả tra cứu
+                {language === "vi" ? "Kết quả tra cứu" : "Lookup results"}
               </h3>
               <p className="text-slate-400 text-sm mt-1 max-w-[340px]">
-                Thông tin chi tiết vé của bạn sẽ được hiển thị tại đây sau khi
-                bạn nhập và nhấn nút Tra cứu.
+                {language === "vi"
+                  ? "Thông tin chi tiết vé của bạn sẽ được hiển thị tại đây sau khi bạn nhập và nhấn nút Tra cứu."
+                  : "Your ticket details will be shown here after you fill in the inputs and click lookup."}
               </p>
             </div>
           )}
@@ -797,10 +870,15 @@ export function TicketLookup() {
             <div className="flex flex-col gap-4 no-print">
               <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center">
                 <h2 className="text-lg font-bold text-slate-800">
-                  Danh sách vé tìm thấy ({result.tickets.length})
+                  {language === "vi"
+                    ? "Danh sách vé tìm thấy"
+                    : "List of tickets found"}{" "}
+                  ({result.tickets.length})
                 </h2>
                 <span className="text-xs text-slate-400 font-semibold">
-                  Chọn một vé để xem thông tin chi tiết
+                  {language === "vi"
+                    ? "Chọn một vé để xem thông tin chi tiết"
+                    : "Select a ticket to view details"}
                 </span>
               </div>
 
@@ -868,7 +946,7 @@ export function TicketLookup() {
                             </div>
                             <div>
                               <span className="text-xs font-bold text-slate-400 block uppercase">
-                                Mã vé
+                                {language === "vi" ? "Mã vé" : "Ticket Code"}
                               </span>
                               <span className="text-sm font-extrabold text-slate-800">
                                 {t.ticketCode || t.booking?.bookingCode}
@@ -886,7 +964,7 @@ export function TicketLookup() {
                         <div className="flex justify-between items-center py-2 border-t border-b border-dashed border-slate-100">
                           <div className="text-left">
                             <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                              Ga đi
+                              {language === "vi" ? "Ga đi" : "Departure"}
                             </span>
                             <span className="text-xs font-bold text-slate-700">
                               {stationCity(tripStations.from) ||
@@ -896,7 +974,7 @@ export function TicketLookup() {
                           <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
                           <div className="text-right">
                             <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                              Ga đến
+                              {language === "vi" ? "Ga đến" : "Arrival"}
                             </span>
                             <span className="text-xs font-bold text-slate-700">
                               {stationCity(tripStations.to) ||
@@ -926,13 +1004,15 @@ export function TicketLookup() {
                 >
                   <Ticket className="mb-2 h-8 w-8 text-slate-300" />
                   <p className="text-sm font-bold text-slate-600">
-                    Không có vé{" "}
+                    {language === "vi" ? "Không có vé" : "No tickets"}{" "}
                     {ticketTabs
                       .find((tab) => tab.value === ticketCategory)
                       ?.label.toLowerCase()}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    Hãy chọn nhóm khác để xem các vé còn lại.
+                    {language === "vi"
+                      ? "Hãy chọn nhóm khác để xem các vé còn lại."
+                      : "Please select another tab to view other tickets."}
                   </p>
                 </div>
               )}
@@ -998,7 +1078,13 @@ export function TicketLookup() {
                         <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                       </div>
                       <span className="text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
-                        Một chiều
+                        {activeTicket.booking?.roundTrip
+                          ? language === "vi"
+                            ? "Khứ hồi"
+                            : "Round-trip"
+                          : language === "vi"
+                            ? "Một chiều"
+                            : "One-way"}
                       </span>
                     </div>
 
@@ -1019,7 +1105,7 @@ export function TicketLookup() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Hành khách
+                        {language === "vi" ? "Hành khách" : "Passenger"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 truncate block">
                         {activeTicket.fullName}
@@ -1027,7 +1113,7 @@ export function TicketLookup() {
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Giờ khởi hành
+                        {language === "vi" ? "Giờ khởi hành" : "Departure time"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
                         {formatTime(activeTripTimes.departureTime)}
@@ -1038,23 +1124,29 @@ export function TicketLookup() {
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Toa tàu
+                        {language === "vi" ? "Toa tàu" : "Carriage"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
                         {activeTicket.seat || activeTicket.carriageNumber
-                          ? `Toa ${activeTicket.carriageNumber || "—"}`
-                          : "Không ghế riêng"}
+                          ? language === "vi"
+                            ? `Toa ${activeTicket.carriageNumber || "—"}`
+                            : `Carriage ${activeTicket.carriageNumber || "—"}`
+                          : language === "vi"
+                            ? "Không ghế riêng"
+                            : "No seat assigned"}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
                         {activeTicket.seat?.carriage?.carriageType ||
                           (activeTicket.seat || activeTicket.carriageNumber
                             ? ""
-                            : "Đi kèm người lớn")}
+                            : language === "vi"
+                              ? "Đi kèm người lớn"
+                              : "Accompanied child")}
                       </span>
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Ghế ngồi
+                        {language === "vi" ? "Ghế ngồi" : "Seat"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
                         {activeTicket.seat?.seatNumber || "—"}
@@ -1062,8 +1154,12 @@ export function TicketLookup() {
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
                         {activeTicket.seat?.seatType
                           ? activeTicket.seat.seatType === "WINDOW"
-                            ? "Cửa sổ"
-                            : "Lối đi"
+                            ? language === "vi"
+                              ? "Cửa sổ"
+                              : "Window"
+                            : language === "vi"
+                              ? "Lối đi"
+                              : "Aisle"
                           : ""}
                       </span>
                     </div>
@@ -1083,7 +1179,9 @@ export function TicketLookup() {
 
                   <div className="text-center w-full">
                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
-                      Mã vạch soát vé
+                      {language === "vi"
+                        ? "Mã vạch soát vé"
+                        : "Boarding Barcode"}
                     </span>
                     <span className="text-sm font-black text-slate-800 tracking-wider">
                       {activeTicket.ticketCode ||
@@ -1104,13 +1202,23 @@ export function TicketLookup() {
                       includeMargin={true}
                       bgColor="#ffffff"
                       fgColor="#0f172a"
-                      title="Mã QR soát vé"
+                      title={
+                        language === "vi" ? "Mã QR soát vé" : "Boarding QR Code"
+                      }
                     />
                   </div>
 
                   <div className="w-full flex flex-col gap-1 text-center text-[10px] font-bold text-slate-400">
-                    <span>Vui lòng xuất trình thẻ này</span>
-                    <span>khi quét vé lên tàu.</span>
+                    <span>
+                      {language === "vi"
+                        ? "Vui lòng xuất trình thẻ này"
+                        : "Please present this pass"}
+                    </span>
+                    <span>
+                      {language === "vi"
+                        ? "khi quét vé lên tàu."
+                        : "when boarding the train."}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1119,10 +1227,14 @@ export function TicketLookup() {
               <div className="flex flex-wrap gap-4 no-print">
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm"
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
                 >
                   <Printer className="h-4.5 w-4.5" />
-                  <span>In vé / Tải Thẻ Lên Tàu</span>
+                  <span>
+                    {language === "vi"
+                      ? "In vé / Tải Thẻ Lên Tàu"
+                      : "Print Ticket / Boarding Pass"}
+                  </span>
                 </button>
 
                 {canRequestRefund && (
@@ -1141,7 +1253,11 @@ export function TicketLookup() {
                     }`}
                   >
                     <AlertTriangle className="h-4.5 w-4.5" />
-                    <span>Hủy vé & Hoàn tiền</span>
+                    <span>
+                      {language === "vi"
+                        ? "Hủy vé & Hoàn tiền"
+                        : "Cancel & Refund"}
+                    </span>
                   </button>
                 )}
 
@@ -1149,17 +1265,21 @@ export function TicketLookup() {
                   "PENDING" && (
                   <span className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700">
                     <Clock className="h-4.5 w-4.5" />
-                    Vé đang được xử lý hủy và hoàn tiền
+                    {language === "vi"
+                      ? "Vé đang được xử lý hủy và hoàn tiền"
+                      : "Cancellation request is being processed"}
                   </span>
                 )}
 
                 {canExchangeTicket && (
                   <button
                     onClick={handleExchangeTicket}
-                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm"
+                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
                   >
                     <Repeat2 className="h-4.5 w-4.5" />
-                    <span>Đổi vé</span>
+                    <span>
+                      {language === "vi" ? "Đổi vé" : "Exchange ticket"}
+                    </span>
                   </button>
                 )}
               </div>
@@ -1171,7 +1291,9 @@ export function TicketLookup() {
                 <div className="flex justify-between items-center">
                   <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-primary" />
-                    Thông Tin Hành Trình & Lịch Trình
+                    {language === "vi"
+                      ? "Thông Tin Hành Trình & Lịch Trình"
+                      : "Journey & Schedule Information"}
                   </h3>
 
                   {getJourneyStateBadge(
@@ -1192,13 +1314,17 @@ export function TicketLookup() {
                         {stationName(activeTripStations.from)}
                       </span>
                       <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
-                        <span>Ga đi khởi hành</span>
+                        <span>
+                          {language === "vi"
+                            ? "Ga đi khởi hành"
+                            : "Departure Station"}
+                        </span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5 text-slate-400" />
-                          Giờ đi: {formatTime(
-                            activeTripTimes.departureTime,
-                          )} - {formatDate(activeTripTimes.departureTime)}
+                          {language === "vi" ? "Giờ đi:" : "Dep. time:"}{" "}
+                          {formatTime(activeTripTimes.departureTime)} -{" "}
+                          {formatDate(activeTripTimes.departureTime)}
                         </span>
                       </div>
                     </div>
@@ -1210,10 +1336,14 @@ export function TicketLookup() {
                       <div className="absolute -left-[24px] top-2.5 w-2 h-2 rounded-full bg-slate-300" />
                       <div className="flex flex-col text-slate-400">
                         <span className="text-xs font-bold uppercase">
-                          Ga trung gian
+                          {language === "vi"
+                            ? "Ga trung gian"
+                            : "Intermediate Station"}
                         </span>
                         <span className="text-[10px] mt-0.5">
-                          Không dừng đón khách tại ga lẻ
+                          {language === "vi"
+                            ? "Không dừng đón khách tại ga lẻ"
+                            : "No stops at intermediate stations"}
                         </span>
                       </div>
                     </div>
@@ -1224,13 +1354,19 @@ export function TicketLookup() {
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-slate-600 uppercase">
                             {stop.station?.stationName ||
-                              `Ga ${stop.stationId}`}
+                              (language === "vi"
+                                ? `Ga ${stop.stationId}`
+                                : `Station ${stop.stationId}`)}
                           </span>
                           <span className="text-[10px] text-slate-400 font-semibold">
-                            Đến lúc: {formatTime(stop.arrivalTime)} | Đi lúc:{" "}
+                            {language === "vi"
+                              ? `Đến lúc: ${formatTime(stop.arrivalTime)} | Đi lúc: `
+                              : `Arrival: ${formatTime(stop.arrivalTime)} | Departure: `}
                             {stop.departureTime
                               ? formatTime(stop.departureTime)
-                              : "Chạy tiếp"}
+                              : language === "vi"
+                                ? "Chạy tiếp"
+                                : "Continue"}
                           </span>
                         </div>
                       </div>
@@ -1247,13 +1383,17 @@ export function TicketLookup() {
                         {stationName(activeTripStations.to)}
                       </span>
                       <div className="flex items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
-                        <span>Ga đích kết thúc</span>
+                        <span>
+                          {language === "vi"
+                            ? "Ga đích kết thúc"
+                            : "Destination Station"}
+                        </span>
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5 text-slate-400" />
-                          Giờ đến: {formatTime(
-                            activeTripTimes.arrivalTime,
-                          )} - {formatDate(activeTripTimes.arrivalTime)}
+                          {language === "vi" ? "Giờ đến:" : "Arr. time:"}{" "}
+                          {formatTime(activeTripTimes.arrivalTime)} -{" "}
+                          {formatDate(activeTripTimes.arrivalTime)}
                         </span>
                       </div>
                     </div>
@@ -1270,11 +1410,14 @@ export function TicketLookup() {
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-[2rem] p-8 border border-blue-100/50 flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
           <div className="flex flex-col gap-3 max-w-[500px]">
             <h3 className="text-xl font-extrabold text-slate-800 leading-tight">
-              Gặp khó khăn khi tra cứu vé?
+              {language === "vi"
+                ? "Gặp khó khăn khi tra cứu vé?"
+                : "Having trouble looking up tickets?"}
             </h3>
             <p className="text-slate-500 text-sm leading-relaxed">
-              Đội ngũ hỗ trợ của GoTrain VN luôn sẵn sàng giúp bạn tìm lại thông
-              tin hành trình một cách nhanh nhất.
+              {language === "vi"
+                ? "Đội ngũ hỗ trợ của GoTrain VN luôn sẵn sàng giúp bạn tìm lại thông tin hành trình một cách nhanh nhất."
+                : "GoTrain VN support team is always ready to help you retrieve your journey details quickly."}
             </p>
 
             <div className="flex flex-wrap gap-4 mt-2">
@@ -1287,12 +1430,18 @@ export function TicketLookup() {
               </a>
               <button
                 onClick={() =>
-                  toast.info("Hệ thống chat trực tuyến đang bảo trì.")
+                  toast.info(
+                    language === "vi"
+                      ? "Hệ thống chat trực tuyến đang bảo trì."
+                      : "Online chat system is under maintenance.",
+                  )
                 }
-                className="flex items-center gap-2 bg-primary hover:bg-primary/95 text-white px-5 py-3 rounded-2xl shadow-md font-bold text-sm transition-all cursor-pointer"
+                className="flex items-center gap-2 bg-primary hover:bg-primary/95 text-white px-5 py-3 rounded-2xl shadow-md font-bold text-sm transition-all cursor-pointer border-none"
               >
                 <Mail className="h-4.5 w-4.5" />
-                <span>Hỗ trợ trực tuyến</span>
+                <span>
+                  {language === "vi" ? "Hỗ trợ trực tuyến" : "Online Support"}
+                </span>
               </button>
             </div>
           </div>
@@ -1303,7 +1452,7 @@ export function TicketLookup() {
               <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center p-4 text-center">
                 <User className="h-14 w-14 text-primary mb-1 opacity-80" />
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                  Trực tuyến
+                  {language === "vi" ? "Trực tuyến" : "Online"}
                 </span>
                 <span className="text-xs font-bold text-slate-700 block mt-0.5">
                   CSKH GoTrain
@@ -1339,17 +1488,20 @@ export function TicketLookup() {
                   <ShieldAlert className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-800 block">
-                    Yêu Cầu Hủy Vé & Hoàn Tiền
+                  <h3 className="text-base font-extrabold text-slate-800 block text-left">
+                    {language === "vi"
+                      ? "Yêu Cầu Hủy Vé & Hoàn Tiền"
+                      : "Cancel & Refund Ticket"}
                   </h3>
-                  <span className="text-[10px] font-bold text-slate-400 tracking-wide uppercase">
-                    Mã vé: {activeTicket.ticketCode}
+                  <span className="text-[10px] font-bold text-slate-400 tracking-wide uppercase block text-left">
+                    {language === "vi" ? "Mã vé:" : "Ticket code:"}{" "}
+                    {activeTicket.ticketCode}
                   </span>
                 </div>
               </div>
               <button
                 onClick={() => setIsRefundModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer transition-colors border-none"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1358,63 +1510,83 @@ export function TicketLookup() {
             {/* Modal Body */}
             <form onSubmit={handleRefundSubmit} className="flex flex-col gap-4">
               {/* Alert policy */}
-              <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-2xl flex items-start gap-2.5 text-amber-800 text-xs font-semibold leading-relaxed">
+              <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-2xl flex items-start gap-2.5 text-amber-800 text-xs font-semibold leading-relaxed text-left">
                 <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
                 <div className="flex flex-col gap-1">
                   <span>{refundInfo.message}</span>
                   <span className="text-[10px] text-amber-600 block font-normal">
-                    * Quyết định hoàn tiền được tính toán tự động dựa trên thời
-                    gian thực tế so với giờ khởi hành của tàu.
+                    {language === "vi"
+                      ? "* Quyết định hoàn tiền được tính toán tự động dựa trên thời gian thực tế so với giờ khởi hành của tàu."
+                      : "* Refund calculations are automatically determined based on the time remaining before train departure."}
                   </span>
                 </div>
               </div>
 
               {/* Price Calculation details */}
-              <div className="bg-slate-50 rounded-2xl p-4 flex flex-col gap-2 text-xs font-semibold text-slate-600 border border-slate-100">
+              <div className="bg-slate-50 rounded-2xl p-4 flex flex-col gap-2 text-xs font-semibold text-slate-600 border border-slate-100 text-left">
                 <div className="flex justify-between items-center">
-                  <span>Giá trị mua vé gốc:</span>
+                  <span>
+                    {language === "vi"
+                      ? "Giá trị mua vé gốc:"
+                      : "Original ticket price:"}
+                  </span>
                   <span className="text-slate-800 font-bold">
                     {(activeTicket.booking?.totalAmount || 0).toLocaleString(
-                      "vi-VN",
+                      language === "vi" ? "vi-VN" : "en-US",
                     )}{" "}
                     VND
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Tỉ lệ hoàn tiền áp dụng:</span>
+                  <span>
+                    {language === "vi"
+                      ? "Tỉ lệ hoàn tiền áp dụng:"
+                      : "Applicable refund rate:"}
+                  </span>
                   <span className="text-slate-800 font-bold">
                     {refundInfo.rate}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
                   <span className="text-slate-800 font-bold">
-                    Số tiền hoàn thực tế:
+                    {language === "vi"
+                      ? "Số tiền hoàn thực tế:"
+                      : "Actual refund amount:"}
                   </span>
                   <span className="text-red-600 font-black text-sm">
-                    {refundInfo.refund.toLocaleString("vi-VN")} VND
+                    {refundInfo.refund.toLocaleString(
+                      language === "vi" ? "vi-VN" : "en-US",
+                    )}{" "}
+                    VND
                   </span>
                 </div>
               </div>
 
               {/* Refund method */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 text-left">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Hình thức nhận tiền hoàn
+                  {language === "vi"
+                    ? "Hình thức nhận tiền hoàn"
+                    : "Refund method"}
                 </label>
                 <div className="rounded-2xl border border-primary bg-primary/5 p-3.5 text-center text-primary ring-1 ring-primary">
-                  <span className="text-sm font-extrabold">
-                    Ví điện tử GoTrain
+                  <span className="text-sm font-extrabold block">
+                    {language === "vi"
+                      ? "Ví điện tử GoTrain"
+                      : "GoTrain E-Wallet"}
                   </span>
                   <span className="text-[10px] opacity-80 block">
-                    Nhận ngay lập tức
+                    {language === "vi"
+                      ? "Nhận ngay lập tức"
+                      : "Receive instantly"}
                   </span>
                 </div>
               </div>
 
               {/* Reason input */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 text-left">
                 <label className="text-xs font-bold text-slate-500 tracking-wide uppercase">
-                  Lý do hoàn vé
+                  {language === "vi" ? "Lý do hoàn vé" : "Refund reason"}
                 </label>
                 <select
                   value={refundReason}
@@ -1422,16 +1594,26 @@ export function TicketLookup() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 focus:outline-none focus:border-primary transition-all"
                 >
                   <option value="Thay đổi lịch trình cá nhân">
-                    Thay đổi lịch trình cá nhân
+                    {language === "vi"
+                      ? "Thay đổi lịch trình cá nhân"
+                      : "Personal schedule change"}
                   </option>
-                  <option value="Sức khỏe gặp sự cố">Sức khỏe gặp sự cố</option>
+                  <option value="Sức khỏe gặp sự cố">
+                    {language === "vi" ? "Sức khỏe gặp sự cố" : "Health issues"}
+                  </option>
                   <option value="Thời tiết hoặc giao thông trễ giờ">
-                    Thời tiết hoặc giao thông trễ giờ
+                    {language === "vi"
+                      ? "Thời tiết hoặc giao thông trễ giờ"
+                      : "Weather or traffic delays"}
                   </option>
                   <option value="Đặt nhầm thông tin vé (ngày/giờ/ga)">
-                    Đặt nhầm thông tin vé (ngày/giờ/ga)
+                    {language === "vi"
+                      ? "Đặt nhầm thông tin vé (ngày/giờ/ga)"
+                      : "Incorrect ticket details (date/time/station)"}
                   </option>
-                  <option value="Khác">Lý do khác...</option>
+                  <option value="Khác">
+                    {language === "vi" ? "Lý do khác..." : "Other reason..."}
+                  </option>
                 </select>
               </div>
 
@@ -1439,14 +1621,18 @@ export function TicketLookup() {
               <button
                 type="submit"
                 disabled={refundLoading}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg shadow-red-600/15 cursor-pointer hover:-translate-y-0.5 transition-all text-sm flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg shadow-red-600/15 cursor-pointer hover:-translate-y-0.5 transition-all text-sm flex items-center justify-center gap-2 mt-2 disabled:opacity-50 border-none"
               >
                 {refundLoading ? (
                   <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <CheckCircle className="h-4.5 w-4.5" />
-                    <span>Xác nhận hoàn & Hủy vé</span>
+                    <span>
+                      {language === "vi"
+                        ? "Xác nhận hoàn & Hủy vé"
+                        : "Confirm Cancel & Refund"}
+                    </span>
                   </>
                 )}
               </button>
