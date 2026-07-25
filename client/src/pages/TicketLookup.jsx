@@ -1287,7 +1287,7 @@ export function TicketLookup() {
               </a>
               <button
                 onClick={() =>
-                  toast.info("Hệ thống chat trực tuyến đang bảo trì.")
+                  window.dispatchEvent(new CustomEvent("open-chatbot"))
                 }
                 className="flex items-center gap-2 bg-primary hover:bg-primary/95 text-white px-5 py-3 rounded-2xl shadow-md font-bold text-sm transition-all cursor-pointer"
               >
