@@ -330,16 +330,26 @@ function passengerRuleError(passengers) {
   if (seatedPassengerCount > 4) {
     return "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách có ghế.";
   }
-  const hasChild = passengers.some((passenger) => {
+  const isChildPassenger = (passenger) => {
     const age = ageFromDateOfBirth(passenger.dateOfBirth);
-    return age != null && age < 10;
-  });
-  const hasCompanion = passengers.some((passenger) => {
+    const type = String(passenger.passengerType || "").toUpperCase();
+    if (age != null) return age < 10;
+    return ["CHILD", "CHILD_UNDER_6"].includes(type);
+  };
+
+  const isCompanionPassenger = (passenger) => {
+    if (passenger.seatRequired === false) return false;
     const age = ageFromDateOfBirth(passenger.dateOfBirth);
-    return passenger.seatRequired !== false && !(age != null && age < 10);
-  });
+    const type = String(passenger.passengerType || "").toUpperCase();
+    if (age != null) return age >= 10;
+    return !["CHILD", "CHILD_UNDER_6"].includes(type);
+  };
+
+  const hasChild = passengers.some(isChildPassenger);
+  const hasCompanion = passengers.some(isCompanionPassenger);
+
   if (hasChild && !hasCompanion) {
-    return "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
+    return "Trẻ em dưới 10 tuổi không được đi một mình. Bắt buộc phải có ít nhất một hành khách Người lớn, Sinh viên hoặc Người cao tuổi đi kèm.";
   }
   if (
     passengers.some(
@@ -852,6 +862,10 @@ export function PassengerDetailsPage({
   ).length;
   const lapChildCount = passengers.length - seatedPassengerCount;
 
+  const liveRuleError = useMemo(() => {
+    return passengerRuleError(passengers);
+  }, [passengers]);
+
   const quotePassengers = passengers.map((passenger) => ({
     dateOfBirth: passenger.dateOfBirth,
     passengerType: passenger.passengerType,
@@ -898,7 +912,7 @@ export function PassengerDetailsPage({
 
   useEffect(() => {
     if (!session || quotePassengers.length === 0) return;
-    if (hasInvalidLapChild) {
+    if (hasInvalidLapChild || liveRuleError) {
       setQuote(null);
       setQuoteLoading(false);
       return;
@@ -1696,10 +1710,23 @@ export function PassengerDetailsPage({
                 </div>
               )}
 
-              {ruleError && (
-                <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold leading-5 text-rose-700">
-                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-                  {ruleError}
+              {(ruleError || liveRuleError) && (
+                <div className="flex items-start gap-3 rounded-2xl border-2 border-rose-400 bg-rose-50 p-4 text-sm font-bold leading-6 text-rose-900 shadow-xs">
+                  <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+                  <div>
+                    <p className="font-extrabold text-base text-rose-950 mb-1">
+                      ⚠️ Vi phạm quy định hành khách đi tàu:
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {ruleError || liveRuleError}
+                    </p>
+                    <p className="text-xs text-rose-700 mt-1.5 font-medium">
+                      Gợi ý: Trẻ em dưới 10 tuổi không được đi một mình. Vui
+                      lòng bấm nút <strong>"Chọn lại ghế"</strong> ở góc trên
+                      bên trái để chọn thêm ghế cho ít nhất 1 người lớn/sinh
+                      viên đi kèm.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -2381,6 +2408,7 @@ export function PassengerDetailsPage({
                 quoteLoading ||
                 !quote ||
                 expired ||
+                Boolean(ruleError || liveRuleError) ||
                 (isStaffExchangeMode &&
                   (!staffExchangeReason.trim() || !staffIdentityVerified)) ||
                 (!isStaffMode &&

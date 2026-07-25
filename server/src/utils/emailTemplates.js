@@ -74,18 +74,39 @@ export function getBookingPendingEmailTemplate(booking) {
   const endStation = booking.toStation?.stationName || "Ga đến";
   const departureTime = formatDate(schedule?.departureTime);
 
-  const passengerRows = (booking.passengers || [])
-    .map(
-      (p, i) => `
+  const passengers = booking.passengers || [];
+  const seatedPassengers = passengers.filter(
+    (p) =>
+      p.seatRequired !== false &&
+      p.passengerType !== "CHILD_UNDER_6" &&
+      (p.seat || p.seatId),
+  );
+  const lapChildren = passengers.filter(
+    (p) =>
+      p.seatRequired === false ||
+      p.passengerType === "CHILD_UNDER_6" ||
+      (!p.seat && !p.seatId),
+  );
+
+  const displayList =
+    seatedPassengers.length > 0 ? seatedPassengers : passengers;
+
+  const passengerRows = displayList
+    .map((p, i) => {
+      const assignedLapChild = lapChildren[i] || null;
+      const lapInfo = assignedLapChild
+        ? `<br/><span style="font-size: 12px; color: #d97706; font-weight: 600;">+ Trẻ em ngồi cùng: ${assignedLapChild.fullName} (Miễn phí)</span>`
+        : "";
+      return `
     <tr style="border-bottom: 1px solid #f1f5f9;">
       <td style="padding: 12px 10px; font-size: 14px;">${i + 1}</td>
-      <td style="padding: 12px 10px; font-size: 14px; font-weight: 600;">${p.fullName}</td>
+      <td style="padding: 12px 10px; font-size: 14px; font-weight: 600;">${p.fullName}${lapInfo}</td>
       <td style="padding: 12px 10px; font-size: 14px;">${p.passengerType === "CHILD_UNDER_6" ? "Trẻ em dưới 6 tuổi" : p.passengerType === "CHILD" ? "Trẻ em" : p.passengerType === "STUDENT" ? "Sinh viên" : p.passengerType === "SENIOR" ? "Người cao tuổi" : "Người lớn"}</td>
       <td style="padding: 12px 10px; font-size: 14px; text-align: center;">Toa ${p.carriageNumber || "—"}</td>
       <td style="padding: 12px 10px; font-size: 14px; text-align: center; font-weight: 600; color: #00629d;">Ghe ${p.seat?.seatNumber || "—"}</td>
     </tr>
-  `,
-    )
+  `;
+    })
     .join("");
 
   const paySection = booking.payosCheckoutUrl
@@ -172,9 +193,35 @@ export function getPaymentSuccessEmailTemplate(booking) {
   const endStation = booking.toStation?.stationName || "Ga đến";
   const departureTime = formatDate(schedule?.departureTime);
 
-  const ticketCards = (booking.passengers || [])
-    .map(
-      (p, i) => `
+  const passengers = booking.passengers || [];
+  const seatedPassengers = passengers.filter(
+    (p) =>
+      p.seatRequired !== false &&
+      p.passengerType !== "CHILD_UNDER_6" &&
+      (p.seat || p.seatId),
+  );
+  const lapChildren = passengers.filter(
+    (p) =>
+      p.seatRequired === false ||
+      p.passengerType === "CHILD_UNDER_6" ||
+      (!p.seat && !p.seatId),
+  );
+
+  const displayTickets =
+    seatedPassengers.length > 0 ? seatedPassengers : passengers;
+
+  const ticketCards = displayTickets
+    .map((p, i) => {
+      const assignedLapChild = lapChildren[i] || null;
+      const lapChildHtml = assignedLapChild
+        ? `
+        <div style="margin-top: 12px; padding: 10px 14px; background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; font-size: 13px; color: #92400e;">
+          <strong>👶 Trẻ em ngồi cùng ghế:</strong> ${assignedLapChild.fullName} (Dưới 6 tuổi — Miễn phí không chiếm ghế riêng)
+        </div>
+      `
+        : "";
+
+      return `
     <div style="background-color: #fafafa; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 15px; position: relative;">
       <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 10px;">
         <span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase;">Vé điện tử #${i + 1}</span>
@@ -187,14 +234,15 @@ export function getPaymentSuccessEmailTemplate(booking) {
         <div style="display: inline-block; background-color: #e0f2fe; color: #0369a1; padding: 5px 12px; border-radius: 6px; font-weight: 700; margin-top: 8px; font-size: 13px;">
           Toa ${p.carriageNumber || "—"} | Ghế số ${p.seat?.seatNumber || "—"}
         </div>
+        ${lapChildHtml}
         <div style="margin-top: 15px; text-align: center; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(p.ticketCode || "")}" alt="Mã QR soát vé" style="border: 1.5px solid #cbd5e1; padding: 6px; border-radius: 10px; background-color: #ffffff; width: 130px; height: 130px;" />
           <p style="margin: 6px 0 0 0; font-size: 11px; color: #64748b; font-weight: 600;">Quét mã này tại ga để soát vé lên tàu</p>
         </div>
       </div>
     </div>
-  `,
-    )
+  `;
+    })
     .join("");
 
   return `

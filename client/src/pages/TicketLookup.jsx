@@ -27,6 +27,55 @@ import {
 import { CancellationPolicyModal } from "../components/booking/CancellationPolicyModal";
 import { QRCodeSVG } from "qrcode.react";
 
+function processTicketsForLookup(rawTickets = []) {
+  if (!rawTickets || rawTickets.length === 0) return [];
+
+  const seen = new Set();
+  const uniquePassengers = [];
+  rawTickets.forEach((t) => {
+    if (!t?.id || seen.has(t.id)) return;
+    seen.add(t.id);
+    uniquePassengers.push(t);
+  });
+
+  const byBooking = new Map();
+  uniquePassengers.forEach((p) => {
+    const bId = p.bookingId || p.booking?.id || "default";
+    if (!byBooking.has(bId)) byBooking.set(bId, []);
+    byBooking.get(bId).push(p);
+  });
+
+  const finalTickets = [];
+  byBooking.forEach((passengers) => {
+    const seated = passengers.filter(
+      (p) =>
+        p.seatRequired !== false &&
+        p.passengerType !== "CHILD_UNDER_6" &&
+        (p.seat || p.seatId),
+    );
+    const lapChildren = passengers.filter(
+      (p) =>
+        p.seatRequired === false ||
+        p.passengerType === "CHILD_UNDER_6" ||
+        (!p.seat && !p.seatId),
+    );
+
+    if (seated.length > 0) {
+      seated.forEach((seatedPassenger, idx) => {
+        const assignedLapChild = lapChildren[idx] || null;
+        finalTickets.push({
+          ...seatedPassenger,
+          lapChild: assignedLapChild,
+        });
+      });
+    } else {
+      passengers.forEach((p) => finalTickets.push(p));
+    }
+  });
+
+  return finalTickets;
+}
+
 export function TicketLookup() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -83,11 +132,18 @@ export function TicketLookup() {
       const { data } = await api.get(
         `/bookings/lookup?contactInfo=${encodeURIComponent(contact)}`,
       );
-      setResult(data);
-      if (data.type === "single") {
-        setActiveTicket(data.ticket);
-      } else if (data.type === "list" && data.tickets?.length > 0) {
-        selectInitialTicket(data.tickets);
+      const processedTickets = processTicketsForLookup(
+        data.type === "single" ? [data.ticket] : data.tickets || [],
+      );
+
+      setResult({
+        ...data,
+        type: "list",
+        tickets: processedTickets,
+      });
+
+      if (processedTickets.length > 0) {
+        selectInitialTicket(processedTickets);
       }
     } catch (err) {
       // Don't toast on auto-load to avoid annoying user if they have no tickets yet
@@ -158,18 +214,24 @@ export function TicketLookup() {
       }
 
       const { data } = await api.get(url);
-      setResult(data);
+      const rawList =
+        data.type === "single" ? [data.ticket] : data.tickets || [];
+      const processedTickets = processTicketsForLookup(rawList);
 
-      if (data.type === "single") {
-        setActiveTicket(data.ticket);
+      const nextResult = {
+        ...data,
+        type: "list",
+        tickets: processedTickets,
+      };
+      setResult(nextResult);
+
+      if (processedTickets.length > 0) {
+        selectInitialTicket(processedTickets);
         saveRecentSearch(
           searchCode ||
-            data.ticket.ticketCode ||
-            data.ticket.booking?.bookingCode,
+            processedTickets[0].ticketCode ||
+            processedTickets[0].booking?.bookingCode,
         );
-      } else if (data.type === "list" && data.tickets?.length > 0) {
-        selectInitialTicket(data.tickets);
-        if (searchCode) saveRecentSearch(searchCode);
       }
       toast.success(
         language === "vi"
@@ -1164,6 +1226,29 @@ export function TicketLookup() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Trẻ em ngồi cùng ghế (nếu có) */}
+                  {activeTicket.lapChild && (
+                    <div className="rounded-2xl bg-amber-50/90 border border-amber-200/80 p-3.5 flex items-center justify-between text-xs mt-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-amber-700 text-lg">
+                          child_care
+                        </span>
+                        <div>
+                          <p className="font-extrabold text-amber-950 text-xs">
+                            Trẻ em ngồi cùng ghế:{" "}
+                            {activeTicket.lapChild.fullName}
+                          </p>
+                          <p className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                            Không chiếm ghế riêng · Miễn phí (Dưới 6 tuổi)
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100/90 px-2.5 py-1 rounded-lg border border-amber-200">
+                        Vé trẻ em đi kèm
+                      </span>
+                    </div>
+                  )}
 
                   {/* Safety cutout curves for paper look */}
                   <div className="absolute top-1/2 -right-4 w-8 h-8 bg-slate-50 rounded-full border border-slate-100 hidden md:block -translate-y-1/2 z-10" />
