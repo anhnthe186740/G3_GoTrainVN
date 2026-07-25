@@ -1492,8 +1492,12 @@ export function Profile() {
                         >
                           <Trash2 className="w-3.5 h-3.5 text-red-600" />
                           {language === "vi"
-                            ? "Hủy vé & Hoàn tiền"
-                            : "Cancel Ticket & Refund"}
+                            ? booking.passengers?.length > 1
+                              ? "Hủy toàn bộ vé & Hoàn tiền"
+                              : "Hủy vé & Hoàn tiền"
+                            : booking.passengers?.length > 1
+                              ? "Cancel All Tickets & Refund"
+                              : "Cancel Ticket & Refund"}
                         </button>
                       ) : null}
                     </div>
