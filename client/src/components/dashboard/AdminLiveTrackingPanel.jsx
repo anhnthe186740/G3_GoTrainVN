@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Clock,
   User,
-  Thermometer,
   Navigation,
   MapPin,
 } from "lucide-react";
@@ -561,7 +560,7 @@ export function AdminLiveTrackingPanel() {
         </div>
 
         {/* Sensor details */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-xs">
           <div>
             <p className="text-slate-400">Vị trí hiện tại</p>
             <p className="font-bold text-slate-200 mt-1">
@@ -573,15 +572,6 @@ export function AdminLiveTrackingPanel() {
             <p className="font-bold text-emerald-400 mt-1 flex items-center gap-1">
               <Compass className="h-3.5 w-3.5" />
               {tracking.speed ? `${Math.round(tracking.speed)} km/h` : "0 km/h"}
-            </p>
-          </div>
-          <div>
-            <p className="text-slate-400">Nhiệt độ điều hòa</p>
-            <p className="font-bold text-blue-400 mt-1 flex items-center gap-1">
-              <Thermometer className="h-3.5 w-3.5" />
-              {tracking.temperature
-                ? `${tracking.temperature.toFixed(1)}°C`
-                : "25°C"}
             </p>
           </div>
           <div>
@@ -962,7 +952,7 @@ export function AdminLiveTrackingPanel() {
             <div className="bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 text-xs font-semibold">
               <Compass className="mx-auto h-8 w-8 opacity-40 mb-2" />
               Chọn một đoàn tàu trên bản đồ hoặc danh sách để xem chi tiết tốc
-              độ, nhiệt độ toa xe và lộ trình các ga.
+              độ, số lượng hành khách và lộ trình các ga.
             </div>
           )}
         </div>

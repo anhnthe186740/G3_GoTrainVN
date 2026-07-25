@@ -12,13 +12,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { walletApi } from "../../services/walletApi.js";
 import { toast } from "sonner";
+import { useLanguage } from "../../context/LanguageContext";
 
 const QUICK_AMOUNTS = [50000, 100000, 200000, 500000, 1000000, 2000000];
 
-const fmt = (n) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(
-    n,
-  );
+const fmt = (n, language = "vi") =>
+  new Intl.NumberFormat(language === "vi" ? "vi-VN" : "en-US", {
+    style: "currency",
+    currency: "VND",
+  }).format(n);
 
 const BANK_BINS = {
   970415: "VietinBank",
@@ -39,11 +41,15 @@ const BANK_BINS = {
   970454: "VietCapitalBank",
 };
 
-const getBankNameByBin = (bin) => {
-  return BANK_BINS[bin] || `Ngân hàng (BIN: ${bin})`;
+const getBankNameByBin = (bin, language = "vi") => {
+  return (
+    BANK_BINS[bin] ||
+    (language === "vi" ? `Ngân hàng (BIN: ${bin})` : `Bank (BIN: ${bin})`)
+  );
 };
 
 export function DepositModal({ onClose }) {
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [selected, setSelected] = useState(null);
@@ -82,7 +88,11 @@ export function DepositModal({ onClose }) {
           if (diff > 0) {
             setTimeLeft(diff);
             setStep("qr");
-            toast.info("Đang hiển thị lại yêu cầu nạp tiền chưa hoàn tất.");
+            toast.info(
+              language === "vi"
+                ? "Đang hiển thị lại yêu cầu nạp tiền chưa hoàn tất."
+                : "Resuming incomplete deposit request.",
+            );
           } else {
             setStep("form");
           }
@@ -100,7 +110,7 @@ export function DepositModal({ onClose }) {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, []);
+  }, [language]);
 
   // Poll status when in "qr" step
   useEffect(() => {
@@ -125,7 +135,11 @@ export function DepositModal({ onClose }) {
           queryClient.invalidateQueries({ queryKey: ["walletTransactions"] });
           setStep("success");
           if (isManual) {
-            toast.success("Xác nhận thanh toán thành công!");
+            toast.success(
+              language === "vi"
+                ? "Xác nhận thanh toán thành công!"
+                : "Payment confirmed successfully!",
+            );
           }
         } else if (currentTxn?.status === "FAILED") {
           if (pollingIntervalRef.current) {
@@ -134,7 +148,11 @@ export function DepositModal({ onClose }) {
           }
           setStep("expired");
         } else if (isManual) {
-          toast.info("Giao dịch vẫn đang chờ thanh toán.");
+          toast.info(
+            language === "vi"
+              ? "Giao dịch vẫn đang chờ thanh toán."
+              : "Transaction is pending payment.",
+          );
         }
       } catch (err) {
         console.error("Polling error:", err);
@@ -154,7 +172,7 @@ export function DepositModal({ onClose }) {
         pollingIntervalRef.current = null;
       }
     };
-  }, [step, transaction?.id, queryClient]);
+  }, [step, transaction?.id, queryClient, language]);
 
   // Countdown timer for expiration
   useEffect(() => {
@@ -188,7 +206,9 @@ export function DepositModal({ onClose }) {
     onError: (err) => {
       const msg =
         err.response?.data?.message ||
-        "Tạo yêu cầu nạp tiền thất bại. Vui lòng thử lại.";
+        (language === "vi"
+          ? "Tạo yêu cầu nạp tiền thất bại. Vui lòng thử lại."
+          : "Failed to create deposit request. Please try again.");
       toast.error(msg);
       // If user already has a pending deposit, direct them to resume it by checking pending status again
       if (err.response?.status === 409) {
@@ -230,13 +250,19 @@ export function DepositModal({ onClose }) {
 
   const handleQuick = (val) => {
     setSelected(val);
-    setAmount(val.toLocaleString("vi-VN"));
+    setAmount(val.toLocaleString(language === "vi" ? "vi-VN" : "en-US"));
   };
 
   const handleInput = (e) => {
     const raw = e.target.value.replace(/\D/g, "");
     setSelected(null);
-    setAmount(raw ? parseInt(raw, 10).toLocaleString("vi-VN") : "");
+    setAmount(
+      raw
+        ? parseInt(raw, 10).toLocaleString(
+            language === "vi" ? "vi-VN" : "en-US",
+          )
+        : "",
+    );
   };
 
   const handleSubmit = () => {
@@ -260,14 +286,24 @@ export function DepositModal({ onClose }) {
         queryClient.invalidateQueries({ queryKey: ["wallet"] });
         queryClient.invalidateQueries({ queryKey: ["walletTransactions"] });
         setStep("success");
-        toast.success("Xác nhận thanh toán thành công!");
+        toast.success(
+          language === "vi"
+            ? "Xác nhận thanh toán thành công!"
+            : "Payment confirmed successfully!",
+        );
       } else {
         toast.info(
-          "Giao dịch vẫn đang chờ thanh toán. Vui lòng hoàn thành chuyển khoản hoặc đợi hệ thống xử lý.",
+          language === "vi"
+            ? "Giao dịch vẫn đang chờ thanh toán. Vui lòng hoàn thành chuyển khoản hoặc đợi hệ thống xử lý."
+            : "Transaction is pending payment. Please complete transfer or wait for processing.",
         );
       }
     } catch (err) {
-      toast.error("Không thể kết nối máy chủ để kiểm tra.");
+      toast.error(
+        language === "vi"
+          ? "Không thể kết nối máy chủ để kiểm tra."
+          : "Unable to connect to the server for status check.",
+      );
     }
   };
 
@@ -283,10 +319,18 @@ export function DepositModal({ onClose }) {
       setAmount("");
       setSelected(null);
       setStep("form");
-      toast.success("Đã hủy yêu cầu nạp tiền.");
+      toast.success(
+        language === "vi"
+          ? "Đã hủy yêu cầu nạp tiền."
+          : "Deposit request cancelled.",
+      );
     } catch (err) {
       console.error("Cancel deposit error:", err);
-      toast.error("Không thể hủy yêu cầu nạp tiền lúc này.");
+      toast.error(
+        language === "vi"
+          ? "Không thể hủy yêu cầu nạp tiền lúc này."
+          : "Cannot cancel deposit request at this time.",
+      );
     } finally {
       setIsCancelling(false);
     }
@@ -303,75 +347,91 @@ export function DepositModal({ onClose }) {
           <div className="flex items-center gap-3">
             <CreditCard className="w-5 h-5 text-white" />
             <span className="text-white font-bold text-lg">
-              Nạp Tiền Vào Ví
+              {language === "vi"
+                ? "Nạp Tiền Vào Ví"
+                : "Deposit Money to Wallet"}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center hover:bg-white/25 transition-colors"
+            className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center hover:bg-white/25 transition-colors border-none cursor-pointer"
           >
             <X className="w-4 h-4 text-white" />
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 text-left">
           {step === "checking" ? (
             <div className="text-center py-10">
               <Loader2 className="w-12 h-12 text-primary mx-auto mb-4 animate-spin" />
               <p className="font-semibold text-on-surface mb-1">
-                Đang kiểm tra giao dịch trước đó...
+                {language === "vi"
+                  ? "Đang kiểm tra giao dịch trước đó..."
+                  : "Checking previous transaction..."}
               </p>
             </div>
           ) : step === "creating" ? (
             <div className="text-center py-10">
               <Loader2 className="w-12 h-12 text-primary mx-auto mb-4 animate-spin" />
               <p className="font-semibold text-on-surface mb-1">
-                Đang tạo mã thanh toán QR...
+                {language === "vi"
+                  ? "Đang tạo mã thanh toán QR..."
+                  : "Generating payment QR code..."}
               </p>
               <p className="text-on-surface-variant text-sm">
-                Vui lòng đợi trong giây lát
+                {language === "vi"
+                  ? "Vui lòng đợi trong giây lát"
+                  : "Please wait a moment"}
               </p>
             </div>
           ) : step === "success" ? (
             <div className="text-center py-6">
               <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4 animate-bounce" />
               <h3 className="text-xl font-bold text-on-surface mb-2">
-                Nạp tiền thành công!
+                {language === "vi"
+                  ? "Nạp tiền thành công!"
+                  : "Deposit Successful!"}
               </h3>
               <p className="text-on-surface-variant text-sm mb-1">
-                Đã cộng{" "}
+                {language === "vi" ? "Đã cộng" : "Added"}{" "}
                 <span className="font-bold text-green-600">
                   {fmt(
                     payosData?.amount || transaction?.amount || parsedAmount,
+                    language,
                   )}
                 </span>{" "}
-                vào ví
+                {language === "vi" ? "vào ví" : "to wallet"}
               </p>
               <p className="text-on-surface-variant text-xs mb-6">
-                Số dư ví của bạn đã được cập nhật thành công.
+                {language === "vi"
+                  ? "Số dư ví của bạn đã được cập nhật thành công."
+                  : "Your wallet balance has been successfully updated."}
               </p>
               <button
                 onClick={onClose}
-                className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition shadow-md"
+                className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition shadow-md border-none cursor-pointer"
               >
-                Đóng
+                {language === "vi" ? "Đóng" : "Close"}
               </button>
             </div>
           ) : step === "expired" ? (
             <div className="text-center py-6">
               <AlertTriangle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-on-surface mb-2">
-                Lệnh thanh toán đã hết hạn
+                {language === "vi"
+                  ? "Lệnh thanh toán đã hết hạn"
+                  : "Payment order expired"}
               </h3>
               <p className="text-on-surface-variant text-sm mb-6">
-                Mỗi mã thanh toán chỉ có hiệu lực trong 15 phút. Vui lòng tạo
-                yêu cầu mới.
+                {language === "vi"
+                  ? "Mỗi mã thanh toán chỉ có hiệu lực trong 15 phút. Vui lòng tạo yêu cầu mới."
+                  : "Each payment code is only valid for 15 minutes. Please create a new request."}
               </p>
               <button
                 onClick={() => setStep("form")}
-                className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition"
+                className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition border-none cursor-pointer"
               >
-                Tạo yêu cầu mới
+                {language === "vi" ? "Tạo yêu cầu mới" : "Create new request"}
               </button>
             </div>
           ) : step === "qr" && payosData ? (
@@ -379,10 +439,15 @@ export function DepositModal({ onClose }) {
               {/* PayOS QR Instruction */}
               <div className="text-center w-full mb-4">
                 <span className="inline-block px-3 py-1 bg-amber-50 text-amber-700 text-xs font-semibold rounded-full mb-2">
-                  Thời gian thanh toán còn lại: {formatTime(timeLeft)}
+                  {language === "vi"
+                    ? "Thời gian thanh toán còn lại: "
+                    : "Payment time remaining: "}
+                  {formatTime(timeLeft)}
                 </span>
                 <p className="text-sm font-semibold text-on-surface">
-                  Quét mã QR dưới đây bằng app Ngân hàng để thanh toán
+                  {language === "vi"
+                    ? "Quét mã QR dưới đây bằng app Ngân hàng để thanh toán"
+                    : "Scan the QR code below using your mobile banking app"}
                 </p>
               </div>
 
@@ -393,19 +458,23 @@ export function DepositModal({ onClose }) {
 
               {/* Bank Account Info */}
               {payosData.accountNumber && (
-                <div className="w-full bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-2xl p-4 text-sm mb-3 space-y-2">
+                <div className="w-full bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-2xl p-4 text-sm mb-3 space-y-2 text-left">
                   <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                    Thông tin chuyển khoản thủ công
+                    {language === "vi"
+                      ? "Thông tin chuyển khoản thủ công"
+                      : "Manual Transfer Details"}
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-on-surface-variant">Ngân hàng:</span>
+                    <span className="text-on-surface-variant">
+                      {language === "vi" ? "Ngân hàng:" : "Bank:"}
+                    </span>
                     <span className="font-semibold text-on-surface">
-                      {getBankNameByBin(payosData.bin)}
+                      {getBankNameByBin(payosData.bin, language)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-on-surface-variant">
-                      Số tài khoản:
+                      {language === "vi" ? "Số tài khoản:" : "Account Number:"}
                     </span>
                     <span className="font-mono font-bold text-on-surface select-all bg-white px-2 py-0.5 border border-[#bec7d4]/50 rounded">
                       {payosData.accountNumber}
@@ -413,7 +482,7 @@ export function DepositModal({ onClose }) {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-on-surface-variant">
-                      Chủ tài khoản:
+                      {language === "vi" ? "Chủ tài khoản:" : "Account Owner:"}
                     </span>
                     <span className="font-semibold text-on-surface uppercase">
                       {payosData.accountName}
@@ -423,26 +492,32 @@ export function DepositModal({ onClose }) {
               )}
 
               {/* Details card */}
-              <div className="w-full bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-2xl p-4 text-sm mb-5 space-y-2">
+              <div className="w-full bg-[#f7f9fb] border border-[#bec7d4]/20 rounded-2xl p-4 text-sm mb-5 space-y-2 text-left">
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Số tiền nạp:</span>
+                  <span className="text-on-surface-variant">
+                    {language === "vi" ? "Số tiền nạp:" : "Amount:"}
+                  </span>
                   <span className="font-bold text-primary text-base">
                     {fmt(
                       payosData?.amount || transaction?.amount || parsedAmount,
+                      language,
                     )}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-on-surface-variant">
-                    Nội dung chuyển khoản:
+                    {language === "vi"
+                      ? "Nội dung chuyển khoản:"
+                      : "Transfer Description:"}
                   </span>
                   <span className="font-mono font-bold text-on-surface select-all bg-white px-2 py-0.5 border border-dashed border-[#bec7d4] rounded animate-pulse">
                     {payosData.description}
                   </span>
                 </div>
                 <div className="text-xs text-amber-600 text-center font-semibold pt-1">
-                  * Vui lòng điền đúng nội dung và số tiền trên để giao dịch tự
-                  động thành công.
+                  {language === "vi"
+                    ? "* Vui lòng điền đúng nội dung và số tiền trên để giao dịch tự động thành công."
+                    : "* Please input the correct description and amount for automatic payment confirmation."}
                 </div>
               </div>
 
@@ -452,37 +527,41 @@ export function DepositModal({ onClose }) {
                   href={payosData.checkoutUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/95 transition shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/95 transition shadow-sm text-decoration-none"
                 >
-                  Mở cổng thanh toán PayOS
-                  <ExternalLink className="w-4 h-4" />
+                  {language === "vi"
+                    ? "Mở cổng thanh toán PayOS"
+                    : "Open PayOS Gateway"}
+                  <ExternalLink className="w-4 h-4 text-white" />
                 </a>
 
                 <div className="flex gap-2">
                   <button
                     onClick={handleManualCheck}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white border border-[#bec7d4] text-on-surface font-semibold rounded-xl hover:bg-slate-50 transition"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white border border-[#bec7d4] text-on-surface font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer"
                   >
                     <RefreshCw className="w-4 h-4 text-on-surface-variant" />
-                    Kiểm tra trạng thái
+                    {language === "vi" ? "Kiểm tra trạng thái" : "Check status"}
                   </button>
                   <button
                     onClick={onClose}
-                    className="px-4 py-2.5 bg-slate-100 text-on-surface-variant font-semibold rounded-xl hover:bg-slate-200 transition"
+                    className="px-4 py-2.5 bg-slate-100 text-on-surface-variant font-semibold rounded-xl hover:bg-slate-200 transition cursor-pointer border-none"
                   >
-                    Đóng tạm
+                    {language === "vi" ? "Đóng tạm" : "Close"}
                   </button>
                 </div>
 
                 <button
                   onClick={handleCancelDeposit}
                   disabled={isCancelling}
-                  className="w-full py-2.5 bg-red-50 border border-red-200 text-red-600 font-semibold rounded-xl hover:bg-red-100 transition flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-red-50 border border-red-200 text-red-600 font-semibold rounded-xl hover:bg-red-100 transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isCancelling ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
+                  ) : language === "vi" ? (
                     "Hủy yêu cầu nạp này"
+                  ) : (
+                    "Cancel this deposit request"
                   )}
                 </button>
               </div>
@@ -491,17 +570,19 @@ export function DepositModal({ onClose }) {
             <>
               {/* Form Input Step */}
               <p className="text-sm font-semibold text-on-surface mb-3">
-                Chọn nhanh số tiền nạp
+                {language === "vi"
+                  ? "Chọn nhanh số tiền nạp"
+                  : "Quick deposit amounts"}
               </p>
               <div className="grid grid-cols-3 gap-2 mb-5">
                 {QUICK_AMOUNTS.map((val) => (
                   <button
                     key={val}
                     onClick={() => handleQuick(val)}
-                    className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                    className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all cursor-pointer ${
                       selected === val
                         ? "border-primary bg-primary/8 text-primary"
-                        : "border-outline-variant text-on-surface-variant hover:border-primary/50 hover:text-primary"
+                        : "border-outline-variant text-on-surface-variant hover:border-primary/50 hover:text-primary bg-transparent"
                     }`}
                     style={
                       selected === val
@@ -515,14 +596,18 @@ export function DepositModal({ onClose }) {
               </div>
 
               <p className="text-sm font-semibold text-on-surface mb-2">
-                Hoặc nhập số tiền khác
+                {language === "vi"
+                  ? "Hoặc nhập số tiền khác"
+                  : "Or enter another amount"}
               </p>
               <div className="relative mb-1">
                 <input
                   type="text"
                   value={amount}
                   onChange={handleInput}
-                  placeholder="Ví dụ: 500,000"
+                  placeholder={
+                    language === "vi" ? "Ví dụ: 500,000" : "Example: 500,000"
+                  }
                   className="w-full px-4 py-3 pr-16 border-2 rounded-xl outline-none text-sm font-semibold text-on-surface transition-all focus:border-primary"
                   style={{
                     borderColor:
@@ -535,14 +620,18 @@ export function DepositModal({ onClose }) {
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant mb-5">
-                Tối thiểu 10,000 · Tối đa 50,000,000 · Bội số 1,000
+                {language === "vi"
+                  ? "Tối thiểu 10,000 · Tối đa 50,000,000 · Bội số 1,000"
+                  : "Min 10,000 · Max 50,000,000 · Multiple of 1,000"}
               </p>
 
               {parsedAmount > 0 && (
-                <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50 mb-5 text-sm border border-[#bec7d4]/20">
-                  <span className="text-on-surface-variant">Số tiền nạp</span>
+                <div className="flex justify-between items-center p-3 rounded-xl bg-slate-50 mb-5 text-sm border border-[#bec7d4]/20 text-left">
+                  <span className="text-on-surface-variant">
+                    {language === "vi" ? "Số tiền nạp" : "Deposit amount"}
+                  </span>
                   <span className="font-bold text-primary">
-                    {fmt(parsedAmount)}
+                    {fmt(parsedAmount, language)}
                   </span>
                 </div>
               )}
@@ -550,7 +639,7 @@ export function DepositModal({ onClose }) {
               <button
                 onClick={handleSubmit}
                 disabled={!isValid}
-                className="w-full py-3.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full py-3.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98] border-none cursor-pointer"
                 style={{
                   background: isValid
                     ? "linear-gradient(135deg, #00629d, #0086cc)"
@@ -558,7 +647,8 @@ export function DepositModal({ onClose }) {
                   backgroundColor: isValid ? undefined : "#bec7d4",
                 }}
               >
-                Xác nhận nạp {parsedAmount > 0 ? fmt(parsedAmount) : ""}
+                {language === "vi" ? "Xác nhận nạp " : "Confirm Deposit "}
+                {parsedAmount > 0 ? fmt(parsedAmount, language) : ""}
               </button>
             </>
           )}

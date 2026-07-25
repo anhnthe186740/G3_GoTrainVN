@@ -271,6 +271,40 @@ export function StaffTicketCheckInPanel() {
     }
   };
 
+  // Báo thông tin sai lệch & từ chối lên tàu
+  const handleReportMismatch = async () => {
+    if (!result?.success || !result.data?.ticketCode) return;
+    setUndoing(true);
+    try {
+      await staffSearchApi.reportMismatch(result.data.ticketCode);
+      toast.warning(
+        "Đã từ chối soát vé và ghi nhận sai lệch thông tin thành công.",
+      );
+      setSessionLogs((prev) => [
+        {
+          id: Date.now(),
+          ticketCode: result.data.ticketCode,
+          fullName: result.data.fullName,
+          seatNumber: result.data.seatNumber,
+          carriageNumber: result.data.carriageNumber,
+          trainCode: result.data.trainCode,
+          status: "MISMATCH_REJECTED",
+          error: "Từ chối lên tàu: Sai lệch thông tin giấy tờ / Thẻ sinh viên",
+          time: new Date().toISOString(),
+        },
+        ...prev.slice(0, 49),
+      ]);
+      setResult({
+        success: false,
+        error: `Vé ${result.data.ticketCode} (${result.data.fullName}): Đã từ chối cho lên tàu do thông tin hành khách/giấy tờ sai lệch. Yêu cầu đến quầy xử lý.`,
+      });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Không thể xử lý yêu cầu.");
+    } finally {
+      setUndoing(false);
+    }
+  };
+
   const handleManualSubmit = (e) => {
     e.preventDefault();
     cameraTriggeredRef.current = false;
@@ -565,19 +599,33 @@ export function StaffTicketCheckInPanel() {
                   ))}
                 </div>
 
-                {/* #5: Nút hoàn tác soát vé */}
+                {/* #5: Nút hoàn tác & Báo sai lệch */}
                 {canUndo && (
-                  <button
-                    type="button"
-                    onClick={handleUndo}
-                    disabled={undoing}
-                    className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    {undoing
-                      ? "Đang hoàn tác..."
-                      : `Hoàn tác soát vé (còn ${Math.floor(undoSecondsLeft / 60)}:${String(undoSecondsLeft % 60).padStart(2, "0")})`}
-                  </button>
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleUndo}
+                        disabled={undoing}
+                        className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2.5 px-3 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        {undoing
+                          ? "Đang xử lý..."
+                          : `Hoàn tác (${Math.floor(undoSecondsLeft / 60)}:${String(undoSecondsLeft % 60).padStart(2, "0")})`}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleReportMismatch}
+                        disabled={undoing}
+                        className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 py-2.5 px-3 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Báo sai thông tin
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -690,11 +738,21 @@ export function StaffTicketCheckInPanel() {
                           ĐÃ HOÀN TÁC
                         </span>
                       )}
+                      {log.status === "MISMATCH_REJECTED" && (
+                        <span className="rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                          SAI THÔNG TIN
+                        </span>
+                      )}
                     </td>
                     <td className="max-w-xs truncate px-4 py-3 font-medium italic text-slate-400">
                       {log.status === "SUCCESS" &&
                         "Soát vé và lên tàu thành công"}
                       {log.status === "UNDONE" && "Đã hoàn tác soát vé"}
+                      {log.status === "MISMATCH_REJECTED" && (
+                        <span className="text-rose-600 font-bold">
+                          {log.error}
+                        </span>
+                      )}
                       {log.status === "FAILED" && (
                         <span className="text-red-500">{log.error}</span>
                       )}

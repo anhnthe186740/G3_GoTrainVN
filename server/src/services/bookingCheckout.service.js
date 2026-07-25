@@ -177,15 +177,28 @@ function resolveTicketType(
   const available = ticketTypes.length ? ticketTypes : fallbackTicketTypes();
   const byCode = new Map(available.map((type) => [type.code, type]));
   const requestedCode = String(requestedType || "ADULT").toUpperCase();
-  // Auto-apply theo tuổi chỉ khi đã biết tuổi hành khách
+  // Xác định xem hành khách có yêu cầu ghế riêng không (phải set tường minh)
+  // Chỉ bỏ qua CHILD_UNDER_6 khi seatRequired = true rõ ràng (không phải khi undefined)
+  const wantsSeat =
+    passenger.seatRequired === true && passenger.sharingSeat !== true;
+  // Auto-apply theo tuổi chỉ khi đã biết tuổi hành khách.
+  // Nếu hành khách muốn có ghế riêng, bỏ qua loại CHILD_UNDER_6 (seatMode=NOT_ALLOWED)
+  // để trẻ dưới 6 có thể mua vé thông thường khi được chọn ghế.
   const autoMatch =
     age != null &&
-    available.find((type) => type.autoApply && ageMatchesTicketType(type, age));
+    available.find(
+      (type) =>
+        type.autoApply &&
+        ageMatchesTicketType(type, age) &&
+        !(wantsSeat && type.seatMode === "NOT_ALLOWED"),
+    );
   if (autoMatch) return autoMatch;
 
   const requested = byCode.get(requestedCode);
   if (
     requested &&
+    // Nếu hành khách muốn ghế mà loại vé yêu cầu không cho phép ghế, bỏ qua
+    !(wantsSeat && requested.seatMode === "NOT_ALLOWED") &&
     (age == null ||
       (requested.minAge == null && requested.maxAgeExclusive == null) ||
       ageMatchesTicketType(requested, age))
@@ -200,15 +213,16 @@ function resolveTicketType(
     return requested;
   }
 
-  if (PASSENGER_TYPES.includes(requestedCode)) {
-    const legacyType = passengerTypeForAge(age, requestedCode, passenger);
-    return (
-      byCode.get(legacyType) || byCode.get("ADULT") || fallbackTicketTypes()[0]
-    );
-  }
-  return byCode.get("ADULT") || fallbackTicketTypes()[0];
+  // Fallback dựa theo tuổi: dùng cho cả PASSENGER_TYPES truyền thống và
+  // CHILD_UNDER_6 bị bỏ qua vì hành khách muốn ghế riêng.
+  const legacyBase = PASSENGER_TYPES.includes(requestedCode)
+    ? requestedCode
+    : "ADULT";
+  const legacyType = passengerTypeForAge(age, legacyBase, passenger);
+  return (
+    byCode.get(legacyType) || byCode.get("ADULT") || fallbackTicketTypes()[0]
+  );
 }
-
 export function normalizePassenger(
   passenger,
   index,
@@ -231,6 +245,9 @@ export function normalizePassenger(
   }
   const knownTypes = new Set([
     ...PASSENGER_TYPES,
+    // Bổ sung các loại vé mặc định (CHILD_UNDER_6, SENIOR, ...) để luôn nhận dạng
+    // kể cả khi DB chưa có cấu hình custom ticket types
+    ...fallbackTicketTypes().map((type) => type.code),
     ...ticketTypes.map((type) => type.code),
   ]);
   if (requestedTypeValue && !knownTypes.has(requestedTypeValue)) {
@@ -246,11 +263,24 @@ export function normalizePassenger(
   );
   const passengerType = ticketType.code;
   const discountPolicy = discountPolicyFromTicketType(ticketType);
+  // Hành khách muốn ghế riêng: seatRequired=true (kể cả trẻ dưới 6 mua vé thường)
+  // Hành khách không cần ghế (trẻ đi kèm miễn phí): seatRequired=false
+  const requestsLapChild =
+    passenger.seatRequired === false || passenger.sharingSeat === true;
+
+  // Ràng buộc bảo mật: chỉ trẻ dưới 6 tuổi mới được đi kèm không ghế
+  if (requestsLapChild && age >= 6) {
+    throw httpError(
+      400,
+      `${label}: chỉ trẻ dưới 6 tuổi mới được đi kèm không chọn ghế riêng. Vui lòng đặt ghế cho hành khách này.`,
+    );
+  }
+
   const seatRequired =
     ticketType.seatMode === "NOT_ALLOWED"
       ? false
-      : age < 6
-        ? !(passenger.seatRequired === false || passenger.sharingSeat === true)
+      : requestsLapChild
+        ? false
         : true;
   if (!ticketType.requiresDocument) {
     if (ticketType.seatMode === "NOT_ALLOWED" && seatRequired) {
@@ -444,6 +474,7 @@ export function normalizeQuotePassenger(
   ).toUpperCase();
   const knownTypes = new Set([
     ...PASSENGER_TYPES,
+    ...fallbackTicketTypes().map((type) => type.code),
     ...ticketTypes.map((type) => type.code),
   ]);
   const requestedType = knownTypes.has(requestedTypeValue)
@@ -716,6 +747,8 @@ export async function quoteBooking(
         taxAmount,
         finalPrice,
         upgradeSavings,
+        fromStopOrder: hold.fromStopOrder, // P1
+        toStopOrder: hold.toStopOrder, // P1
       };
     });
     return {
@@ -1177,6 +1210,8 @@ export async function checkoutBooking(identity, payload) {
             discountAmount: leg.discountAmount,
             finalPrice: leg.finalPrice,
             status: immediatePayment ? "CONFIRMED" : "PENDING",
+            fromStopOrder: leg.fromStopOrder, // P1
+            toStopOrder: leg.toStopOrder, // P1
           },
         });
       }

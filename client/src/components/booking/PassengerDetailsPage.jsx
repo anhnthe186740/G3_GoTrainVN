@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
@@ -40,6 +41,8 @@ import {
 } from "../../services/pendingBooking";
 import { useAuthStore } from "../../store/authStore";
 import { StaffTicketPrintPanel } from "../dashboard/StaffTicketPrintPanel";
+import { BookingConstraintsCard } from "./BookingConstraintsCard";
+import { calculateProfileCompleteness } from "../../utils/profileUtils";
 
 // Fallback dùng khi API /pricing/ticket-types/public không khả dụng.
 // Phản ánh cùng giá trị mặc định như DEFAULT_TICKET_TYPES trong pricing.service.js.
@@ -185,10 +188,19 @@ function ageMatchesTicketType(type, age) {
   return true;
 }
 
-function passengerTypeFromPolicy(age, currentType, ticketTypes) {
+function passengerTypeFromPolicy(
+  age,
+  currentType,
+  ticketTypes,
+  { wantsSeat = true } = {},
+) {
   if (age == null) return currentType;
   const autoType = ticketTypes.find(
-    (type) => type.autoApply && ageMatchesTicketType(type, age),
+    (type) =>
+      type.autoApply &&
+      ageMatchesTicketType(type, age) &&
+      // Bỏ qua loại không cho phép ghế (CHILD_UNDER_6) nếu hành khách cần ghế
+      !(wantsSeat && type.seatMode === "NOT_ALLOWED"),
   );
   if (autoType) return autoType.value;
   return passengerTypeFromAge(age, currentType);
@@ -238,10 +250,6 @@ function validatePassenger(
     if (passenger.seatRequired === false && (age == null || age >= 6)) {
       errors.dateOfBirth =
         "Chỉ trẻ dưới 6 tuổi mới được đi kèm không chọn ghế riêng.";
-    }
-    if (passenger.seatRequired !== false && age != null && age < 6) {
-      errors.dateOfBirth =
-        "Trẻ dưới 6 tuổi đi kèm người lớn, không đặt ghế riêng.";
     }
   }
   if (passengerRequiresDocument(passenger, ticketTypes)) {
@@ -338,7 +346,15 @@ function passengerRuleError(passengers) {
       (passenger) => passenger.seatRequired !== false && isUnderSix(passenger),
     )
   ) {
-    return "Trẻ dưới 6 tuổi phải đi kèm người lớn và không chọn ghế riêng.";
+    // Trẻ dưới 6 tuổi có ghế riêng: hợp lệ nếu có ít nhất một hành khách có ghế không phải trẻ.
+    // Chỉ báo lỗi nếu toàn bộ đều là trẻ (không có người lớn đi kèm).
+    const hasNonChildSeatedPassenger = passengers.some((passenger) => {
+      const age = ageFromDateOfBirth(passenger.dateOfBirth);
+      return passenger.seatRequired !== false && !(age != null && age < 10);
+    });
+    if (!hasNonChildSeatedPassenger) {
+      return "Trẻ dưới 6 tuổi phải đi kèm ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
+    }
   }
   const lapChildCount = passengers.length - seatedPassengerCount;
   if (lapChildCount > seatedPassengerCount) {
@@ -1589,6 +1605,43 @@ export function PassengerDetailsPage({
         </div>
       </header>
 
+      {user &&
+        customerProfile &&
+        (!user.role || user.role === "CUSTOMER") &&
+        (() => {
+          const completeness = calculateProfileCompleteness(customerProfile);
+          if (completeness.isComplete) return null;
+          return (
+            <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-slate-800 shadow-xs">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-xs font-bold text-amber-950">
+                    Hồ sơ cá nhân chưa hoàn thiện ({completeness.percentage}%)
+                  </p>
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    Thông tin hành khách bên dưới đã tự điền từ hồ sơ. Bạn có
+                    thể bổ sung thông tin thiếu ở đây hoặc{" "}
+                    <Link
+                      to="/profile"
+                      className="font-bold underline text-amber-950 hover:text-amber-700"
+                    >
+                      cập nhật hồ sơ cá nhân
+                    </Link>{" "}
+                    để hệ thống tự điền đầy đủ cho các chuyến đi sau.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/profile"
+                className="shrink-0 rounded-xl bg-amber-600 hover:bg-amber-700 px-3.5 py-1.5 text-xs font-bold text-white transition shadow-2xs"
+              >
+                Cập nhật hồ sơ
+              </Link>
+            </div>
+          );
+        })()}
+
       {!embedded && !user && (
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -1624,6 +1677,8 @@ export function PassengerDetailsPage({
             </div>
           ) : (
             <>
+              <BookingConstraintsCard defaultExpanded={false} />
+
               {!isStaffMode && passengers.length > 1 && (
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <div className="flex items-center gap-3 text-sm text-slate-600">
@@ -1887,6 +1942,27 @@ export function PassengerDetailsPage({
                                 : "Loại vé quyết định ưu đãi; ngày sinh dùng để kiểm tra điều kiện tuổi."}
                             </p>
                           </Field>
+
+                          {passenger.passengerType === "STUDENT" && (
+                            <div className="flex items-start gap-2.5 rounded-xl border border-purple-200 bg-purple-50 p-3.5 text-xs text-purple-900 sm:col-span-2">
+                              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-600 mt-0.5" />
+                              <div>
+                                <p className="font-bold text-purple-950">
+                                  Lưu ý quan trọng cho vé Sinh viên (Ưu đãi giảm
+                                  10%):
+                                </p>
+                                <p className="mt-0.5 leading-5 text-purple-900/90">
+                                  Khi soát vé lên tàu tại ga, hành khách{" "}
+                                  <strong>
+                                    bắt buộc xuất trình Thẻ Sinh viên chính chủ
+                                  </strong>{" "}
+                                  (còn hiệu lực) kèm số CCCD trùng khớp trên vé.
+                                  Nếu không có thẻ hợp lệ, quý khách phải đóng
+                                  tiền chênh lệch vé + phí phạt theo quy định.
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
                           <Field label="Loại giấy tờ">
                             <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">

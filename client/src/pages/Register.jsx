@@ -11,16 +11,16 @@ import {
   Loader2,
   User,
   Phone,
-  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
+import { useLanguage } from "../context/LanguageContext";
 
 export function Register() {
+  const { language } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [passwordValue, setPasswordValue] = useState("");
   const navigate = useNavigate();
 
   const {
@@ -41,7 +41,13 @@ export function Register() {
   const watchPassword = watch("password");
 
   const calculatePasswordStrength = (pass) => {
-    if (!pass) return { score: 0, label: "Trống", color: "bg-slate-200" };
+    if (!pass) {
+      return {
+        score: 0,
+        label: language === "vi" ? "Trống" : "Empty",
+        color: "bg-slate-200",
+      };
+    }
     let score = 0;
     if (pass.length >= 8) score += 1;
     if (/[A-Z]/.test(pass)) score += 1;
@@ -49,32 +55,56 @@ export function Register() {
     if (/[0-9]/.test(pass)) score += 1;
     if (/[^A-Za-z0-9]/.test(pass)) score += 1;
 
-    if (score <= 2) return { score, label: "Yếu", color: "bg-red-500 w-1/3" };
-    if (score <= 4)
-      return { score, label: "Trung bình", color: "bg-amber-500 w-2/3" };
-    return { score, label: "Mạnh", color: "bg-emerald-500 w-full" };
+    if (score <= 2) {
+      return {
+        score,
+        label: language === "vi" ? "Yếu" : "Weak",
+        color: "bg-red-500 w-1/3",
+      };
+    }
+    if (score <= 4) {
+      return {
+        score,
+        label: language === "vi" ? "Trung bình" : "Medium",
+        color: "bg-amber-500 w-2/3",
+      };
+    }
+    return {
+      score,
+      label: language === "vi" ? "Mạnh" : "Strong",
+      color: "bg-emerald-500 w-full",
+    };
   };
 
   const strength = calculatePasswordStrength(watchPassword);
 
   const onSubmit = async (data) => {
     setLoading(true);
-    const toastId = toast.loading("Đang tạo tài khoản mới...");
+    const toastId = toast.loading(
+      language === "vi"
+        ? "Đang tạo tài khoản mới..."
+        : "Creating new account...",
+    );
     try {
       // Remove confirmPassword before sending to server
       const { confirmPassword, ...registerData } = data;
       await api.post("/auth/register", registerData);
 
-      toast.success("Tạo tài khoản thành công! Đang chuyển hướng...", {
-        id: toastId,
-      });
+      toast.success(
+        language === "vi"
+          ? "Tạo tài khoản thành công! Đang chuyển hướng..."
+          : "Account created successfully! Redirecting...",
+        { id: toastId },
+      );
       setTimeout(() => {
         navigate("/login");
       }, 1500);
     } catch (error) {
       const errorMsg =
         error.response?.data?.message ||
-        "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin!";
+        (language === "vi"
+          ? "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin!"
+          : "Registration failed. Please verify your details!");
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -82,7 +112,7 @@ export function Register() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50">
+    <div className="flex min-h-screen w-full bg-slate-50 text-left">
       {/* Brand presentation banner on desktop */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-slate-900 p-12 text-white lg:flex">
         {/* Decorative background gradients */}
@@ -101,41 +131,51 @@ export function Register() {
 
         <div className="relative z-10 my-auto max-w-lg space-y-6">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-            Tham gia cùng chúng tôi <br />
+            {language === "vi" ? "Tham gia cùng chúng tôi" : "Join us at"}{" "}
+            <br />
             <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
               GoTrain VN
             </span>
           </h1>
           <p className="text-lg text-slate-300">
-            Tạo tài khoản hôm nay để bắt đầu chuyến hành trình nhanh chóng, tiện
-            lợi và tiết kiệm nhất.
+            {language === "vi"
+              ? "Tạo tài khoản hôm nay để bắt đầu chuyến hành trình nhanh chóng, tiện lợi và tiết kiệm nhất."
+              : "Create an account today to start your journey in the fastest, most convenient, and affordable way."}
           </p>
 
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
               <span className="text-sm font-medium text-slate-200">
-                Đặt chỗ nhanh trong 3 bước
+                {language === "vi"
+                  ? "Đặt chỗ nhanh trong 3 bước"
+                  : "Quick booking in 3 steps"}
               </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
               <span className="text-sm font-medium text-slate-200">
-                Ví điện tử nạp/rút không mất phí
+                {language === "vi"
+                  ? "Ví điện tử nạp/rút không mất phí"
+                  : "E-wallet deposits & withdrawals with zero fees"}
               </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-emerald-400" />
               <span className="text-sm font-medium text-slate-200">
-                Nhiều ưu đãi đặc biệt cho Sinh viên & Người già
+                {language === "vi"
+                  ? "Nhiều ưu đãi đặc biệt cho Sinh viên & Người già"
+                  : "Special discounts for Students & Seniors"}
               </span>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 text-sm text-slate-400">
-          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI
-          Redesign.
+          © {new Date().getFullYear()} GoTrain VN.{" "}
+          {language === "vi"
+            ? "Thiết kế giao diện Modern UI Redesign."
+            : "Modern UI Redesign interface."}
         </div>
       </div>
 
@@ -154,10 +194,12 @@ export function Register() {
 
           <div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              Tạo tài khoản
+              {language === "vi" ? "Tạo tài khoản" : "Create Account"}
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Nhập đầy đủ thông tin cá nhân của bạn dưới đây để bắt đầu đăng ký.
+              {language === "vi"
+                ? "Nhập đầy đủ thông tin cá nhân của bạn dưới đây để bắt đầu đăng ký."
+                : "Enter your personal details below to register."}
             </p>
           </div>
 
@@ -165,7 +207,7 @@ export function Register() {
             {/* Full Name Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
-                Họ và tên
+                {language === "vi" ? "Họ và tên" : "Full name"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -175,10 +217,16 @@ export function Register() {
                   type="text"
                   disabled={loading}
                   {...register("fullName", {
-                    required: "Họ và tên là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Họ và tên là bắt buộc"
+                        : "Full name is required",
                     minLength: {
                       value: 3,
-                      message: "Họ và tên phải dài tối thiểu 3 kí tự",
+                      message:
+                        language === "vi"
+                          ? "Họ và tên phải dài tối thiểu 3 kí tự"
+                          : "Full name must be at least 3 characters",
                     },
                   })}
                   placeholder="Nguyễn Văn A"
@@ -190,7 +238,7 @@ export function Register() {
                 />
               </div>
               {errors.fullName && (
-                <p className="text-[11px] font-medium text-red-600">
+                <p className="text-[11px] font-medium text-red-600 mt-1">
                   {errors.fullName.message}
                 </p>
               )}
@@ -199,7 +247,7 @@ export function Register() {
             {/* Phone Number Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
-                Số điện thoại
+                {language === "vi" ? "Số điện thoại" : "Phone number"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -209,10 +257,16 @@ export function Register() {
                   type="tel"
                   disabled={loading}
                   {...register("phoneNumber", {
-                    required: "Số điện thoại là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Số điện thoại là bắt buộc"
+                        : "Phone number is required",
                     pattern: {
                       value: /(84|0[3|5|7|8|9])+([0-9]{8})\b/g,
-                      message: "Số điện thoại Việt Nam không hợp lệ",
+                      message:
+                        language === "vi"
+                          ? "Số điện thoại Việt Nam không hợp lệ"
+                          : "Invalid phone number format",
                     },
                   })}
                   placeholder="0912345678"
@@ -224,7 +278,7 @@ export function Register() {
                 />
               </div>
               {errors.phoneNumber && (
-                <p className="text-[11px] font-medium text-red-600">
+                <p className="text-[11px] font-medium text-red-600 mt-1">
                   {errors.phoneNumber.message}
                 </p>
               )}
@@ -233,7 +287,7 @@ export function Register() {
             {/* Email Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
-                Địa chỉ Email
+                {language === "vi" ? "Địa chỉ Email" : "Email Address"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -243,10 +297,16 @@ export function Register() {
                   type="email"
                   disabled={loading}
                   {...register("email", {
-                    required: "Email là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Email là bắt buộc"
+                        : "Email is required",
                     pattern: {
                       value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: "Địa chỉ email không hợp lệ",
+                      message:
+                        language === "vi"
+                          ? "Địa chỉ email không hợp lệ"
+                          : "Invalid email address",
                     },
                   })}
                   placeholder="name@example.com"
@@ -258,7 +318,7 @@ export function Register() {
                 />
               </div>
               {errors.email && (
-                <p className="text-[11px] font-medium text-red-600">
+                <p className="text-[11px] font-medium text-red-600 mt-1">
                   {errors.email.message}
                 </p>
               )}
@@ -267,7 +327,7 @@ export function Register() {
             {/* Password Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
-                Mật khẩu
+                {language === "vi" ? "Mật khẩu" : "Password"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -277,13 +337,23 @@ export function Register() {
                   type={showPassword ? "text" : "password"}
                   disabled={loading}
                   {...register("password", {
-                    required: "Mật khẩu là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Mật khẩu là bắt buộc"
+                        : "Password is required",
                     minLength: {
                       value: 8,
-                      message: "Mật khẩu phải dài tối thiểu 8 kí tự",
+                      message:
+                        language === "vi"
+                          ? "Mật khẩu phải dài tối thiểu 8 kí tự"
+                          : "Password must be at least 8 characters",
                     },
                   })}
-                  placeholder="Tối thiểu 8 kí tự"
+                  placeholder={
+                    language === "vi"
+                      ? "Tối thiểu 8 kí tự"
+                      : "At least 8 characters"
+                  }
                   className={`block w-full rounded-xl border ${
                     errors.password
                       ? "border-red-300 focus:border-red-500 focus:ring-red-200"
@@ -293,7 +363,7 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4.5 w-4.5" />
@@ -311,17 +381,19 @@ export function Register() {
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-500">
                     <span>
-                      Độ mạnh:{" "}
+                      {language === "vi" ? "Độ mạnh: " : "Strength: "}
                       <span className="font-semibold">{strength.label}</span>
                     </span>
                     <span>
-                      Yêu cầu: chữ hoa, chữ thường, số, kí tự đặc biệt
+                      {language === "vi"
+                        ? "Yêu cầu: chữ hoa, chữ thường, số, kí tự đặc biệt"
+                        : "Required: uppercase, lowercase, digit, special char"}
                     </span>
                   </div>
                 </div>
               )}
               {errors.password && (
-                <p className="text-[11px] font-medium text-red-600">
+                <p className="text-[11px] font-medium text-red-600 mt-1">
                   {errors.password.message}
                 </p>
               )}
@@ -330,7 +402,7 @@ export function Register() {
             {/* Confirm Password Input */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700">
-                Xác nhận mật khẩu
+                {language === "vi" ? "Xác nhận mật khẩu" : "Confirm Password"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -340,11 +412,21 @@ export function Register() {
                   type={showConfirmPassword ? "text" : "password"}
                   disabled={loading}
                   {...register("confirmPassword", {
-                    required: "Vui lòng xác nhận mật khẩu",
+                    required:
+                      language === "vi"
+                        ? "Vui lòng xác nhận mật khẩu"
+                        : "Please confirm your password",
                     validate: (value) =>
-                      value === watchPassword || "Mật khẩu xác nhận không khớp",
+                      value === watchPassword ||
+                      (language === "vi"
+                        ? "Mật khẩu xác nhận không khớp"
+                        : "Passwords do not match"),
                   })}
-                  placeholder="Nhập lại mật khẩu"
+                  placeholder={
+                    language === "vi"
+                      ? "Nhập lại mật khẩu"
+                      : "Re-enter password"
+                  }
                   className={`block w-full rounded-xl border ${
                     errors.confirmPassword
                       ? "border-red-300 focus:border-red-500 focus:ring-red-200"
@@ -354,7 +436,7 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
                 >
                   {showConfirmPassword ? (
                     <EyeOff className="h-4.5 w-4.5" />
@@ -364,7 +446,7 @@ export function Register() {
                 </button>
               </div>
               {errors.confirmPassword && (
-                <p className="text-[11px] font-medium text-red-600">
+                <p className="text-[11px] font-medium text-red-600 mt-1">
                   {errors.confirmPassword.message}
                 </p>
               )}
@@ -383,23 +465,27 @@ export function Register() {
               <div className="ml-3 text-xs">
                 <label
                   htmlFor="agree-terms"
-                  className="font-medium text-slate-700 select-none"
+                  className="font-medium text-slate-700 select-none cursor-pointer"
                 >
-                  Tôi đồng ý với{" "}
+                  {language === "vi" ? "Tôi đồng ý với " : "I agree to the "}
                   <Link
                     to="/terms"
-                    className="font-semibold text-blue-600 hover:text-blue-500 transition"
+                    className="font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
                   >
-                    Điều khoản dịch vụ
-                  </Link>{" "}
-                  và{" "}
+                    {language === "vi"
+                      ? "Điều khoản dịch vụ"
+                      : "Terms of Service"}
+                  </Link>
+                  {language === "vi" ? " và " : " and "}
                   <Link
                     to="/privacy"
-                    className="font-semibold text-blue-600 hover:text-blue-500 transition"
+                    className="font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
                   >
-                    Chính sách bảo mật
-                  </Link>{" "}
-                  của GoTrain VN.
+                    {language === "vi"
+                      ? "Chính sách bảo mật"
+                      : "Privacy Policy"}
+                  </Link>
+                  {language === "vi" ? " của GoTrain VN." : " of GoTrain VN."}
                 </label>
               </div>
             </div>
@@ -408,16 +494,16 @@ export function Register() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer border-none"
             >
               {loading ? (
                 <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Đang đăng ký...
+                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                  {language === "vi" ? "Đang đăng ký..." : "Registering..."}
                 </>
               ) : (
                 <>
-                  Đăng ký
+                  {language === "vi" ? "Đăng ký" : "Sign Up"}
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -425,12 +511,14 @@ export function Register() {
           </form>
 
           <p className="text-center text-sm font-medium text-slate-600">
-            Đã có tài khoản?{" "}
+            {language === "vi"
+              ? "Đã có tài khoản? "
+              : "Already have an account? "}
             <Link
               to="/login"
-              className="font-semibold text-blue-600 hover:text-blue-500 transition"
+              className="font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
             >
-              Đăng nhập ngay
+              {language === "vi" ? "Đăng nhập ngay" : "Sign in now"}
             </Link>
           </p>
         </div>

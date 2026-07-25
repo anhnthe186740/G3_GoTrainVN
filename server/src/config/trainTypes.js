@@ -11,18 +11,6 @@ export const TRAIN_TYPE_CONFIGS = {
     priceFactor: 0.85, // 15% cheaper
     badge: "bg-surface-container-highest text-on-surface-variant",
   },
-  SP: {
-    name: "Tàu Du Lịch (SP)",
-    speedFactor: 1.15,
-    priceFactor: 1.25,
-    badge: "bg-tertiary-fixed text-on-tertiary-fixed",
-  },
-  QN: {
-    name: "Tàu Quy Nhơn (QN)",
-    speedFactor: 1.1,
-    priceFactor: 0.9,
-    badge: "bg-amber-100 text-amber-800",
-  },
 };
 
 export function getTrainTypeSpeedFactor(type) {
