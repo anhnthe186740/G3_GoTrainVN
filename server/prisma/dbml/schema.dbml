@@ -437,6 +437,7 @@ Table Passenger {
   carriageNumber Int
   specialNeeds String
   boardingAt DateTime
+  checkInReminderSent Boolean [not null, default: false]
   bookingDetails BookingDetail [not null]
   cancellationRequest CancellationRequest
   createdAt DateTime [default: `now()`, not null]
