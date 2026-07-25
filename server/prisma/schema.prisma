@@ -545,6 +545,7 @@ model Passenger {
 
   specialNeeds String?
   boardingAt   DateTime?
+  checkInReminderSent Boolean @default(false)
 
   bookingDetails      BookingDetail[]
   cancellationRequest CancellationRequest?
