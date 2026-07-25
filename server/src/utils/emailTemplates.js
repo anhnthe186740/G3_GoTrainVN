@@ -777,3 +777,64 @@ export function getAdminContactFormNotificationEmailTemplate(
     </div>
   `;
 }
+
+/**
+ * Template 14: Check-In Reminder (Nhắc nhở check-in trước giờ chạy tàu)
+ */
+export function getCheckInReminderEmailTemplate(booking, passenger, schedule) {
+  const trainName = schedule?.train?.trainName || "Tàu hỏa";
+  const trainCode = schedule?.train?.trainCode || "";
+  const startStation = booking?.fromStation?.stationName || "Ga đi";
+  const endStation = booking?.toStation?.stationName || "Ga đến";
+  const departureTime = formatDate(schedule?.departureTime);
+
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #fcd34d; border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+      <div style="text-align: center; margin-bottom: 25px;">
+        <span style="background-color: #fef3c7; color: #d97706; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Nhắc nhở khởi hành</span>
+        <h1 style="color: #00629d; margin: 10px 0 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.5px;">GoTrain VN</h1>
+        <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Mã đặt chỗ: <strong style="color: #00629d; font-size: 16px;">${booking.bookingCode}</strong></p>
+      </div>
+      
+      <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">Nhắc nhở: Sắp đến giờ khởi hành!</h2>
+        <p style="margin: 0; line-height: 1.6; font-size: 14px; color: #475569;">
+          Kính chào hành khách <strong>${passenger.fullName}</strong>. Chuyến tàu của bạn dự kiến khởi hành trong vòng <strong>30 phút nữa</strong>. Quý khách vui lòng khẩn trương làm thủ tục check-in lên tàu tại ga.
+        </p>
+      </div>
+
+      <!-- Journey Info -->
+      <div style="background-color: #f8fafc; border-radius: 12px; padding: 15px 20px; margin-bottom: 25px; border: 1px solid #f1f5f9; font-size: 14px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Thông tin chuyến đi</h3>
+        <p style="margin: 5px 0;"><strong>Chuyến tàu:</strong> ${trainCode} (${trainName})</p>
+        <p style="margin: 5px 0;"><strong>Hành trình:</strong> ${startStation} &rarr; ${endStation}</p>
+        <p style="margin: 5px 0;"><strong>Thời gian khởi hành:</strong> <span style="color: #e11d48; font-weight: 700;">${departureTime}</span></p>
+        <p style="margin: 5px 0;"><strong>Vị trí:</strong> Toa số ${passenger.carriageNumber || "—"} | Ghế số ${passenger.seat?.seatNumber || "—"}</p>
+        <p style="margin: 5px 0;"><strong>Mã vé:</strong> ${passenger.ticketCode || "—"}</p>
+      </div>
+
+      <!-- QR Code and Checklist -->
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin-bottom: 25px; text-align: center;">
+        <h3 style="margin: 0 0 10px 0; font-size: 15px; font-weight: 700; color: #16a34a; text-transform: uppercase;">Mã QR soát vé lên tàu</h3>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(passenger.ticketCode || "")}" alt="Mã QR soát vé" style="border: 1.5px solid #cbd5e1; padding: 6px; border-radius: 10px; background-color: #ffffff; width: 130px; height: 130px;" />
+        <p style="margin: 8px 0 0 0; font-size: 12px; color: #16a34a; font-weight: 600;">Xuất trình mã QR này kèm CCCD/Thẻ sinh viên tại cửa soát vé</p>
+      </div>
+
+      <div style="font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 5px 0; color: #0f172a; font-weight: 700;">Lưu ý quan trọng:</h4>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Có mặt tại ga trước giờ tàu chạy ít nhất 15-20 phút.</li>
+          <li>Mang theo giấy tờ tùy thân hợp lệ (CCCD, Hộ chiếu, hoặc Thẻ sinh viên nếu dùng vé ưu đãi).</li>
+          <li>Cửa soát vé sẽ đóng trước giờ tàu xuất phát 5 phút.</li>
+        </ul>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+      
+      <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        <p style="margin: 0 0 5px 0;">Chúc quý khách có một chuyến đi an toàn và thuận lợi cùng GoTrain VN!</p>
+        <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  `;
+}

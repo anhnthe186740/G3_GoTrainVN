@@ -3,6 +3,7 @@ import { sendEmail } from "./email.service.js";
 import {
   getScheduleDelayEmailTemplate,
   getScheduleCancelledEmailTemplate,
+  getCheckInReminderEmailTemplate,
 } from "../utils/emailTemplates.js";
 
 /**
@@ -116,6 +117,122 @@ export async function notifyScheduleChange(
     console.error(
       `[Notification] Gặp lỗi trong notifyScheduleChange cho:`,
       scheduleIdOrBookings,
+      error,
+    );
+  }
+}
+
+/**
+ * Tự động tìm kiếm các hành khách chưa check-in và khởi hành trong vòng 30 phút tới để gửi email nhắc nhở.
+ */
+export async function checkAndSendCheckInReminders() {
+  const now = new Date();
+  const thirtyMinutesLater = new Date(now.getTime() + 30 * 60 * 1000);
+
+  try {
+    // 1. Quét tìm hành khách thỏa mãn các điều kiện
+    const passengersToRemind = await prisma.passenger.findMany({
+      where: {
+        boardingAt: null,
+        checkInReminderSent: false,
+        booking: {
+          status: "CONFIRMED",
+          schedule: {
+            departureTime: {
+              gt: now,
+              lte: thirtyMinutesLater,
+            },
+          },
+        },
+      },
+      include: {
+        booking: {
+          include: {
+            fromStation: true,
+            toStation: true,
+            schedule: {
+              include: {
+                train: { select: { trainCode: true, trainName: true } },
+                route: {
+                  include: {
+                    startStation: { select: { stationName: true } },
+                    endStation: { select: { stationName: true } },
+                  },
+                },
+              },
+            },
+            user: {
+              select: { email: true, fullName: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (passengersToRemind.length === 0) {
+      return;
+    }
+
+    console.log(
+      `[CheckInReminder] Phát hiện ${passengersToRemind.length} hành khách chưa check-in sắp khởi hành. Bắt đầu gửi email...`,
+    );
+
+    for (const passenger of passengersToRemind) {
+      // Tìm email nhận tin
+      const email =
+        passenger.email ||
+        passenger.booking?.confirmationEmail ||
+        passenger.booking?.user?.email;
+
+      if (!email) {
+        console.warn(
+          `[CheckInReminder] Không tìm thấy email hợp lệ cho hành khách ID ${passenger.id}`,
+        );
+        continue;
+      }
+
+      const booking = passenger.booking;
+      const schedule = booking?.schedule;
+
+      if (!schedule) {
+        console.warn(
+          `[CheckInReminder] Không tìm thấy thông tin lịch trình cho hành khách ID ${passenger.id}`,
+        );
+        continue;
+      }
+
+      const subject = `[GoTrain VN] Nhắc nhở check-in lên tàu - Chuyến ${schedule.train.trainCode}`;
+      const html = getCheckInReminderEmailTemplate(
+        booking,
+        passenger,
+        schedule,
+      );
+
+      // Gửi email bất đồng bộ
+      sendEmail({ to: email, subject, html })
+        .then(async () => {
+          console.log(
+            `[CheckInReminder] Đã gửi email nhắc nhở check-in thành công tới: ${email}`,
+          );
+          // Cập nhật cờ checkInReminderSent thành true để tránh gửi lại
+          await prisma.passenger.update({
+            where: { id: passenger.id },
+            data: { checkInReminderSent: true },
+          });
+        })
+        .catch((err) => {
+          console.error(
+            `[CheckInReminder] Lỗi khi gửi email tới ${email}:`,
+            err.message || err,
+          );
+        });
+
+      // Bù khoảng giãn cách nhỏ để tránh bị quá tải rate limit gửi email
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  } catch (error) {
+    console.error(
+      `[CheckInReminder] Lỗi trong tác vụ quét nhắc nhở check-in:`,
       error,
     );
   }
