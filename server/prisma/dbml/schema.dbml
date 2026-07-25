@@ -190,6 +190,7 @@ Table Route {
   endStation Station [not null]
   distance Int [not null]
   estimatedDuration Int [not null]
+  direction String
   stations RouteStation[] [not null]
   schedules Schedule [not null]
   routeTemplates RouteTemplate [not null]
@@ -458,6 +459,8 @@ Table BookingDetail {
   discountAmount Float [not null, default: 0]
   finalPrice Float [not null]
   status String [not null, default: 'CONFIRMED']
+  fromStopOrder Int
+  toStopOrder Int
 }
 
 Table CancellationPolicy {
@@ -574,10 +577,8 @@ Table SeatHold {
   priceSnapshot Float [not null]
   expiresAt DateTime [not null]
   createdAt DateTime [default: `now()`, not null]
-
-  indexes {
-    (scheduleId, seatId) [unique]
-  }
+  fromStopOrder Int
+  toStopOrder Int
 }
 
 Table Notification {
