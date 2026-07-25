@@ -243,7 +243,14 @@ export const lookupBooking = asyncHandler(async (req, res) => {
             OR: [
               { email: { equals: cleanContact, mode: "insensitive" } },
               { phoneNumber: cleanContact },
-              { booking: { confirmationEmail: { equals: cleanContact, mode: "insensitive" } } },
+              {
+                booking: {
+                  confirmationEmail: {
+                    equals: cleanContact,
+                    mode: "insensitive",
+                  },
+                },
+              },
             ],
           },
           ...ownerLookupFilter,
@@ -867,7 +874,11 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
 // ============================================================
 export const exchangeBooking = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { sessionId, paymentMethod = "WALLET", exchangePassengerIds } = req.body;
+  const {
+    sessionId,
+    paymentMethod = "WALLET",
+    exchangePassengerIds,
+  } = req.body;
   const userId = req.user?.id;
 
   if (!userId) {
@@ -957,13 +968,15 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
     const detail = detailByPassengerId.get(p.id);
     return detail && detail.status !== "CANCELLED";
   });
-  
+
   const totalActiveInBooking = activePassengers.length;
 
   if (exchangePassengerIds && typeof exchangePassengerIds === "string") {
-    const idsToExchange = exchangePassengerIds.split(",").map(i => i.trim());
+    const idsToExchange = exchangePassengerIds.split(",").map((i) => i.trim());
     if (idsToExchange.length > 0) {
-      activePassengers = activePassengers.filter(p => idsToExchange.includes(p.id));
+      activePassengers = activePassengers.filter((p) =>
+        idsToExchange.includes(p.id),
+      );
     }
   }
 
@@ -1105,7 +1118,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       // Create a new booking for the exchanged passengers
       const { nanoid } = await import("nanoid");
       finalBookingCode = `GT${new Date().getFullYear()}${nanoid(8).toUpperCase()}`;
-      
+
       const newBooking = await tx.booking.create({
         data: {
           bookingCode: finalBookingCode,
@@ -1124,7 +1137,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
           paymentStatus: "COMPLETED",
           paidAt: now,
           status: "CONFIRMED",
-        }
+        },
       });
       finalBookingId = newBooking.id;
 
@@ -1135,7 +1148,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
           totalAmount: { decrement: oldFare },
           subtotal: { decrement: oldFare },
           totalPassengers: { decrement: activePassengers.length },
-        }
+        },
       });
     } else {
       await tx.booking.update({

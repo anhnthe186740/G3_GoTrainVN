@@ -1150,6 +1150,7 @@ export async function checkoutBooking(identity, payload) {
         returnFromStationId: quote.session.returnFromStationId ?? null,
         returnToStationId: quote.session.returnToStationId ?? null,
         bookingType: quote.session.bookingType,
+        subtotal: quote.subtotal,
         totalPassengers:
           passengers.filter(
             (p) =>
