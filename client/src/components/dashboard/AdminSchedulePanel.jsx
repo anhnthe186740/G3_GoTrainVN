@@ -209,6 +209,31 @@ export function AdminSchedulePanel() {
   const [trains, setTrains] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- Real-time train parity check (mác tàu chẵn/lẻ) ---
+  const getParityWarning = (routeId, trainId) => {
+    if (!routeId || !trainId) return null;
+    const selectedRoute = routes.find((r) => r.id === routeId);
+    const selectedTrain = trains.find((t) => t.id === trainId);
+    if (!selectedRoute || !selectedTrain) return null;
+
+    const direction = selectedRoute.direction;
+    if (!direction || direction === "OTHER") return null;
+
+    const match = selectedTrain.trainCode.match(/\d+/);
+    if (!match) return null;
+
+    const num = parseInt(match[0], 10);
+    const isOdd = num % 2 !== 0;
+
+    if (direction === "SOUTHBOUND" && !isOdd) {
+      return `⚠️ Cảnh báo: Tàu ${selectedTrain.trainCode} (số chẵn) không thể chạy chiều Bắc → Nam (SOUTHBOUND). Chiều này chỉ dành cho mác tàu số lẻ.`;
+    }
+    if (direction === "NORTHBOUND" && isOdd) {
+      return `⚠️ Cảnh báo: Tàu ${selectedTrain.trainCode} (số lẻ) không thể chạy chiều Nam → Bắc (NORTHBOUND). Chiều này chỉ dành cho mác tàu số chẵn.`;
+    }
+    return null;
+  };
+
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState("");
@@ -1769,6 +1794,11 @@ export function AdminSchedulePanel() {
                     </option>
                   ))}
                 </select>
+                {getParityWarning(schedForm.routeId, schedForm.trainId) && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium">
+                    {getParityWarning(schedForm.routeId, schedForm.trainId)}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1831,7 +1861,7 @@ export function AdminSchedulePanel() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#3f4852] mb-1">
-                  Thời gian nghỉ tại mỗi ga (phút)
+                  Thời gian giãn cách / xoay đầu tàu (phút)
                 </label>
                 <input
                   type="number"
@@ -1846,8 +1876,8 @@ export function AdminSchedulePanel() {
                   className="w-full border border-[#bec7d4]/50 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#00a3ff] outline-none"
                 />
                 <p className="text-[11px] text-[#3f4852]/60 mt-1">
-                  Thời gian dừng nghỉ tại mỗi ga (bao gồm ga trung gian và ga
-                  cuối).
+                  Thời gian tối thiểu để dọn dẹp, kiểm tra kỹ thuật và chuẩn bị
+                  tàu giữa các chuyến chạy liên tiếp.
                 </p>
               </div>
 
@@ -2013,6 +2043,17 @@ export function AdminSchedulePanel() {
                     </option>
                   ))}
                 </select>
+                {getParityWarning(
+                  templateForm.routeId,
+                  templateForm.trainId,
+                ) && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium">
+                    {getParityWarning(
+                      templateForm.routeId,
+                      templateForm.trainId,
+                    )}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -2358,6 +2399,17 @@ export function AdminSchedulePanel() {
                     </option>
                   ))}
                 </select>
+                {getParityWarning(
+                  singleSchedForm.routeId,
+                  singleSchedForm.trainId,
+                ) && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium">
+                    {getParityWarning(
+                      singleSchedForm.routeId,
+                      singleSchedForm.trainId,
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

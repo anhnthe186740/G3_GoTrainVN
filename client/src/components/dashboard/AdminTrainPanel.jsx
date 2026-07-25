@@ -12,15 +12,6 @@ const TRAIN_TYPES = {
     name: "Tàu Thường Thống Nhất (TN)",
     badge: "bg-surface-container-highest text-on-surface-variant",
   },
-  HD: {
-    name: "Hải Dương - HN (HD)",
-    badge: "bg-secondary-container text-on-secondary-container",
-  },
-  SP: {
-    name: "Tàu Du Lịch Sapa (SP)",
-    badge: "bg-tertiary-fixed text-on-tertiary-fixed",
-  },
-  QN: { name: "Tàu Quy Nhơn (QN)", badge: "bg-amber-100 text-amber-800" },
 };
 
 const CARRIAGE_TYPES = {
