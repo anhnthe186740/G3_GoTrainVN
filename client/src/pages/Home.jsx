@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
+import { useLanguage } from "../context/LanguageContext";
 
 const DEFAULT_FROM_STATION = "Hà Nội";
 const DEFAULT_TO_STATION = "Đà Nẵng";
@@ -39,6 +40,7 @@ const HERO_SLIDES = [
 
 export function Home() {
   const navigate = useNavigate();
+  const { t, language } = useLanguage();
 
   const getTodayDateStr = () => {
     const today = new Date();
@@ -358,8 +360,21 @@ export function Home() {
           <div className="text-center w-full flex flex-col items-center">
             <div className="mb-10">
               <h1 className="text-[40px] md:text-[56px] font-semibold mb-sm leading-tight tracking-tight drop-shadow-md text-slate-900">
-                Hành trình mới,{" "}
-                <span className="text-[#007aff]">trải nghiệm vượt trội</span>
+                {language === "vi" ? (
+                  <>
+                    Hành trình mới,{" "}
+                    <span className="text-[#007aff]">
+                      trải nghiệm vượt trội
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    New journeys,{" "}
+                    <span className="text-[#007aff]">
+                      outstanding experiences
+                    </span>
+                  </>
+                )}
               </h1>
             </div>
 
@@ -377,7 +392,7 @@ export function Home() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
-                        Ga Đi
+                        {t("search_from")}
                       </label>
                       <div
                         className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
@@ -393,7 +408,11 @@ export function Home() {
                           <span
                             className={`text-sm truncate ${fromStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
                           >
-                            {fromStation ? `Ga ${fromStation}` : "Chọn ga đi"}
+                            {fromStation
+                              ? language === "vi"
+                                ? `Ga ${fromStation}`
+                                : `${fromStation} Station`
+                              : t("placeholder_from")}
                           </span>
                         </div>
                         <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
@@ -411,7 +430,11 @@ export function Home() {
                             <input
                               type="text"
                               className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                              placeholder="Tìm ga đi..."
+                              placeholder={
+                                language === "vi"
+                                  ? "Tìm ga đi..."
+                                  : "Search departure..."
+                              }
                               value={fromSearch}
                               onChange={(e) => setFromSearch(e.target.value)}
                               onClick={(e) => e.stopPropagation()}
@@ -463,7 +486,9 @@ export function Home() {
                                       >
                                         {s.name.toLowerCase().startsWith("ga")
                                           ? s.name
-                                          : `Ga ${s.name}`}
+                                          : language === "vi"
+                                            ? `Ga ${s.name}`
+                                            : `${s.name} Station`}
                                       </p>
                                       <p className="text-[10px] text-slate-400 font-semibold">
                                         {s.city}
@@ -483,7 +508,9 @@ export function Home() {
                               ))
                             ) : (
                               <div className="py-4 text-center text-xs text-slate-400 font-semibold">
-                                Không tìm thấy ga phù hợp
+                                {language === "vi"
+                                  ? "Không tìm thấy ga phù hợp"
+                                  : "No matching station found"}
                               </div>
                             )}
                           </div>
@@ -496,7 +523,9 @@ export function Home() {
                       type="button"
                       onClick={handleSwapStations}
                       className="hidden h-11 w-11 self-end mb-1 md:flex items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-[#007aff] shadow-sm transition-all duration-200 hover:border-[#007aff] hover:bg-[#007aff] hover:text-white hover:shadow-md active:scale-95 cursor-pointer"
-                      title="Đảo chiều ga"
+                      title={
+                        language === "vi" ? "Đảo chiều ga" : "Swap stations"
+                      }
                       aria-label="Đảo chiều ga đi và ga đến"
                     >
                       <ArrowLeftRight className="h-5 w-5" />
@@ -508,7 +537,7 @@ export function Home() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
-                        Ga Đến
+                        {t("search_to")}
                       </label>
                       <div
                         className="flex items-center justify-between gap-2 px-4 border border-slate-200/85 rounded-xl hover:border-primary-container focus-within:border-primary-container hover:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px] cursor-pointer w-full select-none"
@@ -524,7 +553,11 @@ export function Home() {
                           <span
                             className={`text-sm truncate ${toStation ? "text-slate-800 font-bold" : "text-slate-400 font-medium"}`}
                           >
-                            {toStation ? `Ga ${toStation}` : "Chọn ga đến"}
+                            {toStation
+                              ? language === "vi"
+                                ? `Ga ${toStation}`
+                                : `${toStation} Station`
+                              : t("placeholder_to")}
                           </span>
                         </div>
                         <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0">
@@ -542,7 +575,11 @@ export function Home() {
                             <input
                               type="text"
                               className="w-full border-none p-0 focus:ring-0 font-body-md bg-transparent text-on-surface outline-none text-xs font-semibold"
-                              placeholder="Tìm ga đến..."
+                              placeholder={
+                                language === "vi"
+                                  ? "Tìm ga đến..."
+                                  : "Search destination..."
+                              }
                               value={toSearch}
                               onChange={(e) => setToSearch(e.target.value)}
                               onClick={(e) => e.stopPropagation()}
@@ -594,7 +631,9 @@ export function Home() {
                                       >
                                         {s.name.toLowerCase().startsWith("ga")
                                           ? s.name
-                                          : `Ga ${s.name}`}
+                                          : language === "vi"
+                                            ? `Ga ${s.name}`
+                                            : `${s.name} Station`}
                                       </p>
                                       <p className="text-[10px] text-slate-400 font-semibold">
                                         {s.city}
@@ -614,7 +653,9 @@ export function Home() {
                               ))
                             ) : (
                               <div className="py-4 text-center text-xs text-slate-400 font-semibold">
-                                Không tìm thấy ga phù hợp
+                                {language === "vi"
+                                  ? "Không tìm thấy ga phù hợp"
+                                  : "No matching station found"}
                               </div>
                             )}
                           </div>
@@ -631,7 +672,7 @@ export function Home() {
                       <div className="flex flex-col gap-xs text-left w-full">
                         <div className="flex justify-between items-center">
                           <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
-                            Ngày Đi
+                            {t("search_dept_date")}
                           </label>
                           <button
                             type="button"
@@ -640,10 +681,16 @@ export function Home() {
                               setReturnDate(getNextDay(departureDate));
                             }}
                             className="flex items-center gap-1 text-[11px] font-bold text-[#007aff] hover:text-[#005bb5] cursor-pointer transition-colors"
-                            title="Chọn vé khứ hồi"
+                            title={
+                              language === "vi"
+                                ? "Chọn vé khứ hồi"
+                                : "Select round trip"
+                            }
                           >
                             <ArrowLeftRight className="h-3.5 w-3.5" />
-                            <span>Khứ hồi?</span>
+                            <span>
+                              {language === "vi" ? "Khứ hồi?" : "Round trip?"}
+                            </span>
                           </button>
                         </div>
                         <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
@@ -667,7 +714,7 @@ export function Home() {
                         {/* Ngày Đi */}
                         <div className="col-span-1 flex flex-col gap-xs text-left">
                           <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
-                            Ngày Đi
+                            {t("search_dept_date")}
                           </label>
                           <div className="flex items-center gap-3 px-4 border border-slate-200/80 rounded-xl focus-within:border-primary-container focus-within:shadow-[0_0_12px_rgba(0,163,255,0.15)] transition-all bg-white h-[52px]">
                             <Calendar className="h-5 w-5 text-[#007aff] shrink-0" />
@@ -690,13 +737,17 @@ export function Home() {
                         <div className="col-span-1 flex flex-col gap-xs text-left relative">
                           <div className="flex justify-between items-center">
                             <label className="text-slate-900 font-bold text-xs uppercase tracking-wider mb-2 block">
-                              Ngày Về
+                              {t("search_return_date")}
                             </label>
                             <button
                               type="button"
                               onClick={() => setTripType("one-way")}
                               className="text-slate-500 hover:text-red-500 transition-colors font-bold text-xs cursor-pointer"
-                              title="Hủy khứ hồi"
+                              title={
+                                language === "vi"
+                                  ? "Hủy khứ hồi"
+                                  : "Cancel round trip"
+                              }
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -721,7 +772,7 @@ export function Home() {
                     type="submit"
                     className="bg-[#007aff] text-white h-[52px] rounded-xl text-sm font-bold shadow-[0_8px_24px_rgba(0,122,255,0.25)] hover:bg-[#0062cc] hover:shadow-[0_8px_28px_rgba(0,122,255,0.35)] hover:scale-[1.02] active:scale-95 transition-all w-full flex items-center justify-center cursor-pointer md:col-span-1"
                   >
-                    Tìm Chuyến Tàu
+                    {t("search_btn")}
                   </button>
                 </div>
               </form>
@@ -757,17 +808,18 @@ export function Home() {
         <div className="flex justify-between items-end mb-lg text-left">
           <div>
             <span className="text-[12px] uppercase tracking-wider text-[#007aff] font-bold mb-1 block">
-              Khám phá
+              {language === "vi" ? "Khám phá" : "Explore"}
             </span>
             <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800">
-              Điểm đến phổ biến
+              {t("popular_routes_title")}
             </h2>
           </div>
           <button
             onClick={() => handleRouteSelect("Hà Nội", "Sài Gòn")}
-            className="text-primary font-bold flex items-center gap-xs hover:gap-sm transition-all"
+            className="text-primary font-bold flex items-center gap-xs hover:gap-sm transition-all border-none bg-transparent cursor-pointer"
           >
-            Tất cả <ChevronRight className="h-5 w-5" />
+            {language === "vi" ? "Tất cả" : "All"}{" "}
+            <ChevronRight className="h-5 w-5" />
           </button>
         </div>
 
@@ -785,7 +837,7 @@ export function Home() {
             <div className="absolute bottom-0 left-0 p-6 text-left">
               <h3 className="font-bold text-2xl text-white mb-1">Hà Nội</h3>
               <p className="text-white/80 font-medium text-sm">
-                Giá vé chỉ từ{" "}
+                {language === "vi" ? "Giá vé chỉ từ " : "Ticket prices from "}
                 <span className="font-bold text-white">450.000đ</span>
               </p>
             </div>
@@ -806,7 +858,8 @@ export function Home() {
               <div className="absolute bottom-0 left-0 p-4 text-left">
                 <h3 className="font-bold text-lg text-white mb-0.5">TP.HCM</h3>
                 <p className="text-white/80 font-medium text-xs">
-                  Chỉ từ <span className="font-bold text-[#007aff]">520k</span>
+                  {language === "vi" ? "Chỉ từ " : "From "}
+                  <span className="font-bold text-[#007aff]">520k</span>
                 </p>
               </div>
             </div>
@@ -824,7 +877,8 @@ export function Home() {
               <div className="absolute bottom-0 left-0 p-4 text-left">
                 <h3 className="font-bold text-lg text-white mb-0.5">Đà Nẵng</h3>
                 <p className="text-white/80 font-medium text-xs">
-                  Chỉ từ <span className="font-bold text-[#007aff]">350k</span>
+                  {language === "vi" ? "Chỉ từ " : "From "}
+                  <span className="font-bold text-[#007aff]">350k</span>
                 </p>
               </div>
             </div>
@@ -842,7 +896,8 @@ export function Home() {
               <div className="absolute bottom-0 left-0 p-4 text-left">
                 <h3 className="font-bold text-lg text-white mb-0.5">Huế</h3>
                 <p className="text-white/80 font-medium text-xs">
-                  Chỉ từ <span className="font-bold text-[#007aff]">280k</span>
+                  {language === "vi" ? "Chỉ từ " : "From "}
+                  <span className="font-bold text-[#007aff]">280k</span>
                 </p>
               </div>
             </div>
@@ -854,7 +909,7 @@ export function Home() {
       <section className="bg-[#f7f9fb] py-xl">
         <div className="max-w-[1200px] mx-auto px-container-margin text-center">
           <h2 className="font-headline-lg text-[28px] md:text-[32px] font-bold text-slate-800 mb-lg">
-            Ưu đãi hấp dẫn
+            {t("feature_promotion_title")}
           </h2>
 
           <div className="flex overflow-x-auto gap-md pb-md scrollbar-none w-full">
@@ -870,7 +925,9 @@ export function Home() {
             ) : promotionsList.length === 0 ? (
               <div className="w-full bg-white p-lg rounded-[24px] border border-surface-container text-center py-xl shadow-sm">
                 <p className="text-on-surface-variant font-medium">
-                  Hiện tại không có chương trình khuyến mãi nào đang diễn ra.
+                  {language === "vi"
+                    ? "Hiện tại không có chương trình khuyến mãi nào đang diễn ra."
+                    : "There are currently no active promotions."}
                 </p>
               </div>
             ) : (
@@ -890,8 +947,12 @@ export function Home() {
                       <div>
                         <span className="bg-white/20 px-sm py-1 rounded-full text-[11px] font-bold mb-xs inline-block">
                           {promo.isVoucher
-                            ? `Mã: ${promo.code}`
-                            : "Khuyến mãi hệ thống"}
+                            ? language === "vi"
+                              ? `Mã: ${promo.code}`
+                              : `Code: ${promo.code}`
+                            : language === "vi"
+                              ? "Khuyến mãi hệ thống"
+                              : "System promotion"}
                         </span>
                         <h3 className="text-xl md:text-2xl font-bold text-white mb-xs line-clamp-1">
                           {promo.title}
@@ -904,21 +965,23 @@ export function Home() {
                         {promo.isVoucher ? (
                           <button
                             onClick={() => handleCopyVoucher(promo.code)}
-                            className="bg-white hover:bg-slate-50 text-primary px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm"
+                            className="bg-white hover:bg-slate-50 text-primary px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm border-none"
                           >
-                            Sao chép mã
+                            {language === "vi" ? "Sao chép mã" : "Copy code"}
                           </button>
                         ) : (
                           <button
                             onClick={() => {
                               window.scrollTo({ top: 0, behavior: "smooth" });
                               toast.info(
-                                "Vui lòng chọn chặng đi/đến ở phía trên để tìm vé!",
+                                language === "vi"
+                                  ? "Vui lòng chọn chặng đi/đến ở phía trên để tìm vé!"
+                                  : "Please select departure/destination station above to find tickets!",
                               );
                             }}
-                            className={`bg-white hover:bg-slate-50 ${btnTextClass} px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm`}
+                            className={`bg-white hover:bg-slate-50 ${btnTextClass} px-lg py-sm rounded-xl font-bold transition active:scale-95 cursor-pointer text-sm shadow-sm border-none`}
                           >
-                            Khám Phá
+                            {language === "vi" ? "Khám Phá" : "Explore"}
                           </button>
                         )}
                       </div>
@@ -941,11 +1004,10 @@ export function Home() {
         <div className="max-w-[1200px] mx-auto px-container-margin">
           <div className="text-center mb-12">
             <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800 mb-4">
-              Tại sao chọn GoTrain?
+              {t("why_choose_title")}
             </h2>
             <p className="text-slate-500 max-w-2xl mx-auto">
-              Chúng tôi mang đến giải pháp đặt vé tàu hiện đại, nhanh chóng và
-              an toàn nhất cho mọi hành trình của bạn.
+              {t("why_choose_subtitle")}
             </p>
           </div>
 
@@ -954,10 +1016,9 @@ export function Home() {
               <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
                 <Zap className="h-6 w-6 text-slate-700" />
               </div>
-              <h3 className="font-bold text-lg mb-3">Thanh toán tức thì</h3>
+              <h3 className="font-bold text-lg mb-3">{t("why_1_title")}</h3>
               <p className="text-slate-500 text-sm leading-relaxed">
-                Xác nhận vé ngay lập tức sau khi thanh toán thành công qua nhiều
-                phương thức linh hoạt.
+                {t("why_1_desc")}
               </p>
             </div>
 
@@ -965,10 +1026,9 @@ export function Home() {
               <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
                 <Headphones className="h-6 w-6 text-slate-700" />
               </div>
-              <h3 className="font-bold text-lg mb-3">Hỗ trợ tận tâm</h3>
+              <h3 className="font-bold text-lg mb-3">{t("why_2_title")}</h3>
               <p className="text-slate-500 text-sm leading-relaxed">
-                Đội ngũ chăm sóc khách hàng 24/7 luôn sẵn sàng giải quyết mọi
-                thắc mắc và sự cố của bạn.
+                {t("why_2_desc")}
               </p>
             </div>
 
@@ -976,10 +1036,9 @@ export function Home() {
               <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
                 <Tag className="h-6 w-6 text-slate-700" />
               </div>
-              <h3 className="font-bold text-lg mb-3">Giá tốt nhất</h3>
+              <h3 className="font-bold text-lg mb-3">{t("why_3_title")}</h3>
               <p className="text-slate-500 text-sm leading-relaxed">
-                Cam kết giá vé minh bạch, không phí ẩn và luôn có các chương
-                trình ưu đãi độc quyền.
+                {t("why_3_desc")}
               </p>
             </div>
           </div>
@@ -991,7 +1050,7 @@ export function Home() {
         <div className="max-w-[1200px] mx-auto px-container-margin">
           <div className="text-center mb-xl">
             <h2 className="font-headline-lg text-primary">
-              Khách Hàng Nói Gì?
+              {t("feedback_title")}
             </h2>
             <div className="flex justify-center gap-xs mt-sm text-primary-container">
               <Star className="h-5 w-5 fill-current text-primary-container" />
@@ -1006,8 +1065,9 @@ export function Home() {
             {/* Feedback 1 */}
             <div className="bg-white p-lg rounded-[24px] shadow-sm border border-surface-container text-left flex flex-col justify-between">
               <p className="text-on-surface-variant italic font-body-md mb-lg text-sm">
-                "Ứng dụng tuyệt vời, giao diện rất mượt và dễ sử dụng. Mình đã
-                đặt vé thành công chỉ trong 2 phút."
+                {language === "vi"
+                  ? '"Ứng dụng tuyệt vời, giao diện rất mượt và dễ sử dụng. Mình đã đặt vé thành công chỉ trong 2 phút."'
+                  : '"Great application, smooth and easy to use. I booked my ticket successfully in just 2 minutes."'}
               </p>
               <div className="flex items-center gap-md">
                 <div className="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-primary font-bold text-sm">
@@ -1017,8 +1077,10 @@ export function Home() {
                   <h4 className="font-bold text-sm text-on-surface">
                     Nguyễn Văn An
                   </h4>
-                  <p className="text-[10px] text-secondary uppercase tracking-tighter">
-                    Hành khách thân thiết
+                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-semibold">
+                    {language === "vi"
+                      ? "Hành khách thân thiết"
+                      : "Frequent passenger"}
                   </p>
                 </div>
               </div>
@@ -1027,8 +1089,9 @@ export function Home() {
             {/* Feedback 2 */}
             <div className="bg-white p-lg rounded-[24px] shadow-sm border border-surface-container text-left flex flex-col justify-between">
               <p className="text-on-surface-variant italic font-body-md mb-lg text-sm">
-                "Tôi thích cách GoTrain hiển thị lộ trình tàu chạy. Rất chuyên
-                nghiệp và hiện đại hơn hẳn các nền tảng khác."
+                {language === "vi"
+                  ? '"Tôi thích cách GoTrain hiển thị lộ trình tàu chạy. Rất chuyên nghiệp và hiện đại hơn hẳn các nền tảng khác."'
+                  : '"I like how GoTrain displays the train route. Very professional and much more modern than other platforms."'}
               </p>
               <div className="flex items-center gap-md">
                 <div className="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-primary font-bold text-sm">
@@ -1038,8 +1101,8 @@ export function Home() {
                   <h4 className="font-bold text-sm text-on-surface">
                     Lê Thị Mai
                   </h4>
-                  <p className="text-[10px] text-secondary uppercase tracking-tighter">
-                    Doanh nhân
+                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-semibold">
+                    {language === "vi" ? "Doanh nhân" : "Business owner"}
                   </p>
                 </div>
               </div>
@@ -1048,8 +1111,9 @@ export function Home() {
             {/* Feedback 3 */}
             <div className="bg-white p-lg rounded-[24px] shadow-sm border border-surface-container text-left flex flex-col justify-between">
               <p className="text-on-surface-variant italic font-body-md mb-lg text-sm">
-                "Hỗ trợ viên rất nhiệt tình khi mình cần đổi vé. Một trải nghiệm
-                dịch vụ khách hàng đáng khen ngợi."
+                {language === "vi"
+                  ? '"Hỗ trợ viên rất nhiệt tình khi mình đổi vé. Một trải nghiệm dịch vụ khách hàng đáng khen ngợi."'
+                  : '"The support agent was very enthusiastic when I needed to change my ticket. A commendable customer service experience."'}
               </p>
               <div className="flex items-center gap-md">
                 <div className="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-primary font-bold text-sm">
@@ -1059,8 +1123,8 @@ export function Home() {
                   <h4 className="font-bold text-sm text-on-surface">
                     Trần Minh Tâm
                   </h4>
-                  <p className="text-[10px] text-secondary uppercase tracking-tighter">
-                    Du khách tự túc
+                  <p className="text-[10px] text-slate-500 uppercase tracking-tighter font-semibold">
+                    {language === "vi" ? "Du khách tự túc" : "Solo traveler"}
                   </p>
                 </div>
               </div>
@@ -1074,18 +1138,21 @@ export function Home() {
         <div className="max-w-[1200px] mx-auto px-container-margin">
           <div className="text-center mb-12">
             <h2 className="text-[28px] md:text-[32px] font-bold text-slate-800">
-              Cẩm Nang & Trải Nghiệm Hành Trình
+              {t("blog_title")}
             </h2>
             <p className="text-slate-500 text-sm mt-2 max-w-xl mx-auto">
-              Những bài viết chia sẻ kinh nghiệm đi tàu hỏa, cẩm nang du lịch và
-              câu chuyện hành trình từ cộng đồng khách hàng GoTrain VN.
+              {t("blog_subtitle")}
             </p>
           </div>
 
           {loadingBlogs ? (
             <div className="py-12 flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-3 border-[#00629d] border-t-transparent rounded-full animate-spin" />
-              <p className="text-xs text-slate-500">Đang tải các bài viết...</p>
+              <p className="text-xs text-slate-500">
+                {language === "vi"
+                  ? "Đang tải các bài viết..."
+                  : "Loading articles..."}
+              </p>
             </div>
           ) : blogs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1097,7 +1164,7 @@ export function Home() {
                 >
                   <div>
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#cfe5ff]/40 text-[#00629d] mb-3">
-                      Bài viết chia sẻ
+                      {language === "vi" ? "Bài viết chia sẻ" : "Shared post"}
                     </span>
                     <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
                       {post.title}
@@ -1114,14 +1181,18 @@ export function Home() {
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-slate-800">
-                        {post.author?.fullName || "Hành khách"}
+                        {post.author?.fullName ||
+                          (language === "vi" ? "Hành khách" : "Passenger")}
                       </h4>
                       <p className="text-[10px] text-slate-400">
-                        {new Date(post.createdAt).toLocaleDateString("vi-VN", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}
+                        {new Date(post.createdAt).toLocaleDateString(
+                          language === "vi" ? "vi-VN" : "en-US",
+                          {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          },
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1134,9 +1205,14 @@ export function Home() {
               <div
                 onClick={() =>
                   setSelectedBlog({
-                    title: "Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội",
+                    title:
+                      language === "vi"
+                        ? "Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội"
+                        : "Experiences Traveling to Sa Pa by Train from Hanoi",
                     content:
-                      "Sa Pa luôn là điểm đến hấp dẫn với sương mù huyền ảo và cảnh sắc núi rừng trùng điệp. Thay vì đi xe khách giường nằm, trải nghiệm di chuyển bằng tàu hỏa đến ga Lào Cai rồi bắt xe bus lên Sa Pa mang lại một góc nhìn hoàn toàn khác biệt.\n\nTàu hỏa chạy êm ái qua các tỉnh trung du, bạn có thể chọn khoang giường nằm điều hòa để nghỉ ngơi thoải mái qua đêm. Sáng sớm thức dậy tại ga Lào Cai, không khí trong lành mát mẻ sẽ chào đón bạn.\n\nMột số lưu ý khi đi tàu hỏa Hà Nội - Lào Cai:\n1. Nên đặt vé sớm vào các dịp cuối tuần để chọn được giường tầng 1 dễ di chuyển.\n2. Chuẩn bị sẵn một chiếc áo khoác mỏng vì điều hòa trên tàu khá lạnh về đêm.\n3. Đừng quên thử món phở nóng hổi ngay tại ga Lào Cai trước khi lên Sa Pa du hí nhé!",
+                      language === "vi"
+                        ? "Sa Pa luôn là điểm đến hấp dẫn với sương mù huyền ảo và cảnh sắc núi rừng trùng điệp. Thay vì đi xe khách giường nằm, trải nghiệm di chuyển bằng tàu hỏa đến ga Lào Cai rồi bắt xe bus lên Sa Pa mang lại một góc nhìn hoàn toàn khác biệt.\n\nTàu hỏa chạy êm ái qua các tỉnh trung du, bạn có thể chọn khoang giường nằm điều hòa để nghỉ ngơi thoải mái qua đêm. Sáng sớm thức dậy tại ga Lào Cai, không khí trong lành mát mẻ sẽ chào đón bạn.\n\nMột số lưu ý khi đi tàu hỏa Hà Nội - Lào Cai:\n1. Nên đặt vé sớm vào các dịp cuối tuần để chọn được giường tầng 1 dễ di chuyển.\n2. Chuẩn bị sẵn một chiếc áo khoác mỏng vì điều hòa trên tàu khá lạnh về đêm.\n3. Đừng quên thử món phở nóng hổi ngay tại ga Lào Cai trước khi lên Sa Pa du hí nhé!"
+                        : "Sa Pa is always an attractive destination. Let's explore the exciting mountain train journey and tips for a perfect trip.\n\nTraveling by train is highly recommended instead of buses. You can book an air-conditioned sleeper carriage to have a good night sleep. Waking up early at Lao Cai station, you will be welcomed by fresh cool air.\n\nTips:\n1. Book early for weekends to get lower berths.\n2. Bring a light jacket as the train AC can get cold.\n3. Try hot noodle soup at Lao Cai station!",
                     createdAt: new Date(),
                     author: { fullName: "Trần Thu Thủy" },
                   })
@@ -1145,15 +1221,17 @@ export function Home() {
               >
                 <div>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 mb-3">
-                    Cẩm nang du lịch
+                    {language === "vi" ? "Cẩm nang du lịch" : "Travel handbook"}
                   </span>
                   <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
-                    Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội
+                    {language === "vi"
+                      ? "Kinh nghiệm du lịch Sa Pa bằng tàu hỏa từ Hà Nội"
+                      : "Experiences Traveling to Sa Pa by Train from Hanoi"}
                   </h3>
                   <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
-                    Sa Pa luôn là điểm đến hấp dẫn. Cùng khám phá hành trình di
-                    chuyển bằng tàu hỏa leo núi đầy thú vị và những lưu ý để có
-                    chuyến đi trọn vẹn nhất.
+                    {language === "vi"
+                      ? "Sa Pa luôn là điểm đến hấp dẫn. Cùng khám phá hành trình di chuyển bằng tàu hỏa leo núi đầy thú vị và những lưu ý để có chuyến đi trọn vẹn nhất."
+                      : "Sa Pa is always an attractive destination. Let's explore the exciting mountain train journey and tips for a perfect trip."}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
@@ -1174,9 +1252,13 @@ export function Home() {
                 onClick={() =>
                   setSelectedBlog({
                     title:
-                      "Trải nghiệm tàu di sản Huế - Đà Nẵng qua đèo Hải Vân",
+                      language === "vi"
+                        ? "Trải nghiệm tàu di sản Huế - Đà Nẵng qua đèo Hải Vân"
+                        : "Huế - Đà Nẵng Heritage Train Experience over Hải Vân Pass",
                     content:
-                      "Cung đường sắt Hải Vân nối liền Thừa Thiên Huế và Đà Nẵng được vinh danh là một trong những tuyến đường sắt đẹp nhất hành tinh. Khi đoàn tàu uốn lượn quanh sườn núi, bạn sẽ được chiêm ngưỡng bức tranh thiên nhiên tuyệt mỹ: một bên là vách đá dựng đứng, một bên là vịnh Lăng Cô xanh ngắt với bãi cát vàng trải dài.\n\nHệ thống tàu di sản 'Kết nối di sản miền Trung' mới được đưa vào hoạt động có khoang nội thất sang trọng, cửa sổ kính rộng và có cả khoang sinh hoạt cộng đồng phục vụ ca Huế trực tiếp.\n\nKinh nghiệm săn ảnh đẹp trên tàu:\n- Hãy chọn ghế ngồi bên phía cửa sổ nhìn ra hướng biển (phía tay trái nếu đi từ Huế vào, và phía tay phải nếu đi từ Đà Nẵng ra).\n- Chuẩn bị máy ảnh/điện thoại ở chế độ quay chuyển động chậm (Slow-motion) để bắt trọn khoảnh khắc tàu đi qua các cung đèo uốn cong ấn tượng.",
+                      language === "vi"
+                        ? "Cung đường sắt Hải Vân nối liền Thừa Thiên Huế và Đà Nẵng được vinh danh là một trong những tuyến đường sắt đẹp nhất hành tinh. Khi đoàn tàu uốn lượn quanh sườn núi, bạn sẽ được chiêm ngưỡng bức tranh thiên nhiên tuyệt mỹ: một bên là vách đá dựng đứng, một bên là vịnh Lăng Cô xanh ngắt với bãi cát vàng trải dài.\n\nHệ thống tàu di sản 'Kết nối di sản miền Trung' mới được đưa vào hoạt động có khoang nội thất sang trọng, cửa sổ kính rộng và có cả khoang sinh hoạt cộng đồng phục vụ ca Huế trực tiếp.\n\nKinh nghiệm săn ảnh đẹp trên tàu:\n- Hãy chọn ghế ngồi bên phía cửa sổ nhìn ra hướng biển (phía tay trái nếu đi từ Huế vào, và phía tay phải nếu đi từ Đà Nẵng ra).\n- Chuẩn bị máy ảnh/điện thoại ở chế độ quay chuyển động chậm (Slow-motion) để bắt trọn khoảnh khắc tàu đi qua các cung đèo uốn cong ấn tượng."
+                        : "The Hai Van pass railway connecting Thua Thien Hue and Da Nang was honored as one of the most beautiful railways on the planet. As the train winds around the mountainside, you will admire a stunning natural picture: on one side is a sheer cliff, on the other is the emerald green Lang Co bay with a long stretch of golden sand.\n\nThe newly operated heritage train 'Connecting Central Heritage' features luxurious interior compartments, wide glass windows, and a community compartment serving live Hue traditional music.\n\nTips:\n- Choose window seats facing the sea (left side if going from Hue, right side if going from Da Nang).\n- Prepare your camera/phone in Slow-motion mode to capture the train going through the impressive curved passes.",
                     createdAt: new Date(),
                     author: { fullName: "Nguyễn Văn Hải" },
                   })
@@ -1185,15 +1267,19 @@ export function Home() {
               >
                 <div>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 mb-3">
-                    Khám phá di sản
+                    {language === "vi"
+                      ? "Khám phá di sản"
+                      : "Heritage discovery"}
                   </span>
                   <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
-                    Trải nghiệm tàu Huế - Đà Nẵng qua đèo Hải Vân
+                    {language === "vi"
+                      ? "Trải nghiệm tàu Huế - Đà Nẵng qua đèo Hải Vân"
+                      : "Huế - Đà Nẵng Heritage Train Experience over Hải Vân Pass"}
                   </h3>
                   <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
-                    Tuyến đường sắt kết nối Huế và Đà Nẵng qua đèo Hải Vân được
-                    mệnh danh là một trong những cung đường sắt đẹp nhất thế
-                    giới. Cùng ngắm nhìn biển xanh.
+                    {language === "vi"
+                      ? "Tuyến đường sắt kết nối Huế và Đà Nẵng qua đèo Hải Vân được mệnh danh là một trong những cung đường sắt đẹp nhất thế giới. Cùng ngắm nhìn biển xanh."
+                      : "The railway connecting Huế and Đà Nẵng through Hải Vân Pass is known as one of the most beautiful railway routes in the world. Enjoy the blue ocean."}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
@@ -1213,9 +1299,14 @@ export function Home() {
               <div
                 onClick={() =>
                   setSelectedBlog({
-                    title: "5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài",
+                    title:
+                      language === "vi"
+                        ? "5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài"
+                        : "5 Tips When Preparing Baggage for Long Distance Train Travel",
                     content:
-                      "Những chuyến đi tàu dài từ Bắc vào Nam kéo dài hơn 24 tiếng sẽ vô cùng thú vị nếu bạn chuẩn bị chu đáo. Dưới đây là 5 mẹo nhỏ bỏ túi giúp hành trình của bạn êm ái hơn nhiều:\n\n1. Chọn vali kéo cỡ vừa hoặc balo lớn để dễ dàng cất dưới gầm ghế hoặc trên giá để hành lý phía trên đầu.\n2. Chuẩn bị một túi nhỏ đựng đồ vệ sinh cá nhân, khăn giấy ướt, bàn chải đánh răng để tiện dùng ngay trong toa toilet của tàu.\n3. Mang theo sạc dự phòng dung lượng lớn và dây sạc dài. Mặc dù các toa tàu thế hệ mới có cổng sạc USB tại giường, sạc dự phòng vẫn giúp bạn chủ động hơn.\n4. Đồ ăn nhẹ như hạt, hoa quả sấy, sữa hộp và nước suối là vị cứu tinh tuyệt vời giữa đêm khuya khi căn tin tàu đã đóng cửa.\n5. Tải sẵn phim offline hoặc mang theo một cuốn sách yêu thích để giải trí khi tàu đi qua các khu vực sóng điện thoại yếu.",
+                      language === "vi"
+                        ? "Những chuyến đi tàu dài từ Bắc vào Nam kéo dài hơn 24 tiếng sẽ vô cùng thú vị nếu bạn chuẩn bị chu đáo. Dưới đây là 5 mẹo nhỏ bỏ túi giúp hành trình của bạn êm ái hơn nhiều:\n\n1. Chọn vali kéo cỡ vừa hoặc balo lớn để dễ dàng cất dưới gầm ghế hoặc trên giá để hành lý phía trên đầu.\n2. Chuẩn bị một túi nhỏ đựng đồ vệ sinh cá nhân, khăn giấy ướt, bàn chải đánh răng để tiện dùng ngay trong toa toilet của tàu.\n3. Mang theo sạc dự phòng dung lượng lớn và dây sạc dài. Mặc dù các toa tàu thế hệ mới có cổng sạc USB tại giường, sạc dự phòng vẫn giúp bạn chủ động hơn.\n4. Đồ ăn nhẹ như hạt, hoa quả sấy, sữa hộp và nước suối là vị cứu tinh tuyệt vời giữa đêm khuya khi căn tin tàu đã đóng cửa.\n5. Tải sẵn phim offline hoặc mang theo một cuốn sách yêu thích để giải trí khi tàu đi qua các khu vực sóng điện thoại yếu."
+                        : "Long train trips from North to South lasting more than 24 hours will be extremely interesting if you prepare carefully. Here are 5 quick tips to make your journey smoother:\n\n1. Choose a medium suitcase or a large backpack to easily store under the seat or on the luggage rack overhead.\n2. Prepare a small bag for toiletries, wet wipes, and a toothbrush to use in the train toilet.\n3. Bring a high-capacity power bank and a long charging cable. Although new trains have USB ports, a power bank keeps you prepared.\n4. Light snacks like nuts, dried fruits, and water bottles are lifesavers when the canteen closes at night.\n5. Download movies offline or bring your favorite book for entertainment when passing through areas with weak cell signal.",
                     createdAt: new Date(),
                     author: { fullName: "Phạm Minh Hoàng" },
                   })
@@ -1224,15 +1315,17 @@ export function Home() {
               >
                 <div>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 mb-3">
-                    Mẹo đi tàu
+                    {language === "vi" ? "Mẹo đi tàu" : "Train travel tips"}
                   </span>
                   <h3 className="font-bold text-slate-800 group-hover:text-primary transition-colors text-sm line-clamp-2 mb-2">
-                    5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài
+                    {language === "vi"
+                      ? "5 lưu ý khi chuẩn bị hành lý đi tàu hỏa đường dài"
+                      : "5 Tips When Preparing Baggage for Long Distance Train Travel"}
                   </h3>
                   <p className="text-slate-600 text-xs leading-relaxed mb-6 line-clamp-3">
-                    Để chuyến đi tàu dài ngày thoải mái nhất, việc chuẩn bị hành
-                    lý gọn nhẹ, các vật dụng cá nhân cần thiết và đồ ăn nhẹ là
-                    vô cùng quan trọng.
+                    {language === "vi"
+                      ? "Để chuyến đi tàu dài ngày thoải mái nhất, việc chuẩn bị hành lý gọn nhẹ, các vật dụng cá nhân cần thiết và đồ ăn nhẹ là vô cùng quan trọng."
+                      : "To make long-distance train trips most comfortable, preparing light luggage, essential personal items, and light snacks is very important."}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 mt-auto border-t border-slate-100 pt-4">
@@ -1260,7 +1353,9 @@ export function Home() {
             <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#cfe5ff]/40 text-[#00629d]">
-                  Cẩm nang & Chia sẻ
+                  {language === "vi"
+                    ? "Cẩm nang & Chia sẻ"
+                    : "Handbook & Stories"}
                 </span>
                 <h3 className="font-extrabold text-[#191c1e] text-lg leading-snug mt-1 text-left">
                   {selectedBlog.title}
@@ -1268,23 +1363,27 @@ export function Home() {
                 <div className="flex items-center gap-3 text-xs text-[#6f7883] mt-1 font-medium font-sans">
                   <span className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-primary/20 flex items-center justify-center" />
-                    {selectedBlog.author?.fullName || "Hành khách"}
+                    {selectedBlog.author?.fullName ||
+                      (language === "vi" ? "Hành khách" : "Passenger")}
                   </span>
                   <span>•</span>
                   <span>
-                    {new Date(selectedBlog.createdAt).toLocaleString("vi-VN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
+                    {new Date(selectedBlog.createdAt).toLocaleString(
+                      language === "vi" ? "vi-VN" : "en-US",
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      },
+                    )}
                   </span>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedBlog(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors text-[#6f7883] shrink-0"
+                className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors text-[#6f7883] shrink-0 border-none bg-transparent cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1299,9 +1398,9 @@ export function Home() {
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setSelectedBlog(null)}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-5 py-2 rounded-xl font-bold text-xs transition-all"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-5 py-2 rounded-xl font-bold text-xs transition-all border-none cursor-pointer"
               >
-                Đóng bài viết
+                {language === "vi" ? "Đóng bài viết" : "Close"}
               </button>
             </div>
           </div>
@@ -1317,18 +1416,22 @@ export function Home() {
               GoTrain VN
             </div>
             <p className="text-slate-500 text-sm max-w-sm mt-2">
-              © 2024 GoTrain VN. Hành trình bình yên, kết nối mọi miền.
+              {language === "vi"
+                ? "© 2026 GoTrain VN. Hành trình bình yên, kết nối mọi miền."
+                : "© 2026 GoTrain VN. Safe journeys, connecting regions."}
               <br />
-              Ứng dụng đặt vé tàu hỏa hàng đầu Việt Nam.
+              {language === "vi"
+                ? "Ứng dụng đặt vé tàu hỏa hàng đầu Việt Nam."
+                : "Vietnam's leading train ticket booking application."}
             </p>
             <div className="flex gap-4 mt-2">
-              <button className="text-slate-400 hover:text-slate-700 transition-colors">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors border-none bg-transparent cursor-pointer">
                 <span className="font-bold text-xs">FB</span>
               </button>
-              <button className="text-slate-400 hover:text-slate-700 transition-colors">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors border-none bg-transparent cursor-pointer">
                 <span className="font-bold text-xs">YT</span>
               </button>
-              <button className="text-slate-400 hover:text-slate-700 transition-colors">
+              <button className="text-slate-400 hover:text-slate-700 transition-colors border-none bg-transparent cursor-pointer">
                 <span className="font-bold text-xs">IN</span>
               </button>
             </div>
@@ -1336,25 +1439,25 @@ export function Home() {
 
           <div className="flex flex-col gap-3">
             <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
-              Khám phá
+              {language === "vi" ? "Khám phá" : "Explore"}
             </h4>
             <Link
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
               to="/privacy"
             >
-              Chính sách bảo mật
+              {t("footer_policy")}
             </Link>
             <Link
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4"
               to="/terms"
             >
-              Điều khoản sử dụng
+              {t("footer_terms")}
             </Link>
           </div>
 
           <div className="flex flex-col gap-3">
             <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-2">
-              Hỗ trợ
+              {t("footer_support_header")}
             </h4>
             <button
               onClick={(e) => {
@@ -1363,7 +1466,7 @@ export function Home() {
               }}
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4 text-left border-none bg-transparent cursor-pointer p-0"
             >
-              Thông tin liên hệ
+              {t("footer_contact")}
             </button>
             <button
               onClick={(e) => {
@@ -1374,7 +1477,7 @@ export function Home() {
               }}
               className="text-slate-500 hover:text-[#007aff] transition-colors text-sm underline decoration-slate-300 underline-offset-4 text-left border-none bg-transparent cursor-pointer p-0"
             >
-              Hướng dẫn đặt vé
+              {t("footer_booking_guide")}
             </button>
           </div>
         </div>
@@ -1385,45 +1488,59 @@ export function Home() {
         <button
           onClick={() => {
             window.scrollTo({ top: 0, behavior: "smooth" });
-            toast.info("Trang Chủ");
+            toast.info(t("nav_home"));
           }}
-          className="flex flex-col items-center gap-1 text-primary cursor-pointer"
+          className="flex flex-col items-center gap-1 text-primary cursor-pointer border-none bg-transparent"
         >
           <HomeIcon className="h-5 w-5" />
-          <span className="text-[10px] font-bold">Trang Chủ</span>
+          <span className="text-[10px] font-bold">{t("nav_home")}</span>
         </button>
 
         <button
           onClick={() => {
             navigate("/schedule");
-            toast.info("Đang mở Lịch Trình...");
+            toast.info(
+              language === "vi"
+                ? "Đang mở Lịch Trình..."
+                : "Opening Schedules...",
+            );
           }}
-          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors"
+          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors border-none bg-transparent"
         >
           <CalendarDays className="h-5 w-5" />
-          <span className="text-[10px]">Lịch Trình</span>
+          <span className="text-[10px]">
+            {language === "vi" ? "Lịch Trình" : "Schedules"}
+          </span>
         </button>
 
         <button
           onClick={() => {
             navigate("/dashboard");
-            toast.info("Đang mở Vé Của Tôi...");
+            toast.info(
+              language === "vi"
+                ? "Đang mở Vé Của Tôi..."
+                : "Opening My Tickets...",
+            );
           }}
-          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors"
+          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors border-none bg-transparent"
         >
           <Ticket className="h-5 w-5" />
-          <span className="text-[10px]">Vé Của Tôi</span>
+          <span className="text-[10px]">{t("nav_my_tickets")}</span>
         </button>
 
         <button
           onClick={() => {
             navigate("/dashboard");
-            toast.info("Đang mở Cá Nhân...");
+            toast.info(
+              language === "vi" ? "Đang mở Cá Nhân..." : "Opening Profile...",
+            );
           }}
-          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors"
+          className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-primary cursor-pointer transition-colors border-none bg-transparent"
         >
           <UserIcon className="h-5 w-5" />
-          <span className="text-[10px]">Cá Nhân</span>
+          <span className="text-[10px]">
+            {language === "vi" ? "Cá Nhân" : "Profile"}
+          </span>
         </button>
       </div>
     </div>
