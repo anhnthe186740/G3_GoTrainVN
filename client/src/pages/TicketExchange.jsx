@@ -301,6 +301,12 @@ export function TicketExchange() {
       return;
     }
 
+    const exchangePIds = exchangeMode === "single" 
+      ? [ticket.id] 
+      : booking.passengers
+          .filter(p => p.bookingDetails?.every(d => d.status !== "CANCELLED") ?? true)
+          .map(p => p.id);
+
     const params = new URLSearchParams({
       outboundScheduleId: selectedSchedule.id,
       outboundFromStationId: fromStationId,
@@ -310,6 +316,7 @@ export function TicketExchange() {
       exchangeBookingCode: booking.bookingCode || ticket.ticketCode || "",
       exchangePassengerCount: String(activePassengerCount),
       exchangePaidAmount: String(paidAmount),
+      exchangePassengerIds: exchangePIds.join(","),
     });
 
     navigate(`/booking/seats?${params.toString()}`);

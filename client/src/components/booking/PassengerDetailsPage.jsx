@@ -769,7 +769,30 @@ export function PassengerDetailsPage({
         const nextPassengers = Array.from({ length: count }, () => ({
           ...EMPTY_PASSENGER,
         }));
-        if (customerProfile) {
+        if (isAnyExchangeMode && exchangeBookingCode && searchParams.get("exchangePassengerIds")) {
+          api.get("/bookings/lookup", { params: { ticketCode: exchangeBookingCode } })
+            .then(({ data }) => {
+              if (data.passengers) {
+                const idsToExchange = searchParams.get("exchangePassengerIds").split(",");
+                const oldPassengers = data.passengers.filter(p => idsToExchange.includes(p.id));
+                if (oldPassengers.length > 0) {
+                  const prefills = oldPassengers.map(oldP => ({
+                    fullName: oldP.fullName || "",
+                    nationalIdType: oldP.nationalIdType || "CCCD",
+                    nationalId: oldP.nationalId || "",
+                    phoneNumber: oldP.phoneNumber || "",
+                    email: oldP.email || "",
+                    dateOfBirth: toDateInput(oldP.dateOfBirth),
+                    passengerType: oldP.passengerType || "ADULT",
+                    seatRequired: true,
+                  }));
+                  while (prefills.length < count) prefills.push({ ...EMPTY_PASSENGER });
+                  setPassengers(prefills.slice(0, count));
+                }
+              }
+            })
+            .catch(() => {});
+        } else if (customerProfile) {
           const profileDateOfBirth = toDateInput(customerProfile.dateOfBirth);
           const profilePassengerType = passengerTypeFromPolicy(
             ageFromDateOfBirth(profileDateOfBirth),
@@ -1228,10 +1251,15 @@ export function PassengerDetailsPage({
       }
 
       if (isExchangeMode) {
-        const { data } = await bookingApi.exchange(exchangeBookingId, {
+        const payload = {
           sessionId: session.id,
           paymentMethod: "WALLET",
-        });
+        };
+        const pIds = searchParams.get("exchangePassengerIds");
+        if (pIds) {
+          payload.exchangePassengerIds = pIds;
+        }
+        const { data } = await bookingApi.exchange(exchangeBookingId, payload);
         clearPendingBooking(session.id);
         setCompletedResult(data);
         toast.success("Đổi vé và thanh toán phí thành công.");

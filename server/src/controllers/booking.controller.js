@@ -856,7 +856,7 @@ export const getAdminBookingStats = asyncHandler(async (req, res) => {
 // ============================================================
 export const exchangeBooking = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { sessionId, paymentMethod = "WALLET" } = req.body;
+  const { sessionId, paymentMethod = "WALLET", exchangePassengerIds } = req.body;
   const userId = req.user?.id;
 
   if (!userId) {
@@ -942,14 +942,24 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       detailByPassengerId.set(d.passengerId, d);
     }
   }
-  const activePassengers = booking.passengers.filter((p) => {
+  let activePassengers = booking.passengers.filter((p) => {
     const detail = detailByPassengerId.get(p.id);
     return detail && detail.status !== "CANCELLED";
   });
+  
+  const totalActiveInBooking = activePassengers.length;
+
+  if (exchangePassengerIds && typeof exchangePassengerIds === "string") {
+    const idsToExchange = exchangePassengerIds.split(",").map(i => i.trim());
+    if (idsToExchange.length > 0) {
+      activePassengers = activePassengers.filter(p => idsToExchange.includes(p.id));
+    }
+  }
+
   if (activePassengers.length === 0) {
     return res
       .status(400)
-      .json({ message: "Booking không còn vé nào đủ điều kiện đổi." });
+      .json({ message: "Không tìm thấy vé hợp lệ để đổi." });
   }
 
   if (newHolds.length !== activePassengers.length) {
@@ -957,6 +967,8 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       message: `Vui lòng chọn đúng ${activePassengers.length} ghế mới để đổi vé.`,
     });
   }
+
+  const isPartialExchange = activePassengers.length < totalActiveInBooking;
 
   // Tính giá trị thực tế từ các vé active
   const oldFare = activePassengers.reduce((sum, p) => {
@@ -1075,12 +1087,72 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
     }
 
     // Chỉ cập nhật hành khách active, map bằng passengerId
+    let finalBookingId = booking.id;
+    let finalBookingCode = booking.bookingCode;
+
+    if (isPartialExchange) {
+      // Create a new booking for the exchanged passengers
+      const { nanoid } = await import("nanoid");
+      finalBookingCode = `GT${new Date().getFullYear()}${nanoid(8).toUpperCase()}`;
+      
+      const newBooking = await tx.booking.create({
+        data: {
+          bookingCode: finalBookingCode,
+          userId,
+          scheduleId: session.outboundScheduleId,
+          fromStationId: session.outboundFromStationId,
+          toStationId: session.outboundToStationId,
+          contactEmail: booking.contactEmail,
+          contactPhone: booking.contactPhone,
+          contactName: booking.contactName,
+          confirmationEmail: booking.confirmationEmail,
+          subtotal: newFare,
+          discountAmount: 0,
+          taxAmount: 0,
+          totalAmount: newFare,
+          paymentMethod: "WALLET",
+          paymentStatus: "COMPLETED",
+          paidAt: now,
+          status: "CONFIRMED",
+        }
+      });
+      finalBookingId = newBooking.id;
+
+      // Update old booking to subtract the old fare
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          totalAmount: { decrement: oldFare },
+          subtotal: { decrement: oldFare },
+        }
+      });
+    } else {
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          scheduleId: session.outboundScheduleId,
+          fromStationId: session.outboundFromStationId,
+          toStationId: session.outboundToStationId,
+          subtotal: newFare,
+          discountAmount: 0,
+          taxAmount: 0,
+          totalAmount: newFare,
+          paymentMethod: "WALLET",
+          paymentStatus: "COMPLETED",
+          paidAt: now,
+          status: "CONFIRMED",
+          expiresAt: null,
+        },
+      });
+    }
+
     for (const [index, passenger] of activePassengers.entries()) {
       const hold = newHolds[index];
       const detail = detailByPassengerId.get(passenger.id);
       await tx.passenger.update({
         where: { id: passenger.id },
         data: {
+          bookingId: finalBookingId,
           seatId: hold.seatId,
           carriageNumber: hold.seat.carriage.carriageNumber,
           boardingAt: null,
@@ -1091,6 +1163,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         await tx.bookingDetail.update({
           where: { id: detail.id },
           data: {
+            bookingId: finalBookingId,
             seatId: hold.seatId,
             scheduleId: hold.scheduleId,
             carriageType: hold.carriageType,
@@ -1103,7 +1176,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       } else {
         await tx.bookingDetail.create({
           data: {
-            bookingId: booking.id,
+            bookingId: finalBookingId,
             passengerId: passenger.id,
             seatId: hold.seatId,
             scheduleId: hold.scheduleId,
@@ -1120,7 +1193,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
     if (amountDue > 0) {
       await tx.bookingPaymentHistory.create({
         data: {
-          bookingId: booking.id,
+          bookingId: finalBookingId,
           paymentMethod: "WALLET",
           amount: amountDue,
           status: "SUCCESS",
@@ -1132,7 +1205,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
     if (refundSurplus > 0) {
       await tx.bookingPaymentHistory.create({
         data: {
-          bookingId: booking.id,
+          bookingId: finalBookingId,
           paymentMethod: "REFUND_WALLET",
           amount: refundSurplus,
           status: "SUCCESS",
@@ -1142,22 +1215,8 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
       });
     }
 
-    const updatedBooking = await tx.booking.update({
-      where: { id: booking.id },
-      data: {
-        scheduleId: session.outboundScheduleId,
-        fromStationId: session.outboundFromStationId,
-        toStationId: session.outboundToStationId,
-        subtotal: newFare,
-        discountAmount: 0,
-        taxAmount: 0,
-        totalAmount: newFare,
-        paymentMethod: "WALLET",
-        paymentStatus: "COMPLETED",
-        paidAt: now,
-        status: "CONFIRMED",
-        expiresAt: null,
-      },
+    const updatedBooking = await tx.booking.findUnique({
+      where: { id: finalBookingId },
       include: { passengers: true },
     });
 
@@ -1168,9 +1227,9 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         title: "Đổi vé thành công",
         message:
           refundSurplus > 0
-            ? `Vé ${booking.bookingCode} đã được đổi. Hoàn chênh lệch ${refundSurplus.toLocaleString("vi-VN")}đ vào ví.`
-            : `Vé ${booking.bookingCode} đã được đổi. Phí đổi vé ${amountDue.toLocaleString("vi-VN")}đ.`,
-        relatedBookingId: booking.id,
+            ? `Vé ${finalBookingCode} đã được đổi. Hoàn chênh lệch ${refundSurplus.toLocaleString("vi-VN")}đ vào ví.`
+            : `Vé ${finalBookingCode} đã được đổi. Phí đổi vé ${amountDue.toLocaleString("vi-VN")}đ.`,
+        relatedBookingId: finalBookingId,
         relatedScheduleId: session.outboundScheduleId,
         deliveryMethod: ["IN_APP", "EMAIL"],
         deliveryStatus: "PENDING",
