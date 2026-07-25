@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
@@ -40,6 +41,7 @@ import {
 } from "../../services/pendingBooking";
 import { useAuthStore } from "../../store/authStore";
 import { StaffTicketPrintPanel } from "../dashboard/StaffTicketPrintPanel";
+import { BookingConstraintsCard } from "./BookingConstraintsCard";
 
 // Fallback dùng khi API /pricing/ticket-types/public không khả dụng.
 // Phản ánh cùng giá trị mặc định như DEFAULT_TICKET_TYPES trong pricing.service.js.
@@ -1637,6 +1639,8 @@ export function PassengerDetailsPage({
             </div>
           ) : (
             <>
+              <BookingConstraintsCard defaultExpanded={false} />
+
               {!isStaffMode && passengers.length > 1 && (
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <div className="flex items-center gap-3 text-sm text-slate-600">
@@ -1900,6 +1904,27 @@ export function PassengerDetailsPage({
                                 : "Loại vé quyết định ưu đãi; ngày sinh dùng để kiểm tra điều kiện tuổi."}
                             </p>
                           </Field>
+
+                          {passenger.passengerType === "STUDENT" && (
+                            <div className="flex items-start gap-2.5 rounded-xl border border-purple-200 bg-purple-50 p-3.5 text-xs text-purple-900 sm:col-span-2">
+                              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-600 mt-0.5" />
+                              <div>
+                                <p className="font-bold text-purple-950">
+                                  Lưu ý quan trọng cho vé Sinh viên (Ưu đãi giảm
+                                  10%):
+                                </p>
+                                <p className="mt-0.5 leading-5 text-purple-900/90">
+                                  Khi soát vé lên tàu tại ga, hành khách{" "}
+                                  <strong>
+                                    bắt buộc xuất trình Thẻ Sinh viên chính chủ
+                                  </strong>{" "}
+                                  (còn hiệu lực) kèm số CCCD trùng khớp trên vé.
+                                  Nếu không có thẻ hợp lệ, quý khách phải đóng
+                                  tiền chênh lệch vé + phí phạt theo quy định.
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
                           <Field label="Loại giấy tờ">
                             <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">

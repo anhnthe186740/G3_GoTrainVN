@@ -45,19 +45,19 @@ export function Navbar() {
     : [];
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md shadow-[0px_10px_30px_rgba(0,163,255,0.08)] border-b border-surface-container/50">
-      <div className="flex justify-between items-center px-container-margin py-4 max-w-[1200px] mx-auto">
+    <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md shadow-[0px_10px_30px_rgba(0,163,255,0.08)] border-b border-slate-200/80">
+      <div className="flex justify-between items-center px-4 sm:px-6 lg:px-8 py-3.5 max-w-7xl mx-auto">
         {/* Logo */}
         <Link
           to="/"
-          className="text-[28px] font-bold text-primary select-none flex items-center gap-2 tracking-wide font-display-lg"
+          className="text-2xl font-bold text-primary select-none flex items-center gap-2 tracking-wide font-display-lg shrink-0"
         >
           <Train className="h-7 w-7 text-primary" />
           <span>GoTrain VN</span>
         </Link>
 
-        {/* Links */}
-        <div className="hidden md:flex items-center gap-lg">
+        {/* Navigation Links */}
+        <div className="hidden lg:flex items-center gap-5">
           {navLinks.map((link) => (
             <NavLink
               key={link.to}
@@ -66,7 +66,7 @@ export function Navbar() {
                 `font-label-md text-sm transition-colors duration-300 pb-1 ${
                   isActive
                     ? "text-primary font-bold border-b-2 border-primary"
-                    : "text-on-surface-variant font-medium hover:text-primary"
+                    : "text-slate-600 font-medium hover:text-primary"
                 }`
               }
             >
@@ -81,7 +81,7 @@ export function Navbar() {
                 `font-label-md text-sm transition-colors duration-300 pb-1 ${
                   isActive
                     ? "text-primary font-bold border-b-2 border-primary"
-                    : "text-on-surface-variant font-medium hover:text-primary"
+                    : "text-slate-600 font-medium hover:text-primary"
                 }`
               }
             >
@@ -91,39 +91,41 @@ export function Navbar() {
         </div>
 
         {/* Auth profile / actions */}
-        <div className="flex items-center gap-md">
+        <div className="flex items-center gap-3.5 shrink-0">
           {/* Language Switcher */}
-          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 shadow-sm">
+          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200/80 shadow-sm shrink-0">
             <button
+              type="button"
               onClick={() => {
                 if (language !== "vi") {
                   changeLanguage("vi");
                   toast.success("Đã chuyển sang Tiếng Việt!");
                 }
               }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 shrink-0 ${
                 language === "vi"
                   ? "bg-white text-primary shadow-sm"
                   : "text-slate-500 hover:text-slate-800 bg-transparent"
               }`}
             >
-              <span className="text-[14px]">🇻🇳</span>
+              <span className="text-[13px]">🇻🇳</span>
               <span>VN</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (language !== "en") {
                   changeLanguage("en");
                   toast.success("Switched to English!");
                 }
               }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 shrink-0 ${
                 language === "en"
                   ? "bg-white text-primary shadow-sm"
                   : "text-slate-500 hover:text-slate-800 bg-transparent"
               }`}
             >
-              <span className="text-[14px]">🇬🇧</span>
+              <span className="text-[13px]">🇬🇧</span>
               <span>EN</span>
             </button>
           </div>
@@ -132,13 +134,13 @@ export function Navbar() {
             <>
               <Link
                 to="/profile"
-                className="flex items-center gap-sm cursor-pointer group"
+                className="flex items-center gap-2 cursor-pointer group shrink-0"
               >
-                <div className="w-10 h-10 rounded-full bg-secondary-fixed border-2 border-primary/20 overflow-hidden flex items-center justify-center">
-                  <User className="h-5 w-5 text-primary" />
+                <div className="w-9 h-9 rounded-full bg-cyan-50 border-2 border-primary/20 overflow-hidden flex items-center justify-center shrink-0">
+                  <User className="h-4 w-4 text-primary" />
                 </div>
                 <div className="hidden sm:flex flex-col text-left">
-                  <span className="font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
+                  <span className="font-semibold text-xs text-slate-800 group-hover:text-primary transition-colors max-w-[130px] truncate">
                     {user.fullName || user.name || t("guest")}
                   </span>
                   <span className="text-[10px] text-primary uppercase font-bold tracking-tighter">
@@ -147,24 +149,25 @@ export function Navbar() {
                 </div>
               </Link>
               <button
+                type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-xs text-on-surface-variant hover:text-red-600 transition-colors duration-300 font-semibold text-sm cursor-pointer border-none bg-transparent"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-red-600 transition-colors duration-300 font-semibold text-xs cursor-pointer border-none bg-transparent shrink-0 pl-1"
               >
-                <LogOut className="h-5 w-5" />
+                <LogOut className="h-4 w-4" />
                 <span className="hidden md:inline">{t("nav_logout")}</span>
               </button>
             </>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               <Link
                 to="/login"
-                className="text-sm font-semibold text-slate-700 hover:text-slate-900 px-3 py-2"
+                className="text-xs font-bold text-slate-700 hover:text-primary px-3 py-1.5 transition"
               >
                 {t("nav_login")}
               </Link>
               <Link
                 to="/register"
-                className="rounded-xl bg-primary hover:bg-primary-container px-4 py-2 text-sm font-semibold text-white transition shadow-sm"
+                className="rounded-xl bg-primary hover:bg-primary/90 px-3.5 py-1.5 text-xs font-bold text-white transition shadow-sm"
               >
                 {t("nav_register")}
               </Link>

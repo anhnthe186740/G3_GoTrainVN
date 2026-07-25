@@ -75,5 +75,5 @@ export function AppLayout() {
     );
   })();
 
-  return <LanguageProvider>{layoutContent}</LanguageProvider>;
+  return layoutContent;
 }
