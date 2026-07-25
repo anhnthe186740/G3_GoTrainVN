@@ -555,7 +555,7 @@ export function TicketLookup() {
     );
   };
 
-  const refundInfo = calculateRefundPolicy(activeTicket);
+
   const activeTripStations = getBookedTripStations(activeTicket?.booking);
   const activeTripTimes = getBookedTripTimes(
     activeTicket?.booking,
