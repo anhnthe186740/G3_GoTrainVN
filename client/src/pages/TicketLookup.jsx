@@ -584,10 +584,11 @@ export function TicketLookup() {
 
   const passengersInSameBooking = useMemo(() => {
     if (!activeTicket || !listTickets.length) return [];
+    const activeCategory = getTicketCategory(activeTicket);
     return listTickets.filter(
       (t) =>
         t.booking?.id === activeTicket.booking?.id &&
-        getTicketCategory(t) === "UPCOMING",
+        getTicketCategory(t) === activeCategory,
     );
   }, [activeTicket, listTickets]);
 
@@ -1045,8 +1046,22 @@ export function TicketLookup() {
               {/* ============================================================== */}
               {/* 1. VISUAL BOARDING PASS CARD                                   */}
               {/* ============================================================== */}
-              <div
-                id="printable-boarding-pass"
+              
+              <div className="flex flex-col gap-10">
+              {passengersInSameBooking.map((t, tIdx) => {
+                const canRequestRefundT =
+                  t.booking?.status === "CONFIRMED" &&
+                  getTicketCategory(t) === "UPCOMING" &&
+                  t.booking?.cancellationRequest == null;
+
+                const canExchangeTicketT =
+                  t.booking?.status === "CONFIRMED" &&
+                  getTicketCategory(t) === "UPCOMING";
+
+                return (
+                  <div key={t.id || tIdx} className="flex flex-col gap-4">
+                    <div
+                id={`printable-boarding-pass-${t.id}`}
                 className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col md:flex-row"
               >
                 {/* Main Pass Info */}
@@ -1067,10 +1082,10 @@ export function TicketLookup() {
                       </div>
                     </div>
                     {getStatusBadge(
-                      activeTicket.booking?.status || "CONFIRMED",
-                      activeTicket.booking?.cancellationRequest?.status,
-                      getTicketCategory(activeTicket),
-                      activeTicket,
+                      t.booking?.status || "CONFIRMED",
+                      t.booking?.cancellationRequest?.status,
+                      getTicketCategory(t),
+                      t,
                     )}
                   </div>
 
@@ -1090,7 +1105,7 @@ export function TicketLookup() {
 
                     <div className="flex flex-col items-center gap-1.5 px-4">
                       <span className="text-xs font-bold text-slate-400">
-                        {activeTicket.booking?.schedule?.train?.trainName}
+                        {t.booking?.schedule?.train?.trainName}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary" />
@@ -1098,7 +1113,7 @@ export function TicketLookup() {
                         <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                       </div>
                       <span className="text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
-                        {activeTicket.booking?.roundTrip
+                        {t.booking?.roundTrip
                           ? language === "vi"
                             ? "Khứ hồi"
                             : "Round-trip"
@@ -1128,7 +1143,7 @@ export function TicketLookup() {
                         {language === "vi" ? "Hành khách" : "Passenger"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 truncate block">
-                        {activeTicket.fullName}
+                        {t.fullName}
                       </span>
                     </div>
                     <div>
@@ -1147,17 +1162,17 @@ export function TicketLookup() {
                         {language === "vi" ? "Toa tàu" : "Carriage"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
-                        {activeTicket.seat || activeTicket.carriageNumber
+                        {t.seat || t.carriageNumber
                           ? language === "vi"
-                            ? `Toa ${activeTicket.carriageNumber || "—"}`
-                            : `Carriage ${activeTicket.carriageNumber || "—"}`
+                            ? `Toa ${t.carriageNumber || "—"}`
+                            : `Carriage ${t.carriageNumber || "—"}`
                           : language === "vi"
                             ? "Không ghế riêng"
                             : "No seat assigned"}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
-                        {activeTicket.seat?.carriage?.carriageType ||
-                          (activeTicket.seat || activeTicket.carriageNumber
+                        {t.seat?.carriage?.carriageType ||
+                          (t.seat || t.carriageNumber
                             ? ""
                             : language === "vi"
                               ? "Đi kèm người lớn"
@@ -1169,11 +1184,11 @@ export function TicketLookup() {
                         {language === "vi" ? "Ghế ngồi" : "Seat"}
                       </span>
                       <span className="text-sm font-extrabold text-slate-800 block">
-                        {activeTicket.seat?.seatNumber || "—"}
+                        {t.seat?.seatNumber || "—"}
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 block uppercase">
-                        {activeTicket.seat?.seatType
-                          ? activeTicket.seat.seatType === "WINDOW"
+                        {t.seat?.seatType
+                          ? t.seat.seatType === "WINDOW"
                             ? language === "vi"
                               ? "Cửa sổ"
                               : "Window"
@@ -1204,8 +1219,8 @@ export function TicketLookup() {
                         : "Boarding Barcode"}
                     </span>
                     <span className="text-sm font-black text-slate-800 tracking-wider">
-                      {activeTicket.ticketCode ||
-                        activeTicket.booking?.bookingCode}
+                      {t.ticketCode ||
+                        t.booking?.bookingCode}
                     </span>
                   </div>
 
@@ -1213,8 +1228,8 @@ export function TicketLookup() {
                   <div className="w-36 h-36 bg-white border border-slate-200 rounded-2xl p-2 flex items-center justify-center shadow-sm relative overflow-hidden">
                     <QRCodeSVG
                       value={
-                        activeTicket.ticketCode ||
-                        activeTicket.booking?.bookingCode ||
+                        t.ticketCode ||
+                        t.booking?.bookingCode ||
                         ""
                       }
                       size={128}
@@ -1243,47 +1258,76 @@ export function TicketLookup() {
                 </div>
               </div>
 
-              {/* Action Buttons for ticket */}
-              <div className="flex flex-wrap gap-4 no-print">
-                <button
-                  onClick={handlePrint}
-                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
-                >
-                  <Printer className="h-4.5 w-4.5" />
-                  <span>
-                    {language === "vi"
-                      ? "In vé / Tải Thẻ Lên Tàu"
-                      : "Print Ticket / Boarding Pass"}
-                  </span>
-                </button>
+              
+                    
+                    {/* Action Buttons for ticket */}
+                    <div className="flex flex-wrap gap-4 no-print">
+                      <button
+                        onClick={() => { setActiveTicket(t); setTimeout(handlePrint, 0); }}
+                        className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
+                      >
+                        <Printer className="h-4.5 w-4.5" />
+                        <span>
+                          {language === "vi"
+                            ? "In vé / Tải Thẻ Lên Tàu"
+                            : "Print Ticket / Boarding Pass"}
+                        </span>
+                      </button>
 
-                {canRequestRefund && (
-                  <button
-                    onClick={() => {
-                      setRefundMode("single");
-                      const info = calculateRefundPolicy(
-                        activeTicket,
-                        "single",
-                      );
-                      if (info?.allowed) {
-                        setIsPolicyModalOpen(true);
-                      } else {
-                        toast.error(info?.message || "Không thể hoàn vé");
-                      }
-                    }}
-                    className={`flex items-center gap-2 font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border ${
-                      calculateRefundPolicy(activeTicket, "single")?.allowed
-                        ? "bg-white hover:bg-red-50 text-red-600 border-red-200"
-                        : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                    }`}
-                  >
-                    <AlertTriangle className="h-4.5 w-4.5" />
-                    <span>
-                      {language === "vi" ? "Hủy vé này" : "Cancel this ticket"}
-                    </span>
-                  </button>
-                )}
+                      {canRequestRefundT && (
+                        <button
+                          onClick={() => {
+                            setActiveTicket(t);
+                            setRefundMode("single");
+                            const info = calculateRefundPolicy(t, "single");
+                            if (info?.allowed) {
+                              setIsPolicyModalOpen(true);
+                            } else {
+                              import("sonner").then(m => m.toast.error(info?.message || "Không thể hoàn vé"));
+                            }
+                          }}
+                          className={`flex items-center gap-2 font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border ${
+                            calculateRefundPolicy(t, "single")?.allowed
+                              ? "bg-white hover:bg-red-50 text-red-600 border-red-200"
+                              : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                          }`}
+                        >
+                          <AlertTriangle className="h-4.5 w-4.5" />
+                          <span>
+                            {language === "vi" ? "Hủy vé này" : "Cancel this ticket"}
+                          </span>
+                        </button>
+                      )}
 
+                      {t.booking?.cancellationRequest?.status === "PENDING" && (
+                        <span className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700">
+                          <Clock className="h-4.5 w-4.5" />
+                          {language === "vi"
+                            ? "Vé đang được xử lý hủy và hoàn tiền"
+                            : "Cancellation request is being processed"}
+                        </span>
+                      )}
+
+                      {canExchangeTicketT && (
+                        <button
+                          onClick={() => { setActiveTicket(t); setTimeout(() => handleExchangeTicket("single"), 0); }}
+                          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
+                        >
+                          <Repeat2 className="h-4.5 w-4.5" />
+                          <span>
+                            {language === "vi"
+                              ? "Đổi vé này"
+                              : "Exchange this ticket"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {/* Bulk Actions for the whole booking */}
+              <div className="flex flex-wrap gap-4 no-print mt-2 pt-6 border-t border-slate-200">
                 {canRequestRefund && passengersInSameBooking.length > 1 && (
                   <button
                     onClick={() => {
@@ -1292,7 +1336,7 @@ export function TicketLookup() {
                       if (info?.allowed) {
                         setIsPolicyModalOpen(true);
                       } else {
-                        toast.error(info?.message || "Không thể hoàn vé");
+                        import("sonner").then(m => m.toast.error(info?.message || "Không thể hoàn vé"));
                       }
                     }}
                     className={`flex items-center gap-2 font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border ${
@@ -1306,30 +1350,6 @@ export function TicketLookup() {
                       {language === "vi"
                         ? `Hủy toàn bộ vé (${passengersInSameBooking.length})`
                         : `Cancel all tickets (${passengersInSameBooking.length})`}
-                    </span>
-                  </button>
-                )}
-
-                {activeTicket?.booking?.cancellationRequest?.status ===
-                  "PENDING" && (
-                  <span className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700">
-                    <Clock className="h-4.5 w-4.5" />
-                    {language === "vi"
-                      ? "Vé đang được xử lý hủy và hoàn tiền"
-                      : "Cancellation request is being processed"}
-                  </span>
-                )}
-
-                {canExchangeTicket && (
-                  <button
-                    onClick={() => handleExchangeTicket("single")}
-                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
-                  >
-                    <Repeat2 className="h-4.5 w-4.5" />
-                    <span>
-                      {language === "vi"
-                        ? "Đổi vé này"
-                        : "Exchange this ticket"}
                     </span>
                   </button>
                 )}
@@ -1348,8 +1368,8 @@ export function TicketLookup() {
                   </button>
                 )}
               </div>
-
-              {/* ============================================================== */}
+              </div>
+{/* ============================================================== */}
               {/* 2. JOURNEY TIMELINE / ROUTE PROGRESS                           */}
               {/* ============================================================== */}
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col gap-5 no-print">
