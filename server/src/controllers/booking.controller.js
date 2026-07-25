@@ -236,6 +236,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
             OR: [
               { email: { equals: cleanContact, mode: "insensitive" } },
               { phoneNumber: cleanContact },
+              { booking: { confirmationEmail: { equals: cleanContact, mode: "insensitive" } } },
             ],
           },
           ...ownerLookupFilter,
@@ -1105,9 +1106,6 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
           scheduleId: session.outboundScheduleId,
           fromStationId: session.outboundFromStationId,
           toStationId: session.outboundToStationId,
-          contactEmail: booking.contactEmail,
-          contactPhone: booking.contactPhone,
-          contactName: booking.contactName,
           confirmationEmail: booking.confirmationEmail,
           bookingType: booking.bookingType || "ONE_WAY",
           totalPassengers: activePassengers.length,
