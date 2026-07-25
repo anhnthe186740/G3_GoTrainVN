@@ -198,6 +198,21 @@ export function Profile() {
     }
   }, [activeTab]);
 
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setProfileData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // Compute profile completeness status
+  const profileCompleteness = calculateProfileCompleteness(
+    profileData,
+    language,
+  );
+
   // Compute membership status and parameters
   const loyaltyPoints = profileData.loyaltyPoints;
   const membership = (() => {
