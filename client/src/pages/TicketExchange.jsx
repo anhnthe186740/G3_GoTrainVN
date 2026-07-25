@@ -128,15 +128,17 @@ export function TicketExchange() {
   );
 
   const activePassengerCount = useMemo(() => {
-    if (!booking?.passengers?.length) return booking?.totalPassengers || 1;
-    const hasDetails = booking.passengers[0]?.bookingDetails !== undefined;
-    if (hasDetails) {
-      const count = booking.passengers.filter((p) =>
-        (p.bookingDetails || []).some((d) => d.status !== "CANCELLED"),
-      ).length;
-      return count || 1;
+    if (!booking?.passengers?.length) return 1;
+    const seatedPassengers = booking.passengers.filter(
+      (p) =>
+        Boolean(p.seat || p.seatId) &&
+        p.seatRequired !== false &&
+        p.passengerType !== "CHILD_UNDER_6",
+    );
+    if (seatedPassengers.length > 0) {
+      return seatedPassengers.length;
     }
-    return booking.passengers.length || booking.totalPassengers || 1;
+    return 1;
   }, [booking]);
 
   const paidAmount = booking?.totalAmount || 0;

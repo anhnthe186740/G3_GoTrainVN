@@ -70,22 +70,60 @@ const STATUS_LABEL = {
 function ticketsFromStaffSearch(data) {
   const tickets = [];
   const seen = new Set();
+  const rawPassengers = [];
 
   (data.tickets || []).forEach((ticket) => {
     if (!ticket?.id || seen.has(ticket.id)) return;
     seen.add(ticket.id);
-    tickets.push(ticket);
+    rawPassengers.push(ticket);
   });
 
   (data.bookings || []).forEach((booking) => {
     (booking.passengers || []).forEach((passenger) => {
       if (!passenger?.id || seen.has(passenger.id)) return;
       seen.add(passenger.id);
-      tickets.push({
+      rawPassengers.push({
         ...passenger,
         booking,
       });
     });
+  });
+
+  // Group by booking
+  const byBooking = new Map();
+  rawPassengers.forEach((p) => {
+    const bId = p.bookingId || p.booking?.id || "default";
+    if (!byBooking.has(bId)) byBooking.set(bId, []);
+    byBooking.get(bId).push(p);
+  });
+
+  byBooking.forEach((passengers) => {
+    const seated = passengers.filter(
+      (p) =>
+        p.seatRequired !== false &&
+        p.passengerType !== "CHILD_UNDER_6" &&
+        (p.seat || p.seatId),
+    );
+    const lapChildren = passengers.filter(
+      (p) =>
+        p.seatRequired === false ||
+        p.passengerType === "CHILD_UNDER_6" ||
+        (!p.seat && !p.seatId),
+    );
+
+    if (seated.length > 0) {
+      seated.forEach((seatedPassenger, idx) => {
+        // Gắn thông tin trẻ em ngồi cùng ghế (nếu có)
+        const assignedLapChild = lapChildren[idx] || null;
+        tickets.push({
+          ...seatedPassenger,
+          lapChild: assignedLapChild,
+        });
+      });
+    } else {
+      // Fallback nếu không có vé người lớn
+      passengers.forEach((p) => tickets.push(p));
+    }
   });
 
   return tickets;
@@ -184,6 +222,28 @@ function BoardingPass({ ticket, booking }) {
             </div>
           ))}
         </div>
+
+        {/* Trẻ em ngồi cùng ghế (nếu có) */}
+        {ticket?.lapChild && (
+          <div className="rounded-2xl bg-amber-50/90 border border-amber-200/80 p-3 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-amber-700 text-lg">
+                child_care
+              </span>
+              <div>
+                <p className="font-extrabold text-amber-950 text-xs">
+                  Trẻ em ngồi cùng ghế: {ticket.lapChild.fullName}
+                </p>
+                <p className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                  Không chiếm ghế riêng · Miễn phí (Dưới 6 tuổi)
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100/90 px-2.5 py-1 rounded-lg border border-amber-200">
+              Vé trẻ em đi kèm
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Stub / Barcode section */}

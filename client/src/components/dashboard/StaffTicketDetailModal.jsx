@@ -507,11 +507,22 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                             </span>
                           </div>
                           <p className="mt-1 text-xs font-semibold text-[#6f7883]">
-                            {passenger.ticketCode || "Chưa có mã vé"} · Ghế{" "}
-                            {passenger.seat?.seatNumber || "--"} · Toa{" "}
-                            {passenger.seat?.carriage?.carriageNumber ||
-                              passenger.carriageNumber ||
-                              "--"}
+                            {passenger.seatRequired === false ||
+                            passenger.passengerType === "CHILD_UNDER_6" ||
+                            (!passenger.seat && !passenger.seatId) ? (
+                              <span className="font-bold text-amber-700">
+                                👶 Đi kèm người lớn (Không chiếm ghế riêng ·
+                                Miễn phí)
+                              </span>
+                            ) : (
+                              <>
+                                {passenger.ticketCode || "Chưa có mã vé"} · Ghế{" "}
+                                {passenger.seat?.seatNumber || "--"} · Toa{" "}
+                                {passenger.seat?.carriage?.carriageNumber ||
+                                  passenger.carriageNumber ||
+                                  "--"}
+                              </>
+                            )}
                           </p>
                         </div>
                         <span className="shrink-0 text-sm font-extrabold text-[#191c1e]">
