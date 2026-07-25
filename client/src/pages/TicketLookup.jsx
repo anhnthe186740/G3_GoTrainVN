@@ -1049,15 +1049,6 @@ export function TicketLookup() {
               
               <div className="flex flex-col gap-10">
               {passengersInSameBooking.map((t, tIdx) => {
-                const canRequestRefundT =
-                  t.booking?.status === "CONFIRMED" &&
-                  getTicketCategory(t) === "UPCOMING" &&
-                  t.booking?.cancellationRequest == null;
-
-                const canExchangeTicketT =
-                  t.booking?.status === "CONFIRMED" &&
-                  getTicketCategory(t) === "UPCOMING";
-
                 return (
                   <div key={t.id || tIdx} className="flex flex-col gap-4">
                     <div
@@ -1274,7 +1265,7 @@ export function TicketLookup() {
                         </span>
                       </button>
 
-                      {canRequestRefundT && (
+                      {canRequestRefund && (
                         <button
                           onClick={() => {
                             setActiveTicket(t);
@@ -1308,7 +1299,7 @@ export function TicketLookup() {
                         </span>
                       )}
 
-                      {canExchangeTicketT && (
+                      {canExchangeTicket && (
                         <button
                           onClick={() => { setActiveTicket(t); setTimeout(() => handleExchangeTicket("single"), 0); }}
                           className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
