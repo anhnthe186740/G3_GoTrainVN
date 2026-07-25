@@ -42,8 +42,18 @@ export default function App() {
         setAuth({
           user: {
             id: u.id,
+            fullName: u.fullName,
             name: u.fullName,
             email: u.email,
+            phoneNumber: u.phoneNumber,
+            nationalId: u.nationalId,
+            nationalIdType: u.nationalIdType,
+            address: u.address,
+            dateOfBirth: u.dateOfBirth,
+            gender: u.gender,
+            bankName: u.bankName,
+            bankAccount: u.bankAccount,
+            accountHolder: u.accountHolder,
             role: u.userType,
             loyaltyPoints: u.loyaltyPoints || 0,
             isActive: u.isActive,
@@ -107,7 +117,6 @@ export default function App() {
         <Route path="quy-dinh" element={<Regulations />} />
         <Route path="privacy" element={<PrivacyPolicy />} />
         <Route path="terms" element={<TermsOfService />} />
-
 
         <Route
           path="dashboard"

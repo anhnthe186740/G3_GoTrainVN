@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
+import { ProfileCompletionBanner } from "./ProfileCompletionBanner";
 import { useAuth } from "../../hooks/useAuth";
 import { ChatbotWidget } from "../ui/ChatbotWidget";
 import { ContactModal } from "../ui/ContactModal";
@@ -49,16 +50,19 @@ export function AppLayout() {
         className={`min-h-screen ${isHomePage || isFullPage ? "bg-[#f7f9fb]" : "bg-slate-50"} text-slate-900`}
       >
         <Navbar />
+        <div className="pt-[64px]">
+          <ProfileCompletionBanner />
+        </div>
         {isHomePage ? (
           <main className="min-w-0 flex-1">
             <Outlet />
           </main>
         ) : isFullPage ? (
-          <main className="min-w-0 flex-1 pt-[72px]">
+          <main className="min-w-0 flex-1">
             <Outlet />
           </main>
         ) : (
-          <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 pt-[88px]">
+          <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             <Outlet />
           </main>
         )}
