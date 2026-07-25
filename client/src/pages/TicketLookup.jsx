@@ -604,14 +604,14 @@ export function TicketLookup() {
     window.print();
   };
 
-  const handleExchangeTicket = (mode = "single") => {
-    if (!activeTicket?.booking) return;
+  const handleExchangeTicket = (mode = "single", ticketToExchange = activeTicket) => {
+    if (!ticketToExchange?.booking) return;
 
     navigate(
       `/doi-ve?bookingCode=${encodeURIComponent(
-        activeTicket.booking.bookingCode || activeTicket.ticketCode || "",
+        ticketToExchange.booking.bookingCode || ticketToExchange.ticketCode || "",
       )}`,
-      { state: { ticket: activeTicket, exchangeMode: mode } },
+      { state: { ticket: ticketToExchange, exchangeMode: mode } },
     );
   };
 
@@ -1306,7 +1306,7 @@ export function TicketLookup() {
 
                       {canExchangeTicket && (
                         <button
-                          onClick={() => { setActiveTicket(t); setTimeout(() => handleExchangeTicket("single"), 0); }}
+                          onClick={() => { setActiveTicket(t); handleExchangeTicket("single", t); }}
                           className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
                         >
                           <Repeat2 className="h-4.5 w-4.5" />
