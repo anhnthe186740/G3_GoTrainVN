@@ -423,7 +423,6 @@ export function getScheduleCancelledEmailTemplate(booking, notes) {
 }
 
 /**
-<<<<<<< HEAD
  * Template 7: Refund Approved Notification (Thông báo chấp nhận hoàn tiền)
  */
 export function getRefundApprovedEmailTemplate(

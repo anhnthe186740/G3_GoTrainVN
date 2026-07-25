@@ -15,8 +15,6 @@ export function FilterPanel({
   const trainTypes = [
     { label: "Tàu Thống Nhất Tốc Hành (SE)", value: "SE" },
     { label: "Tàu Thường Thống Nhất (TN)", value: "TN" },
-    { label: "Tàu du lịch (SP)", value: "SP" },
-    { label: "Tàu địa phương (QN)", value: "QN" },
   ];
   const timeSlots = [
     { label: "00:00 - 06:00", value: "00-06" },
