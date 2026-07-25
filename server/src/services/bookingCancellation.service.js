@@ -480,9 +480,15 @@ export async function cancelBookingTickets({
     requestReason,
     refundAmount: totalRefundAmount,
     refundMethod: method,
-    refundBankName: null,
-    refundBankAccount: null,
-    refundAccountHolder: null,
+    refundBankName: bankInfo?.bankName
+      ? String(bankInfo.bankName).trim()
+      : null,
+    refundBankAccount: bankInfo?.bankAccount
+      ? String(bankInfo.bankAccount).replace(/\s/g, "")
+      : null,
+    refundAccountHolder: bankInfo?.accountHolder
+      ? String(bankInfo.accountHolder).trim()
+      : null,
     rejectionReason: null,
     approvedBy: null,
     approvedAt: null,

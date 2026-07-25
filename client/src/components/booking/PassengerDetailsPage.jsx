@@ -185,10 +185,19 @@ function ageMatchesTicketType(type, age) {
   return true;
 }
 
-function passengerTypeFromPolicy(age, currentType, ticketTypes) {
+function passengerTypeFromPolicy(
+  age,
+  currentType,
+  ticketTypes,
+  { wantsSeat = true } = {},
+) {
   if (age == null) return currentType;
   const autoType = ticketTypes.find(
-    (type) => type.autoApply && ageMatchesTicketType(type, age),
+    (type) =>
+      type.autoApply &&
+      ageMatchesTicketType(type, age) &&
+      // Bỏ qua loại không cho phép ghế (CHILD_UNDER_6) nếu hành khách cần ghế
+      !(wantsSeat && type.seatMode === "NOT_ALLOWED"),
   );
   if (autoType) return autoType.value;
   return passengerTypeFromAge(age, currentType);
@@ -238,10 +247,6 @@ function validatePassenger(
     if (passenger.seatRequired === false && (age == null || age >= 6)) {
       errors.dateOfBirth =
         "Chỉ trẻ dưới 6 tuổi mới được đi kèm không chọn ghế riêng.";
-    }
-    if (passenger.seatRequired !== false && age != null && age < 6) {
-      errors.dateOfBirth =
-        "Trẻ dưới 6 tuổi đi kèm người lớn, không đặt ghế riêng.";
     }
   }
   if (passengerRequiresDocument(passenger, ticketTypes)) {
@@ -338,7 +343,15 @@ function passengerRuleError(passengers) {
       (passenger) => passenger.seatRequired !== false && isUnderSix(passenger),
     )
   ) {
-    return "Trẻ dưới 6 tuổi phải đi kèm người lớn và không chọn ghế riêng.";
+    // Trẻ dưới 6 tuổi có ghế riêng: hợp lệ nếu có ít nhất một hành khách có ghế không phải trẻ.
+    // Chỉ báo lỗi nếu toàn bộ đều là trẻ (không có người lớn đi kèm).
+    const hasNonChildSeatedPassenger = passengers.some((passenger) => {
+      const age = ageFromDateOfBirth(passenger.dateOfBirth);
+      return passenger.seatRequired !== false && !(age != null && age < 10);
+    });
+    if (!hasNonChildSeatedPassenger) {
+      return "Trẻ dưới 6 tuổi phải đi kèm ít nhất một người lớn, sinh viên hoặc người cao tuổi.";
+    }
   }
   const lapChildCount = passengers.length - seatedPassengerCount;
   if (lapChildCount > seatedPassengerCount) {
