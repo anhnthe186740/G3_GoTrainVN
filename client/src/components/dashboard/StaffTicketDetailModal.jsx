@@ -104,6 +104,22 @@ function InfoItem({ label, value }) {
 
 export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
   const navigate = useNavigate();
+
+  const [localBooking, setLocalBooking] = useState(booking);
+  const [editingPassenger, setEditingPassenger] = useState(null);
+  const [upgradingPassenger, setUpgradingPassenger] = useState(null);
+  const [invalidatingPassenger, setInvalidatingPassenger] = useState(null);
+
+  // States for sub-form operations
+  const [editForm, setEditForm] = useState({
+    fullName: "",
+    nationalId: "",
+    dateOfBirth: "",
+  });
+  const [upgradePaymentMethod, setUpgradePaymentMethod] = useState("CASH");
+  const [invalidateReason, setInvalidateReason] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
   const [selectedPassengerIds, setSelectedPassengerIds] = useState([]);
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -112,8 +128,108 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
   const [confirming, setConfirming] = useState(false);
   const [identityVerified, setIdentityVerified] = useState(false);
 
-  const passengers = booking?.passengers || [];
-  const customer = booking?.user || null;
+  useEffect(() => {
+    setLocalBooking(booking);
+  }, [booking]);
+
+  const refreshBooking = async () => {
+    try {
+      const res = await staffSearchApi.globalSearch(localBooking.bookingCode);
+      if (res.data?.bookings?.length > 0) {
+        setLocalBooking(res.data.bookings[0]);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải lại thông tin booking:", err);
+    }
+  };
+
+  const handleOpenCorrectModal = (passenger) => {
+    setEditingPassenger(passenger);
+    setEditForm({
+      fullName: passenger.fullName,
+      nationalId: passenger.nationalId || "",
+      dateOfBirth: passenger.dateOfBirth
+        ? new Date(passenger.dateOfBirth).toISOString().split("T")[0]
+        : "",
+    });
+  };
+
+  const handleSaveCorrection = async (e) => {
+    e.preventDefault();
+    if (!editingPassenger) return;
+    setActionLoading(true);
+    try {
+      await staffSearchApi.correctInfo({
+        ticketCode: editingPassenger.ticketCode,
+        fullName: editForm.fullName,
+        nationalId: editForm.nationalId,
+        dateOfBirth: editForm.dateOfBirth,
+      });
+      toast.success("Đính chính thông tin hành khách thành công.");
+      setEditingPassenger(null);
+      await refreshBooking();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Không thể đính chính thông tin.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenUpgradeModal = (passenger) => {
+    setUpgradingPassenger(passenger);
+    setUpgradePaymentMethod("CASH");
+  };
+
+  const handleConfirmUpgrade = async () => {
+    if (!upgradingPassenger) return;
+    setActionLoading(true);
+    try {
+      await staffSearchApi.exchangeType({
+        ticketCode: upgradingPassenger.ticketCode,
+        paymentMethod: upgradePaymentMethod,
+      });
+      toast.success(
+        "Đã thu hồi ưu đãi và nâng cấp vé sang loại Người lớn thành công.",
+      );
+      setUpgradingPassenger(null);
+      await refreshBooking();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Không thể nâng cấp loại vé.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenInvalidateModal = (passenger) => {
+    setInvalidatingPassenger(passenger);
+    setInvalidateReason("");
+  };
+
+  const handleConfirmInvalidate = async () => {
+    if (!invalidatingPassenger || !invalidateReason.trim()) {
+      toast.error("Vui lòng nhập lý do hủy vi phạm.");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await staffSearchApi.invalidate({
+        ticketCode: invalidatingPassenger.ticketCode,
+        reason: invalidateReason.trim(),
+      });
+      toast.success("Đã vô hiệu hóa và hủy vé vi phạm thành công.");
+      setInvalidatingPassenger(null);
+      await refreshBooking();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Không thể hủy vé vi phạm.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const passengers = localBooking?.passengers || [];
+  const customer = localBooking?.user || null;
   const isGuestBooking = !customer?.id;
   const refundMethods = isGuestBooking
     ? [["CASH", "Tiền mặt"]]
@@ -125,9 +241,9 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
   const activePassengers = useMemo(
     () =>
       passengers.filter(
-        (passenger) => passengerStatus(passenger, booking) !== "CANCELLED",
+        (passenger) => passengerStatus(passenger, localBooking) !== "CANCELLED",
       ),
-    [booking, passengers],
+    [localBooking, passengers],
   );
 
   useEffect(() => {
@@ -136,20 +252,22 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
     }
   }, [isGuestBooking, refundMethod]);
 
-  if (!booking) return null;
+  if (!localBooking) return null;
 
-  const schedule = booking.schedule;
+  const schedule = localBooking.schedule;
   const selectedCount = selectedPassengerIds.length;
 
   const canExchange =
-    booking.status === "CONFIRMED" &&
-    booking.paymentStatus === "COMPLETED" &&
+    localBooking.status === "CONFIRMED" &&
+    localBooking.paymentStatus === "COMPLETED" &&
     schedule?.departureTime &&
     new Date(schedule.departureTime).getTime() > Date.now();
 
   const handleExchange = () => {
-    const firstPassenger = booking.passengers?.[0];
-    const ticket = firstPassenger ? { ...firstPassenger, booking } : null;
+    const firstPassenger = localBooking.passengers?.[0];
+    const ticket = firstPassenger
+      ? { ...firstPassenger, booking: localBooking }
+      : null;
     onClose();
     navigate("/doi-ve", { state: { ticket, staffMode: true } });
   };
@@ -177,7 +295,7 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
     setQuote(null);
     try {
       const { data } = await staffSearchApi.cancellationQuote({
-        bookingId: booking.id,
+        bookingId: localBooking.id,
         passengerIds: selectedPassengerIds,
       });
       setQuote(data.quote);
@@ -329,9 +447,9 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-4">
               {passengers.map((passenger) => {
-                const status = passengerStatus(passenger, booking);
+                const status = passengerStatus(passenger, localBooking);
                 const cancelled = status === "CANCELLED";
                 const boarded = !!passenger.boardingAt;
                 const departureTime = schedule?.departureTime
@@ -344,79 +462,119 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                 const locked = cancelled || boarded || isMissed;
                 const selected = selectedPassengerIds.includes(passenger.id);
                 return (
-                  <label
+                  <div
                     key={passenger.id}
-                    className={`block rounded-xl border p-3 transition ${
-                      selected
-                        ? "cursor-pointer border-[#00629d] bg-[#cfe5ff]/45"
-                        : "border-[#bec7d4]/35 bg-white hover:border-[#00629d]/60"
-                    } ${locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                    className="rounded-xl border border-[#bec7d4]/35 bg-white p-3 hover:border-[#00629d]/60 transition space-y-3"
                   >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        disabled={locked}
-                        onChange={() => togglePassenger(passenger.id)}
-                        className="mt-1 h-4 w-4 rounded border-[#bec7d4] text-[#00629d]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-extrabold text-[#191c1e]">
-                            {passenger.fullName}
+                    <label
+                      className={`block ${locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={locked}
+                          onChange={() => togglePassenger(passenger.id)}
+                          className="mt-1 h-4 w-4 rounded border-[#bec7d4] text-[#00629d]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-extrabold text-[#191c1e]">
+                              {passenger.fullName}
+                            </p>
+                            {cancelled && (
+                              <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                                Đã hủy
+                              </span>
+                            )}
+                            {!cancelled && boarded && (
+                              <span className="rounded-full bg-[#cfe5ff] px-2 py-0.5 text-[11px] font-bold text-[#00629d] border border-[#cfe5ff]/50">
+                                Đã lên tàu
+                              </span>
+                            )}
+                            {!cancelled && !boarded && isMissed && (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                                Trễ tàu (Không check-in)
+                              </span>
+                            )}
+                            {!cancelled && !boarded && !isMissed && (
+                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                Còn hiệu lực
+                              </span>
+                            )}
+                            <span className="rounded-full bg-[#f7f9fb] px-2 py-0.5 text-[11px] font-bold text-[#3f4852]">
+                              {passengerTypeLabel(passenger.passengerType)}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs font-semibold text-[#6f7883]">
+                            {passenger.ticketCode || "Chưa có mã vé"} · Ghế{" "}
+                            {passenger.seat?.seatNumber || "--"} · Toa{" "}
+                            {passenger.seat?.carriage?.carriageNumber ||
+                              passenger.carriageNumber ||
+                              "--"}
                           </p>
-                          {cancelled && (
-                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                              Đã hủy
-                            </span>
-                          )}
-                          {!cancelled && boarded && (
-                            <span className="rounded-full bg-[#cfe5ff] px-2 py-0.5 text-[11px] font-bold text-[#00629d] border border-[#cfe5ff]/50">
-                              Đã lên tàu
-                            </span>
-                          )}
-                          {!cancelled && !boarded && isMissed && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
-                              Trễ tàu (Không check-in)
-                            </span>
-                          )}
-                          {!cancelled && !boarded && !isMissed && (
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                              Còn hiệu lực
-                            </span>
-                          )}
-                          <span className="rounded-full bg-[#f7f9fb] px-2 py-0.5 text-[11px] font-bold text-[#3f4852]">
-                            {passengerTypeLabel(passenger.passengerType)}
-                          </span>
                         </div>
-                        <p className="mt-1 text-xs font-semibold text-[#6f7883]">
-                          {passenger.ticketCode || "Chưa có mã vé"} · Ghế{" "}
-                          {passenger.seat?.seatNumber || "--"} · Toa{" "}
-                          {passenger.seat?.carriage?.carriageNumber ||
-                            passenger.carriageNumber ||
-                            "--"}
-                        </p>
+                        <span className="shrink-0 text-sm font-extrabold text-[#191c1e]">
+                          {money(passengerAmount(passenger))}
+                        </span>
                       </div>
-                      <span className="shrink-0 text-sm font-extrabold text-[#191c1e]">
-                        {money(passengerAmount(passenger))}
-                      </span>
-                    </div>
 
-                    <div className="mt-3 grid gap-2 rounded-lg bg-[#f7f9fb] p-3 sm:grid-cols-3">
-                      <InfoItem
-                        label="SĐT chủ vé"
-                        value={display(passenger.phoneNumber)}
-                      />
-                      <InfoItem
-                        label="CCCD/Hộ chiếu"
-                        value={display(passenger.nationalId)}
-                      />
-                      <InfoItem
-                        label="Ngày sinh"
-                        value={dateOnly(passenger.dateOfBirth)}
-                      />
-                    </div>
-                  </label>
+                      <div className="mt-3 grid gap-2 rounded-lg bg-[#f7f9fb] p-3 sm:grid-cols-3">
+                        <InfoItem
+                          label="SĐT chủ vé"
+                          value={display(passenger.phoneNumber)}
+                        />
+                        <InfoItem
+                          label="CCCD/Hộ chiếu"
+                          value={display(passenger.nationalId)}
+                        />
+                        <InfoItem
+                          label="Ngày sinh"
+                          value={dateOnly(passenger.dateOfBirth)}
+                        />
+                      </div>
+                    </label>
+
+                    {/* Hành động tại quầy */}
+                    {!cancelled && (
+                      <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCorrectModal(passenger)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:border-[#00629d] hover:text-[#00629d] transition cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            edit
+                          </span>
+                          Đính chính thông tin
+                        </button>
+
+                        {passenger.passengerType === "STUDENT" && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenUpgradeModal(passenger)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#00629d]/25 bg-[#cfe5ff]/35 px-2.5 py-1 text-[11px] font-bold text-[#00629d] hover:bg-[#cfe5ff] transition cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">
+                              upgrade
+                            </span>
+                            Thu hồi ưu đãi (Sinh viên ➔ Người lớn)
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenInvalidateModal(passenger)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            block
+                          </span>
+                          Hủy vé vi phạm
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -568,6 +726,226 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
           </aside>
         </div>
       </div>
+
+      {/* Edit Info Modal */}
+      {editingPassenger && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800">
+                Đính chính thông tin
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingPassenger(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveCorrection} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Họ và tên
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.fullName}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, fullName: e.target.value })
+                  }
+                  className="mt-1 w-full rounded-xl border border-[#bec7d4]/60 px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Số CCCD/Hộ chiếu
+                </label>
+                <input
+                  type="text"
+                  value={editForm.nationalId}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, nationalId: e.target.value })
+                  }
+                  className="mt-1 w-full rounded-xl border border-[#bec7d4]/60 px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Ngày sinh
+                </label>
+                <input
+                  type="date"
+                  value={editForm.dateOfBirth}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, dateOfBirth: e.target.value })
+                  }
+                  className="mt-1 w-full rounded-xl border border-[#bec7d4]/60 px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
+                />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingPassenger(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="rounded-xl bg-[#00629d] px-4 py-2 text-sm font-bold text-white hover:bg-[#00527f] disabled:opacity-50"
+                >
+                  {actionLoading ? "Đang lưu..." : "Lưu thay đổi"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade Student to Adult Modal */}
+      {upgradingPassenger && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-800">
+                Thu hồi ưu đãi (Student ➔ Adult)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setUpgradingPassenger(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-4 text-sm">
+              <p className="text-slate-600 leading-relaxed">
+                Hành khách <strong>{upgradingPassenger.fullName}</strong> không
+                xuất trình được thẻ sinh viên hợp lệ. Hệ thống sẽ nâng cấp vé
+                sang loại Người lớn và thu thêm các khoản sau:
+              </p>
+
+              <div className="rounded-xl bg-slate-50 p-4 space-y-2 font-semibold text-slate-700">
+                <div className="flex justify-between">
+                  <span>Tiền ưu đãi thu hồi (10%):</span>
+                  <span>
+                    {money(
+                      activeDetails(upgradingPassenger)[0]?.discountAmount || 0,
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Phí phạt/Phí xử lý tại quầy:</span>
+                  <span>{money(50000)}</span>
+                </div>
+                <div className="border-t border-slate-200 my-2 pt-2 flex justify-between font-bold text-[#00629d]">
+                  <span>Tổng cộng thu thêm:</span>
+                  <span>
+                    {money(
+                      (activeDetails(upgradingPassenger)[0]?.discountAmount ||
+                        0) + 50000,
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Phương thức thanh toán
+                </label>
+                <select
+                  value={upgradePaymentMethod}
+                  onChange={(e) => setUpgradePaymentMethod(e.target.value)}
+                  className="w-full rounded-xl border border-[#bec7d4]/60 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
+                >
+                  <option value="CASH">Tiền mặt (CASH)</option>
+                  {!isGuestBooking && (
+                    <option value="WALLET">Ví của khách (WALLET)</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUpgradingPassenger(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmUpgrade}
+                  disabled={actionLoading}
+                  className="rounded-xl bg-[#00629d] px-4 py-2 text-sm font-bold text-white hover:bg-[#00527f] disabled:opacity-50"
+                >
+                  {actionLoading ? "Đang xử lý..." : "Xác nhận & Cấp vé mới"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invalidate Modal */}
+      {invalidatingPassenger && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-rose-700">
+                Hủy vé do vi phạm
+              </h3>
+              <button
+                type="button"
+                onClick={() => setInvalidatingPassenger(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Bạn đang thực hiện hủy và vô hiệu hóa vé của hành khách{" "}
+                <strong>{invalidatingPassenger.fullName}</strong>. Vé sẽ bị hủy
+                ngay lập tức và KHÔNG hoàn tiền.
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Lý do hủy vi phạm (bắt buộc)
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={invalidateReason}
+                  onChange={(e) => setInvalidateReason(e.target.value)}
+                  placeholder="Ví dụ: Giả mạo danh tính, sử dụng vé người khác..."
+                  className="mt-1 w-full resize-none rounded-xl border border-[#bec7d4]/60 px-3 py-2 text-sm font-semibold outline-none focus:border-[#00629d]"
+                />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setInvalidatingPassenger(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmInvalidate}
+                  disabled={actionLoading || !invalidateReason.trim()}
+                  className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {actionLoading ? "Đang hủy..." : "Xác nhận hủy vé"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
