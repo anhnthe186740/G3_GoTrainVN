@@ -80,7 +80,7 @@ export function getBookingPendingEmailTemplate(booking) {
     <tr style="border-bottom: 1px solid #f1f5f9;">
       <td style="padding: 12px 10px; font-size: 14px;">${i + 1}</td>
       <td style="padding: 12px 10px; font-size: 14px; font-weight: 600;">${p.fullName}</td>
-      <td style="padding: 12px 10px; font-size: 14px;">${p.passengerType === "CHILD" ? "Trẻ em" : p.passengerType === "STUDENT" ? "Sinh viên" : p.passengerType === "SENIOR" ? "Người cao tuổi" : "Người lớn"}</td>
+      <td style="padding: 12px 10px; font-size: 14px;">${p.passengerType === "CHILD_UNDER_6" ? "Trẻ em dưới 6 tuổi" : p.passengerType === "CHILD" ? "Trẻ em" : p.passengerType === "STUDENT" ? "Sinh viên" : p.passengerType === "SENIOR" ? "Người cao tuổi" : "Người lớn"}</td>
       <td style="padding: 12px 10px; font-size: 14px; text-align: center;">Toa ${p.carriageNumber || "—"}</td>
       <td style="padding: 12px 10px; font-size: 14px; text-align: center; font-weight: 600; color: #00629d;">Ghe ${p.seat?.seatNumber || "—"}</td>
     </tr>
@@ -182,7 +182,7 @@ export function getPaymentSuccessEmailTemplate(booking) {
       </div>
       <div style="font-size: 14px; line-height: 1.6;">
         <p style="margin: 4px 0;"><strong>Hành khách:</strong> ${p.fullName}</p>
-        <p style="margin: 4px 0;"><strong>Đối tượng:</strong> ${p.passengerType === "CHILD" ? "Trẻ em" : p.passengerType === "STUDENT" ? "Sinh viên" : p.passengerType === "SENIOR" ? "Người cao tuổi" : "Người lớn"}</p>
+        <p style="margin: 4px 0;"><strong>Đối tượng:</strong> ${p.passengerType === "CHILD_UNDER_6" ? "Trẻ em dưới 6 tuổi" : p.passengerType === "CHILD" ? "Trẻ em" : p.passengerType === "STUDENT" ? "Sinh viên" : p.passengerType === "SENIOR" ? "Người cao tuổi" : "Người lớn"}</p>
         <p style="margin: 4px 0;"><strong>Giấy tờ (CCCD/HC):</strong> ${p.nationalId || "N/A"}</p>
         <div style="display: inline-block; background-color: #e0f2fe; color: #0369a1; padding: 5px 12px; border-radius: 6px; font-weight: 700; margin-top: 8px; font-size: 13px;">
           Toa ${p.carriageNumber || "—"} | Ghế số ${p.seat?.seatNumber || "—"}
@@ -458,7 +458,12 @@ export function getRefundApprovedEmailTemplate(
 
       <p style="line-height: 1.6; font-size: 14px; margin-bottom: 25px; color: #475569;">
         Nếu hoàn qua Ví điện tử GoTrain, số dư đã được cộng trực tiếp vào ví của bạn. Nếu hoàn qua ngân hàng, giao dịch xử lý từ 1-3 ngày làm việc.
-=======
+      </p>
+    </div>
+  `;
+}
+
+/**
  * Template 7: Wallet Deposit Success (Nạp tiền vào ví thành công)
  */
 export function getWalletDepositEmailTemplate(fullName, amount, balance, txId) {
@@ -533,17 +538,12 @@ export function getCheckInEmailTemplate(
 
       <p style="line-height: 1.6; font-size: 14px; color: #475569;">
         Vui lòng tìm đúng toa và số ghế của mình. Hành lý cá nhân vui lòng sắp xếp gọn gàng ở khoang để đồ trên cao. Chúc quý khách có một chuyến đi an toàn và thoải mái cùng GoTrain VN!
->>>>>>> d40cb0a (feat(policy-routing): implement contact form modal, booking guide modal, update hotline to 0975230204, and add backend contact endpoint with resend email triggers)
       </p>
 
       <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
       
       <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
-<<<<<<< HEAD
         <p style="margin: 0 0 5px 0;">Email này được gửi tự động từ hệ thống GoTrain VN.</p>
-=======
-        <p style="margin: 0 0 5px 0;">Thư xác nhận từ GoTrain VN.</p>
->>>>>>> d40cb0a (feat(policy-routing): implement contact form modal, booking guide modal, update hotline to 0975230204, and add backend contact endpoint with resend email triggers)
         <p style="margin: 0;">&copy; ${new Date().getFullYear()} GoTrain VN. Mọi quyền được bảo lưu.</p>
       </div>
     </div>
@@ -627,7 +627,6 @@ export function getAccountLockedEmailTemplate(fullName, reason) {
     </div>
   `;
 }
-
 
 /**
  * Template 10: Account Unlocked (Mở khóa tài khoản)
@@ -778,4 +777,3 @@ export function getAdminContactFormNotificationEmailTemplate(
     </div>
   `;
 }
-
