@@ -147,6 +147,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       where: { bookingId: matchedBooking.id },
       include: {
         booking: bookingInclude,
+        bookingDetails: true,
         seat: seatInclude,
       },
       orderBy: { createdAt: "asc" },
@@ -190,6 +191,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       where: { bookingId: matchedBooking.id },
       include: {
         booking: bookingInclude,
+        bookingDetails: true,
         seat: seatInclude,
       },
       orderBy: { createdAt: "asc" },
@@ -241,6 +243,7 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       },
       include: {
         booking: bookingInclude,
+        bookingDetails: true,
         seat: seatInclude,
       },
       orderBy: { createdAt: "desc" },

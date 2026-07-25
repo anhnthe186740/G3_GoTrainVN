@@ -315,6 +315,11 @@ export function TicketLookup() {
   };
 
   const getTicketCategory = (ticket) => {
+    if (ticket?.bookingDetails && ticket.bookingDetails.length > 0) {
+      const allCancelled = ticket.bookingDetails.every((d) => d.status === "CANCELLED");
+      if (allCancelled) return "CANCELLED";
+    }
+
     const booking = ticket?.booking;
     const journeyState = getJourneyState(
       booking,
