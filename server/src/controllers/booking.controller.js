@@ -1109,6 +1109,8 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
           contactPhone: booking.contactPhone,
           contactName: booking.contactName,
           confirmationEmail: booking.confirmationEmail,
+          bookingType: booking.bookingType || "ONE_WAY",
+          totalPassengers: activePassengers.length,
           subtotal: newFare,
           discountAmount: 0,
           taxAmount: 0,
@@ -1127,6 +1129,7 @@ export const exchangeBooking = asyncHandler(async (req, res) => {
         data: {
           totalAmount: { decrement: oldFare },
           subtotal: { decrement: oldFare },
+          totalPassengers: { decrement: activePassengers.length },
         }
       });
     } else {
