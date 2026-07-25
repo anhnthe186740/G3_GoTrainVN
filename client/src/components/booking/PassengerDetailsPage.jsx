@@ -779,15 +779,26 @@ export function PassengerDetailsPage({
         const nextPassengers = Array.from({ length: count }, () => ({
           ...EMPTY_PASSENGER,
         }));
-        if (isAnyExchangeMode && exchangeBookingCode && searchParams.get("exchangePassengerIds")) {
-          api.get("/bookings/lookup", { params: { ticketCode: exchangeBookingCode } })
+        if (
+          isAnyExchangeMode &&
+          exchangeBookingCode &&
+          searchParams.get("exchangePassengerIds")
+        ) {
+          api
+            .get("/bookings/lookup", {
+              params: { ticketCode: exchangeBookingCode },
+            })
             .then(({ data }) => {
               const tickets = data.tickets || data.passengers;
               if (tickets) {
-                const idsToExchange = searchParams.get("exchangePassengerIds").split(",");
-                const oldPassengers = tickets.filter(p => idsToExchange.includes(p.id));
+                const idsToExchange = searchParams
+                  .get("exchangePassengerIds")
+                  .split(",");
+                const oldPassengers = tickets.filter((p) =>
+                  idsToExchange.includes(p.id),
+                );
                 if (oldPassengers.length > 0) {
-                  const prefills = oldPassengers.map(oldP => ({
+                  const prefills = oldPassengers.map((oldP) => ({
                     fullName: oldP.fullName || "",
                     nationalIdType: oldP.nationalIdType || "CCCD",
                     nationalId: oldP.nationalId || "",
@@ -797,7 +808,8 @@ export function PassengerDetailsPage({
                     passengerType: oldP.passengerType || "ADULT",
                     seatRequired: true,
                   }));
-                  while (prefills.length < count) prefills.push({ ...EMPTY_PASSENGER });
+                  while (prefills.length < count)
+                    prefills.push({ ...EMPTY_PASSENGER });
                   setPassengers(prefills.slice(0, count));
                 }
               }
