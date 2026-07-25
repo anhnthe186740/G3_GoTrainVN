@@ -33,6 +33,7 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
+import { calculateProfileCompleteness } from "../utils/profileUtils";
 
 export function Profile() {
   const { user, setAuth } = useAuth();
@@ -666,441 +667,593 @@ export function Profile() {
 
       {/* TAB 1: Profile Details & Membership Card */}
       {activeTab === "profile" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-left">
-          {/* LEFT COLUMN: Membership Card & Ranks */}
-          <div className="lg:col-span-5 flex flex-col gap-6">
-            {/* Glassmorphic Membership Card */}
-            <div
-              className={`bg-gradient-to-br ${membership.cardBg} rounded-3xl p-6 text-white shadow-xl relative overflow-hidden h-[220px] flex flex-col justify-between border border-white/10 group`}
-            >
-              <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-white/5 group-hover:scale-125 transition-transform duration-700 blur-xl" />
-              <div className="absolute left-10 -bottom-12 w-28 h-28 rounded-full bg-primary/10 group-hover:scale-150 transition-transform duration-700 blur-lg" />
-
-              <div className="flex justify-between items-start relative z-10 text-left">
-                <div className="text-left">
-                  <span className="text-[10px] uppercase tracking-widest text-white/60 font-bold block">
-                    {language === "vi"
-                      ? "Thẻ thành viên liên kết"
-                      : "Linked Membership Card"}
-                  </span>
-                  <span className="text-lg font-black tracking-wide">
-                    GOTRAIN VN
-                  </span>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider bg-gradient-to-r ${membership.badgeColor} uppercase shadow-sm border border-white/10 flex items-center gap-1`}
+        <div className="flex flex-col gap-6">
+          {/* Profile Completeness Card */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 rounded-3xl p-6 border border-amber-200/80 shadow-sm flex flex-col gap-4 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={`h-11 w-11 rounded-2xl flex items-center justify-center font-black text-base shadow-sm shrink-0 ${
+                    profileCompleteness.isComplete
+                      ? "bg-emerald-500 text-white"
+                      : "bg-amber-500 text-white"
+                  }`}
                 >
-                  <Sparkles className="h-3 w-3" />
-                  {membership.name}
-                </span>
-              </div>
-
-              <div className="text-left relative z-10 py-1">
-                <span className="text-[10px] uppercase text-white/50 block font-bold">
-                  {language === "vi"
-                    ? "Chủ thẻ / Passenger"
-                    : "Cardholder / Passenger"}
-                </span>
-                <span className="text-xl font-bold tracking-wide block truncate">
-                  {profileData.fullName || user?.name || "KHÁCH HÀNG"}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-end border-t border-white/10 pt-4 relative z-10">
-                <div className="text-left">
-                  <span className="text-[9px] uppercase tracking-widest text-white/50 block font-bold">
-                    {language === "vi" ? "Số dư ví ảo" : "Wallet Balance"}
-                  </span>
-                  <span className="text-lg font-black text-blue-300">
-                    {profileData.walletBalance.toLocaleString(
-                      language === "vi" ? "vi-VN" : "en-US",
-                    )}{" "}
-                    <span className="text-xs font-semibold">VND</span>
-                  </span>
+                  {profileCompleteness.percentage}%
                 </div>
-                <div className="text-right">
-                  <span className="text-[9px] uppercase tracking-widest text-white/50 block font-bold">
-                    {language === "vi" ? "Điểm tích lũy" : "Loyalty Points"}
-                  </span>
-                  <span className="text-xl font-black text-amber-300 flex items-center justify-end gap-1">
-                    <Award className="h-5 w-5 text-amber-300 shrink-0" />
-                    {loyaltyPoints}{" "}
-                    <span className="text-xs font-bold text-white/70">
-                      {language === "vi" ? "đt" : "pts"}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Points progress and benefits */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4 text-left">
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                  {language === "vi"
-                    ? "Tiến trình thăng hạng"
-                    : "Rank Progression"}
-                </span>
-                {membership.nextRankPoints > 0 ? (
-                  <>
-                    <div className="flex justify-between items-end mt-2">
-                      <span className="text-sm font-extrabold text-slate-700">
-                        {language === "vi"
-                          ? `Tích lũy ${loyaltyPoints} / ${membership.nextRankPoints} đt`
-                          : `Accumulated ${loyaltyPoints} / ${membership.nextRankPoints} pts`}
-                      </span>
-                      <span className="text-xs font-bold text-primary">
-                        {membership.percentageToNext}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5 border border-slate-50">
-                      <div
-                        className="bg-primary h-full rounded-full transition-all duration-1000"
-                        style={{ width: `${membership.percentageToNext}%` }}
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-semibold mt-2">
-                      {language === "vi"
-                        ? `Cần thêm ${membership.nextRankPoints - loyaltyPoints} điểm để nâng cấp hạng thành viên tiếp theo.`
-                        : `Need ${membership.nextRankPoints - loyaltyPoints} more points to reach the next tier.`}
-                    </p>
-                  </>
-                ) : (
-                  <div className="mt-2 text-sm font-extrabold text-indigo-600 flex items-center gap-1.5">
-                    <Award className="h-5 w-5 text-indigo-600" />
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-800 flex flex-wrap items-center gap-2 mb-0">
                     <span>
                       {language === "vi"
-                        ? "Chúc mừng! Bạn đã đạt hạng Kim Cương tối đa."
-                        : "Congratulations! You have reached maximum Diamond rank."}
+                        ? "Mức độ hoàn thiện hồ sơ"
+                        : "Profile Completeness"}
                     </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-slate-100 pt-4">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  {language === "vi"
-                    ? "Quyền lợi hạng của bạn:"
-                    : "Your Tier Benefits:"}
-                </span>
-                <div className="p-3.5 bg-blue-50/50 border border-blue-100/30 rounded-2xl flex items-start gap-2.5 text-slate-700 text-xs font-semibold">
-                  <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span>{membership.benefits}</span>
+                    {profileCompleteness.isComplete ? (
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {language === "vi" ? "Hoàn tất 100%" : "100% Completed"}
+                      </span>
+                    ) : (
+                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                        {language === "vi"
+                          ? `Chưa hoàn thiện (${profileCompleteness.missingCount} mục còn thiếu)`
+                          : `Incomplete (${profileCompleteness.missingCount} missing)`}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1 mb-0">
+                    {profileCompleteness.isComplete
+                      ? language === "vi"
+                        ? "Hồ sơ của bạn đã đầy đủ thông tin định danh mua vé."
+                        : "Your profile is fully completed."
+                      : language === "vi"
+                        ? "Bổ sung đầy đủ các thông tin bên dưới để tự động điền khi đặt vé và bảo đảm quyền lợi hoàn tiền."
+                        : "Complete all missing fields below for faster booking and smooth refund processing."}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Automatic Discount Classification Preview */}
-            {ageCategory && (
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-3xl p-6 border border-blue-100/50 flex flex-col gap-3 text-left">
-                <span className="text-xs font-extrabold text-primary uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="h-4.5 w-4.5 text-primary shrink-0" />
+            {/* Progress bar */}
+            <div className="w-full bg-slate-200/70 h-2.5 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-700 rounded-full ${
+                  profileCompleteness.isComplete
+                    ? "bg-emerald-500"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500"
+                }`}
+                style={{ width: `${profileCompleteness.percentage}%` }}
+              />
+            </div>
+
+            {/* Missing fields checklist badges */}
+            {!profileCompleteness.isComplete && (
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <span className="text-xs font-bold text-slate-600 shrink-0">
                   {language === "vi"
-                    ? "Phân Loại Đối Tượng Đường Sắt"
-                    : "Railway Passenger Classification"}
+                    ? "Thông tin cần bổ sung:"
+                    : "Required additions:"}
                 </span>
-                <div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-black text-slate-800">
-                      {ageCategory.name}
-                    </span>
-                    <span className="bg-primary/10 text-primary border border-primary/20 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
-                      {ageCategory.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium mt-1 mb-0 leading-relaxed">
-                    {language === "vi"
-                      ? `Chính sách giảm giá: ${ageCategory.discount}. Hệ thống sẽ tự động đối soát thông tin này dựa vào ngày sinh khi bán vé.`
-                      : `Discount policy: ${ageCategory.discount}. The system will verify this automatically based on DOB at booking.`}
-                  </p>
-                </div>
+                {profileCompleteness.missingFields.map((field) => (
+                  <span
+                    key={field.key}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-100/90 text-amber-950 border border-amber-300/80 shadow-2xs"
+                  >
+                    <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                    {field.label}
+                  </span>
+                ))}
               </div>
             )}
           </div>
 
-          {/* RIGHT COLUMN: Profile Edit Form */}
-          <div className="lg:col-span-7">
-            <form
-              onSubmit={handleSubmit}
-              className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 text-left flex flex-col gap-6"
-            >
-              <h2 className="text-lg font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2 mb-0">
-                <Shield className="h-5 w-5 text-primary shrink-0" />
-                {language === "vi"
-                  ? "Thông tin chi tiết hồ sơ"
-                  : "Profile Details"}
-              </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-left">
+            {/* LEFT COLUMN: Membership Card & Ranks */}
+            <div className="lg:col-span-5 flex flex-col gap-6">
+              {/* Glassmorphic Membership Card */}
+              <div
+                className={`bg-gradient-to-br ${membership.cardBg} rounded-3xl p-6 text-white shadow-xl relative overflow-hidden h-[220px] flex flex-col justify-between border border-white/10 group`}
+              >
+                <div className="absolute -right-10 -top-10 w-36 h-36 rounded-full bg-white/5 group-hover:scale-125 transition-transform duration-700 blur-xl" />
+                <div className="absolute left-10 -bottom-12 w-28 h-28 rounded-full bg-primary/10 group-hover:scale-150 transition-transform duration-700 blur-lg" />
 
-              {/* Email (Readonly) */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                  {language === "vi" ? "Địa chỉ Email" : "Email Address"}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    type="email"
-                    disabled
-                    value={profileData.email}
-                    className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 font-semibold outline-none cursor-not-allowed text-sm"
-                  />
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-                <span className="text-[10px] text-slate-400 font-semibold leading-relaxed">
-                  {language === "vi"
-                    ? "Email này dùng làm định danh đăng nhập và nhận vé tàu điện tử, không được phép thay đổi."
-                    : "This email is used as login ID and to receive e-tickets. It cannot be changed."}
-                </span>
-              </div>
-
-              {/* Họ tên & Số điện thoại */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi"
-                      ? "Họ và tên hành khách"
-                      : "Passenger Full Name"}
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <UserIcon className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input
-                      type="text"
-                      name="fullName"
-                      value={profileData.fullName}
-                      onChange={handleInputChange}
-                      placeholder={
-                        language === "vi"
-                          ? "Nhập họ và tên đầy đủ"
-                          : "Enter your full name"
-                      }
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi" ? "Số điện thoại" : "Phone Number"}
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <Phone className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input
-                      type="tel"
-                      name="phoneNumber"
-                      value={profileData.phoneNumber}
-                      onChange={handleInputChange}
-                      placeholder={
-                        language === "vi"
-                          ? "Nhập số điện thoại"
-                          : "Enter your phone number"
-                      }
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Ngày sinh & Giới tính */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi" ? "Ngày sinh" : "Date of Birth"}
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <Calendar className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <input
-                      type="date"
-                      name="dateOfBirth"
-                      value={profileData.dateOfBirth}
-                      onChange={handleInputChange}
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi" ? "Giới tính" : "Gender"}
-                  </label>
-                  <select
-                    name="gender"
-                    value={profileData.gender}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm cursor-pointer"
-                  >
-                    <option value="MALE">
-                      {language === "vi" ? "Nam (Male)" : "Male"}
-                    </option>
-                    <option value="FEMALE">
-                      {language === "vi" ? "Nữ (Female)" : "Female"}
-                    </option>
-                    <option value="OTHER">
-                      {language === "vi" ? "Khác (Other)" : "Other"}
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Loại giấy tờ & Số định danh */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi"
-                      ? "Loại giấy tờ cá nhân"
-                      : "Personal Identification Document"}
-                  </label>
-                  <select
-                    name="nationalIdType"
-                    value={profileData.nationalIdType}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm cursor-pointer"
-                  >
-                    <option value="CCCD">
+                <div className="flex justify-between items-start relative z-10 text-left">
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase tracking-widest text-white/60 font-bold block">
                       {language === "vi"
-                        ? "Căn cước công dân (CCCD)"
-                        : "Citizen ID (CCCD)"}
-                    </option>
-                    <option value="PASSPORT">
-                      {language === "vi" ? "Hộ chiếu (Passport)" : "Passport"}
-                    </option>
-                  </select>
+                        ? "Thẻ thành viên liên kết"
+                        : "Linked Membership Card"}
+                    </span>
+                    <span className="text-lg font-black tracking-wide">
+                      GOTRAIN VN
+                    </span>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider bg-gradient-to-r ${membership.badgeColor} uppercase shadow-sm border border-white/10 flex items-center gap-1`}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {membership.name}
+                  </span>
                 </div>
 
+                <div className="text-left relative z-10 py-1">
+                  <span className="text-[10px] uppercase text-white/50 block font-bold">
+                    {language === "vi"
+                      ? "Chủ thẻ / Passenger"
+                      : "Cardholder / Passenger"}
+                  </span>
+                  <span className="text-xl font-bold tracking-wide block truncate">
+                    {profileData.fullName || user?.name || "KHÁCH HÀNG"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-end border-t border-white/10 pt-4 relative z-10">
+                  <div className="text-left">
+                    <span className="text-[9px] uppercase tracking-widest text-white/50 block font-bold">
+                      {language === "vi" ? "Số dư ví ảo" : "Wallet Balance"}
+                    </span>
+                    <span className="text-lg font-black text-blue-300">
+                      {profileData.walletBalance.toLocaleString(
+                        language === "vi" ? "vi-VN" : "en-US",
+                      )}{" "}
+                      <span className="text-xs font-semibold">VND</span>
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase tracking-widest text-white/50 block font-bold">
+                      {language === "vi" ? "Điểm tích lũy" : "Loyalty Points"}
+                    </span>
+                    <span className="text-xl font-black text-amber-300 flex items-center justify-end gap-1">
+                      <Award className="h-5 w-5 text-amber-300 shrink-0" />
+                      {loyaltyPoints}{" "}
+                      <span className="text-xs font-bold text-white/70">
+                        {language === "vi" ? "đt" : "pts"}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Points progress and benefits */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4 text-left">
+                <div>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                    {language === "vi"
+                      ? "Tiến trình thăng hạng"
+                      : "Rank Progression"}
+                  </span>
+                  {membership.nextRankPoints > 0 ? (
+                    <>
+                      <div className="flex justify-between items-end mt-2">
+                        <span className="text-sm font-extrabold text-slate-700">
+                          {language === "vi"
+                            ? `Tích lũy ${loyaltyPoints} / ${membership.nextRankPoints} đt`
+                            : `Accumulated ${loyaltyPoints} / ${membership.nextRankPoints} pts`}
+                        </span>
+                        <span className="text-xs font-bold text-primary">
+                          {membership.percentageToNext}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-1.5 border border-slate-50">
+                        <div
+                          className="bg-primary h-full rounded-full transition-all duration-1000"
+                          style={{ width: `${membership.percentageToNext}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-semibold mt-2">
+                        {language === "vi"
+                          ? `Cần thêm ${membership.nextRankPoints - loyaltyPoints} điểm để nâng cấp hạng thành viên tiếp theo.`
+                          : `Need ${membership.nextRankPoints - loyaltyPoints} more points to reach the next tier.`}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-sm font-extrabold text-indigo-600 flex items-center gap-1.5">
+                      <Award className="h-5 w-5 text-indigo-600" />
+                      <span>
+                        {language === "vi"
+                          ? "Chúc mừng! Bạn đã đạt hạng Kim Cương tối đa."
+                          : "Congratulations! You have reached maximum Diamond rank."}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 pt-4">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    {language === "vi"
+                      ? "Quyền lợi hạng của bạn:"
+                      : "Your Tier Benefits:"}
+                  </span>
+                  <div className="p-3.5 bg-blue-50/50 border border-blue-100/30 rounded-2xl flex items-start gap-2.5 text-slate-700 text-xs font-semibold">
+                    <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <span>{membership.benefits}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Automatic Discount Classification Preview */}
+              {ageCategory && (
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-3xl p-6 border border-blue-100/50 flex flex-col gap-3 text-left">
+                  <span className="text-xs font-extrabold text-primary uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="h-4.5 w-4.5 text-primary shrink-0" />
+                    {language === "vi"
+                      ? "Phân Loại Đối Tượng Đường Sắt"
+                      : "Railway Passenger Classification"}
+                  </span>
+                  <div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-black text-slate-800">
+                        {ageCategory.name}
+                      </span>
+                      <span className="bg-primary/10 text-primary border border-primary/20 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase">
+                        {ageCategory.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-1 mb-0 leading-relaxed">
+                      {language === "vi"
+                        ? `Chính sách giảm giá: ${ageCategory.discount}. Hệ thống sẽ tự động đối soát thông tin này dựa vào ngày sinh khi bán vé.`
+                        : `Discount policy: ${ageCategory.discount}. The system will verify this automatically based on DOB at booking.`}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT COLUMN: Profile Edit Form */}
+            <div className="lg:col-span-7">
+              <form
+                onSubmit={handleSubmit}
+                className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 text-left flex flex-col gap-6"
+              >
+                <h2 className="text-lg font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2 mb-0">
+                  <Shield className="h-5 w-5 text-primary shrink-0" />
+                  {language === "vi"
+                    ? "Thông tin chi tiết hồ sơ"
+                    : "Profile Details"}
+                </h2>
+
+                {/* Email (Readonly) */}
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi"
-                      ? "Số định danh (CCCD/Passport)"
-                      : "Identification Number (CCCD/Passport)"}
+                    {language === "vi" ? "Địa chỉ Email" : "Email Address"}
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <Shield className="h-5 w-5 text-slate-400" />
+                      <Mail className="h-5 w-5 text-slate-400" />
+                    </div>
+                    <input
+                      type="email"
+                      disabled
+                      value={profileData.email}
+                      className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 font-semibold outline-none cursor-not-allowed text-sm"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none">
+                      <Lock className="h-4 w-4 text-slate-400" />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-semibold leading-relaxed">
+                    {language === "vi"
+                      ? "Email này dùng làm định danh đăng nhập và nhận vé tàu điện tử, không được phép thay đổi."
+                      : "This email is used as login ID and to receive e-tickets. It cannot be changed."}
+                  </span>
+                </div>
+
+                {/* Họ tên & Số điện thoại */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      {language === "vi"
+                        ? "Họ và tên hành khách"
+                        : "Passenger Full Name"}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <UserIcon className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="fullName"
+                        value={profileData.fullName}
+                        onChange={handleInputChange}
+                        placeholder={
+                          language === "vi"
+                            ? "Nhập họ và tên đầy đủ"
+                            : "Enter your full name"
+                        }
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      {language === "vi" ? "Số điện thoại" : "Phone Number"}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <Phone className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        type="tel"
+                        name="phoneNumber"
+                        value={profileData.phoneNumber}
+                        onChange={handleInputChange}
+                        placeholder={
+                          language === "vi"
+                            ? "Nhập số điện thoại"
+                            : "Enter your phone number"
+                        }
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ngày sinh & Giới tính */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                      <span>
+                        {language === "vi" ? "Ngày sinh" : "Date of Birth"}
+                      </span>
+                      {!profileData.dateOfBirth && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                          {language === "vi" ? "Cần bổ sung" : "Missing"}
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <Calendar className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        type="date"
+                        name="dateOfBirth"
+                        value={profileData.dateOfBirth}
+                        onChange={handleInputChange}
+                        className={`w-full pl-11 pr-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm cursor-pointer ${
+                          !profileData.dateOfBirth
+                            ? "bg-amber-50/40 border border-amber-300/90"
+                            : "bg-slate-50/50 border border-slate-200"
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      {language === "vi" ? "Giới tính" : "Gender"}
+                    </label>
+                    <select
+                      name="gender"
+                      value={profileData.gender}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm cursor-pointer"
+                    >
+                      <option value="MALE">
+                        {language === "vi" ? "Nam (Male)" : "Male"}
+                      </option>
+                      <option value="FEMALE">
+                        {language === "vi" ? "Nữ (Female)" : "Female"}
+                      </option>
+                      <option value="OTHER">
+                        {language === "vi" ? "Khác (Other)" : "Other"}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Loại giấy tờ & Số định danh */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      {language === "vi"
+                        ? "Loại giấy tờ cá nhân"
+                        : "Personal Identification Document"}
+                    </label>
+                    <select
+                      name="nationalIdType"
+                      value={profileData.nationalIdType}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm cursor-pointer"
+                    >
+                      <option value="CCCD">
+                        {language === "vi"
+                          ? "Căn cước công dân (CCCD)"
+                          : "Citizen ID (CCCD)"}
+                      </option>
+                      <option value="PASSPORT">
+                        {language === "vi" ? "Hộ chiếu (Passport)" : "Passport"}
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                      <span>
+                        {language === "vi"
+                          ? "Số định danh (CCCD/Passport)"
+                          : "Identification Number (CCCD/Passport)"}
+                      </span>
+                      {!profileData.nationalId && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                          {language === "vi" ? "Cần bổ sung" : "Missing"}
+                        </span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <Shield className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="nationalId"
+                        value={profileData.nationalId}
+                        onChange={handleInputChange}
+                        placeholder={
+                          language === "vi"
+                            ? "Nhập số CCCD hoặc Số Hộ chiếu"
+                            : "Enter Citizen ID or Passport Number"
+                        }
+                        className={`w-full pl-11 pr-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm ${
+                          !profileData.nationalId
+                            ? "bg-amber-50/40 border border-amber-300/90"
+                            : "bg-slate-50/50 border border-slate-200"
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Địa chỉ liên hệ */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                    <span>
+                      {language === "vi"
+                        ? "Địa chỉ liên hệ"
+                        : "Contact Address"}
+                    </span>
+                    {!profileData.address && (
+                      <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                        {language === "vi" ? "Cần bổ sung" : "Missing"}
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <MapPin className="h-5 w-5 text-slate-400" />
                     </div>
                     <input
                       type="text"
-                      name="nationalId"
-                      value={profileData.nationalId}
+                      name="address"
+                      value={profileData.address}
                       onChange={handleInputChange}
                       placeholder={
                         language === "vi"
-                          ? "Nhập số CCCD hoặc Số Hộ chiếu"
-                          : "Enter Citizen ID or Passport Number"
+                          ? "Nhập số nhà, tên đường, phường/xã, quận/huyện, tỉnh/TP"
+                          : "Enter house number, street, ward, district, province/city"
                       }
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
+                      className={`w-full pl-11 pr-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm ${
+                        !profileData.address
+                          ? "bg-amber-50/40 border border-amber-300/90"
+                          : "bg-slate-50/50 border border-slate-200"
+                      }`}
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Địa chỉ liên hệ */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                  {language === "vi" ? "Địa chỉ liên hệ" : "Contact Address"}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <MapPin className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    type="text"
-                    name="address"
-                    value={profileData.address}
-                    onChange={handleInputChange}
-                    placeholder={
-                      language === "vi"
-                        ? "Nhập số nhà, tên đường, phường/xã, quận/huyện, tỉnh/TP"
-                        : "Enter house number, street, ward, district, province/city"
-                    }
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold transition-all text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Thông tin Ngân hàng */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi" ? "Tên ngân hàng" : "Bank Name"}
-                  </label>
-                  <input
-                    type="text"
-                    name="bankName"
-                    value={profileData.bankName}
-                    onChange={handleInputChange}
-                    placeholder={
-                      language === "vi" ? "VD: Vietcombank" : "e.g. Vietcombank"
-                    }
-                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi" ? "Số tài khoản" : "Account Number"}
-                  </label>
-                  <input
-                    type="text"
-                    name="bankAccount"
-                    value={profileData.bankAccount}
-                    onChange={handleInputChange}
-                    placeholder={
-                      language === "vi" ? "VD: 1012345678" : "e.g. 1012345678"
-                    }
-                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    {language === "vi"
-                      ? "Tên chủ tài khoản"
-                      : "Account Owner Name"}
-                  </label>
-                  <input
-                    type="text"
-                    name="accountHolder"
-                    value={profileData.accountHolder}
-                    onChange={handleInputChange}
-                    placeholder={
-                      language === "vi"
-                        ? "VD: NGUYEN VAN A"
-                        : "e.g. NGUYEN VAN A"
-                    }
-                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm uppercase"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Actions */}
-              <div className="flex justify-end gap-3 mt-2 border-t border-slate-100 pt-6">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-primary hover:bg-primary/95 text-white font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-primary/10 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:pointer-events-none text-sm border-none"
-                >
-                  {saving ? (
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Save className="h-4.5 w-4.5 text-white" />
+                {/* Thông tin Ngân hàng */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
                       <span>
-                        {language === "vi" ? "Lưu thay đổi" : "Save Changes"}
+                        {language === "vi" ? "Tên ngân hàng" : "Bank Name"}
                       </span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+                      {!profileData.bankName && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                          {language === "vi" ? "Khuyên dùng" : "Recommended"}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      name="bankName"
+                      value={profileData.bankName}
+                      onChange={handleInputChange}
+                      placeholder={
+                        language === "vi"
+                          ? "VD: Vietcombank"
+                          : "e.g. Vietcombank"
+                      }
+                      className={`w-full px-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm ${
+                        !profileData.bankName
+                          ? "bg-amber-50/30 border border-amber-200"
+                          : "bg-slate-50/50 border border-slate-200"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                      <span>
+                        {language === "vi" ? "Số tài khoản" : "Account Number"}
+                      </span>
+                      {!profileData.bankAccount && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                          {language === "vi" ? "Khuyên dùng" : "Recommended"}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      name="bankAccount"
+                      value={profileData.bankAccount}
+                      onChange={handleInputChange}
+                      placeholder={
+                        language === "vi" ? "VD: 1012345678" : "e.g. 1012345678"
+                      }
+                      className={`w-full px-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm ${
+                        !profileData.bankAccount
+                          ? "bg-amber-50/30 border border-amber-200"
+                          : "bg-slate-50/50 border border-slate-200"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                      <span>
+                        {language === "vi"
+                          ? "Tên chủ tài khoản"
+                          : "Account Owner Name"}
+                      </span>
+                      {!profileData.accountHolder && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded font-extrabold normal-case">
+                          {language === "vi" ? "Khuyên dùng" : "Recommended"}
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      name="accountHolder"
+                      value={profileData.accountHolder}
+                      onChange={handleInputChange}
+                      placeholder={
+                        language === "vi"
+                          ? "VD: NGUYEN VAN A"
+                          : "e.g. NGUYEN VAN A"
+                      }
+                      className={`w-full px-4 py-3 focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none rounded-2xl text-slate-800 font-bold text-sm uppercase ${
+                        !profileData.accountHolder
+                          ? "bg-amber-50/30 border border-amber-200"
+                          : "bg-slate-50/50 border border-slate-200"
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Submit Actions */}
+                <div className="flex justify-end gap-3 mt-2 border-t border-slate-100 pt-6">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="bg-primary hover:bg-primary/95 text-white font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-primary/10 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:pointer-events-none text-sm border-none"
+                  >
+                    {saving ? (
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="h-4.5 w-4.5 text-white" />
+                        <span>
+                          {language === "vi" ? "Lưu thay đổi" : "Save Changes"}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

@@ -7,6 +7,35 @@ import {
   getAdminContactFormNotificationEmailTemplate,
 } from "../utils/emailTemplates.js";
 
+function calculateBackendCompleteness(u) {
+  if (!u) return { percentage: 0, isComplete: false, missingFields: [] };
+  const fields = [
+    { key: "fullName", filled: Boolean(u.fullName), weight: 15 },
+    { key: "phoneNumber", filled: Boolean(u.phoneNumber), weight: 15 },
+    { key: "nationalId", filled: Boolean(u.nationalId), weight: 20 },
+    { key: "dateOfBirth", filled: Boolean(u.dateOfBirth), weight: 15 },
+    { key: "gender", filled: Boolean(u.gender), weight: 10 },
+    { key: "address", filled: Boolean(u.address), weight: 15 },
+    {
+      key: "bankInfo",
+      filled: Boolean(u.bankAccount && u.bankName),
+      weight: 10,
+    },
+  ];
+
+  const percentage = Math.min(
+    100,
+    fields.reduce((acc, f) => acc + (f.filled ? f.weight : 0), 0),
+  );
+  const missingFields = fields.filter((f) => !f.filled).map((f) => f.key);
+
+  return {
+    percentage,
+    isComplete: percentage === 100,
+    missingFields,
+  };
+}
+
 export const profile = asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
@@ -30,7 +59,10 @@ export const profile = asyncHandler(async (req, res) => {
       accountHolder: true,
     },
   });
-  res.json({ user });
+  res.json({
+    user,
+    completeness: calculateBackendCompleteness(user),
+  });
 });
 
 export const updateProfile = asyncHandler(async (req, res) => {

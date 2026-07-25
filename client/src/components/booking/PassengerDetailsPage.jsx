@@ -42,6 +42,7 @@ import {
 import { useAuthStore } from "../../store/authStore";
 import { StaffTicketPrintPanel } from "../dashboard/StaffTicketPrintPanel";
 import { BookingConstraintsCard } from "./BookingConstraintsCard";
+import { calculateProfileCompleteness } from "../../utils/profileUtils";
 
 // Fallback dùng khi API /pricing/ticket-types/public không khả dụng.
 // Phản ánh cùng giá trị mặc định như DEFAULT_TICKET_TYPES trong pricing.service.js.
@@ -1603,6 +1604,43 @@ export function PassengerDetailsPage({
           </div>
         </div>
       </header>
+
+      {user &&
+        customerProfile &&
+        (!user.role || user.role === "CUSTOMER") &&
+        (() => {
+          const completeness = calculateProfileCompleteness(customerProfile);
+          if (completeness.isComplete) return null;
+          return (
+            <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-slate-800 shadow-xs">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-xs font-bold text-amber-950">
+                    Hồ sơ cá nhân chưa hoàn thiện ({completeness.percentage}%)
+                  </p>
+                  <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                    Thông tin hành khách bên dưới đã tự điền từ hồ sơ. Bạn có
+                    thể bổ sung thông tin thiếu ở đây hoặc{" "}
+                    <Link
+                      to="/profile"
+                      className="font-bold underline text-amber-950 hover:text-amber-700"
+                    >
+                      cập nhật hồ sơ cá nhân
+                    </Link>{" "}
+                    để hệ thống tự điền đầy đủ cho các chuyến đi sau.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/profile"
+                className="shrink-0 rounded-xl bg-amber-600 hover:bg-amber-700 px-3.5 py-1.5 text-xs font-bold text-white transition shadow-2xs"
+              >
+                Cập nhật hồ sơ
+              </Link>
+            </div>
+          );
+        })()}
 
       {!embedded && !user && (
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

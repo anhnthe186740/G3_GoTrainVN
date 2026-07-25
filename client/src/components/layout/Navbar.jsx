@@ -1,13 +1,16 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Train, LogOut, User, Wallet } from "lucide-react";
+import { Train, LogOut, User, Wallet, AlertCircle } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { toast } from "sonner";
 import { useLanguage } from "../../context/LanguageContext";
+import { calculateProfileCompleteness } from "../../utils/profileUtils";
 
 export function Navbar() {
   const { user, clearAuth } = useAuth();
   const navigate = useNavigate();
   const { language, changeLanguage, t } = useLanguage();
+
+  const completeness = calculateProfileCompleteness(user, language);
 
   const loyaltyPoints = user?.loyaltyPoints || 0;
   const membershipRank = (() => {
@@ -135,13 +138,31 @@ export function Navbar() {
               <Link
                 to="/profile"
                 className="flex items-center gap-2 cursor-pointer group shrink-0"
+                title={
+                  !completeness.isComplete
+                    ? language === "vi"
+                      ? `Hồ sơ chưa hoàn thiện (${completeness.percentage}%)`
+                      : `Profile incomplete (${completeness.percentage}%)`
+                    : ""
+                }
               >
-                <div className="w-9 h-9 rounded-full bg-cyan-50 border-2 border-primary/20 overflow-hidden flex items-center justify-center shrink-0">
+                <div className="relative w-9 h-9 rounded-full bg-cyan-50 border-2 border-primary/20 flex items-center justify-center shrink-0">
                   <User className="h-4 w-4 text-primary" />
+                  {(!user.role || user.role === "CUSTOMER") &&
+                    !completeness.isComplete && (
+                      <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
+                      </span>
+                    )}
                 </div>
                 <div className="hidden sm:flex flex-col text-left">
-                  <span className="font-semibold text-xs text-slate-800 group-hover:text-primary transition-colors max-w-[130px] truncate">
+                  <span className="font-semibold text-xs text-slate-800 group-hover:text-primary transition-colors max-w-[130px] truncate flex items-center gap-1">
                     {user.fullName || user.name || t("guest")}
+                    {(!user.role || user.role === "CUSTOMER") &&
+                      !completeness.isComplete && (
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      )}
                   </span>
                   <span className="text-[10px] text-primary uppercase font-bold tracking-tighter">
                     {membershipRank}
