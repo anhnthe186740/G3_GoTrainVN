@@ -13,10 +13,8 @@ export function FilterPanel({
   onReset,
 }) {
   const trainTypes = [
-    { label: "Tàu nhanh (SE)", value: "SE" },
-    { label: "Tàu thường (TN)", value: "TN" },
-    { label: "Tàu du lịch (SP)", value: "SP" },
-    { label: "Tàu địa phương (QN)", value: "QN" },
+    { label: "Tàu Thống Nhất Tốc Hành (SE)", value: "SE" },
+    { label: "Tàu Thường Thống Nhất (TN)", value: "TN" },
   ];
   const timeSlots = [
     { label: "00:00 - 06:00", value: "00-06" },

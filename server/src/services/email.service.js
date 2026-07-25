@@ -1,7 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import nodemailer from "nodemailer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,38 +9,7 @@ const __dirname = path.dirname(__filename);
 const emailsFilePath = path.join(__dirname, "../../../sent_emails.json");
 
 export async function sendEmail({ to, subject, html }) {
-  // Option 1: Send via SMTP (Nodemailer) if SMTP_USER is configured
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: parseInt(process.env.SMTP_PORT || "587"),
-        secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-
-      const senderName = process.env.EMAIL_FROM_NAME || "GoTrain VN";
-      const info = await transporter.sendMail({
-        from: `"${senderName}" <${process.env.SMTP_USER}>`,
-        to,
-        subject,
-        html,
-      });
-
-      console.log(
-        `✉️  [SMTP EMAIL SENT] MessageID: ${info.messageId} | To: ${to} | Subject: ${subject}`,
-      );
-      return { success: true, emailId: info.messageId };
-    } catch (err) {
-      console.error("❌ Gửi email qua SMTP thất bại:", err.message);
-      console.log("⚠️  Đang tự động chuyển sang kiểm tra cấu hình Resend...");
-    }
-  }
-
-  // Option 2: Send via Resend API
+  // Option 1: Send via Resend API
   if (process.env.RESEND_API_KEY) {
     try {
       const fromEmail =
@@ -62,21 +30,32 @@ export async function sendEmail({ to, subject, html }) {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
+        throw new Error(
+          data.message || `Resend API Error (HTTP ${response.status})`,
+        );
       }
 
       console.log(
         `✉️  [RESEND EMAIL SENT] ID: ${data.id} | To: ${to} | Subject: ${subject}`,
       );
-      return { success: true, emailId: data.id };
+      return { success: true, provider: "RESEND", emailId: data.id };
     } catch (err) {
-      console.error("❌ Gửi email qua Resend thất bại:", err.message);
+      console.error("❌ Gửi email qua Resend API thất bại:", err.message);
+      if (
+        err.message.includes("validation_error") ||
+        err.message.includes("can only send to your own email")
+      ) {
+        console.warn(
+          "💡 Ghi chú Resend Free Tier: Tài khoản Resend thử nghiệm (onboarding@resend.dev) chỉ cho phép gửi tới Email đăng ký tài khoản Resend.",
+        );
+      }
       console.log(
         "⚠️  Đang tự động chuyển sang lưu email giả lập (sent_emails.json)...",
       );
     }
   }
 
+  // Option 3: Priority 3 - Mock Email Fallback
   const timestamp = new Date().toISOString();
   const emailRecord = {
     id: `email-${Math.random().toString(36).substr(2, 9)}`,
@@ -124,5 +103,5 @@ export async function sendEmail({ to, subject, html }) {
     console.error("❌ Không thể ghi vào file sent_emails.json:", err.message);
   }
 
-  return { success: true, emailId: emailRecord.id };
+  return { success: true, provider: "MOCK", emailId: emailRecord.id };
 }

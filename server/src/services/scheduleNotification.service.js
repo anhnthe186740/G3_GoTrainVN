@@ -16,6 +16,10 @@ export async function notifyScheduleChange(
   type,
   details,
 ) {
+  if (type !== "DELAYED" && type !== "CANCELLED") {
+    console.error(`[Notification] Loại thông báo không hợp lệ: ${type}`);
+    return;
+  }
   try {
     let bookings = [];
     if (Array.isArray(scheduleIdOrBookings)) {
@@ -99,8 +103,14 @@ export async function notifyScheduleChange(
           );
         })
         .catch((err) => {
-          console.error(`[Notification] Lỗi khi gửi email tới ${email}:`, err);
+          console.error(
+            `[Notification] Lỗi khi gửi email tới ${email}:`,
+            err.message || err,
+          );
         });
+
+      // Tránh vi phạm rate limit khi gửi mail hàng loạt
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
   } catch (error) {
     console.error(

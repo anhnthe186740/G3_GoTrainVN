@@ -1,5 +1,6 @@
 import { prisma } from "../config/database.js";
 import { calculateFare, getConfiguration } from "./pricing.service.js";
+import { getTrainTypePriceFactor } from "../config/trainTypes.js";
 import { resolveJourneySegment } from "../utils/journey.js";
 
 export const HOLD_DURATION_MS = 10 * 60 * 1000;
@@ -213,12 +214,15 @@ async function pricingByCarriage(schedule, segment) {
     at: segment.departureTime.toISOString(),
   });
 
+  const priceFactor = getTrainTypePriceFactor(schedule.train.trainType);
+
   return new Map(
     configuration.effectiveRules
       .filter((rule) => rule.passengerType === "ADULT")
       .map((rule) => [
         rule.carriageType,
-        calculateFare(rule, segment.distance, rule.taxPercentage).finalPrice,
+        calculateFare(rule, segment.distance, rule.taxPercentage, priceFactor)
+          .finalPrice,
       ]),
   );
 }
@@ -424,6 +428,19 @@ async function findConflictSeatIds(requests, now) {
 }
 
 export async function confirmSeatSelection(identity, payload) {
+  if (identity.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: identity.userId },
+      select: { isActive: true, lockReason: true },
+    });
+    if (user && user.isActive === false) {
+      throw httpError(
+        403,
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Vi phạm điều khoản dịch vụ"}. Bạn không thể thực hiện đặt vé.`,
+      );
+    }
+  }
+
   const { outbound, inbound } = normalizeSelectionPayload(payload);
   const now = new Date();
   await cleanupExpiredHolds(now);

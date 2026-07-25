@@ -13,7 +13,30 @@ export const deposit = asyncHandler(async (req, res) => {
     Number(amount),
     description,
   );
-  res.json({ message: "Nạp tiền thành công", ...result });
+  res.json({ message: "Tạo link nạp tiền thành công", ...result });
+});
+
+export const getDepositStatus = asyncHandler(async (req, res) => {
+  const { transactionId } = req.params;
+  const transaction = await walletService.getDepositStatus(
+    req.user.id,
+    transactionId,
+  );
+  res.json({ transaction });
+});
+
+export const getPendingDeposit = asyncHandler(async (req, res) => {
+  const transaction = await walletService.getPendingDeposit(req.user.id);
+  res.json({ transaction });
+});
+
+export const cancelDeposit = asyncHandler(async (req, res) => {
+  const { transactionId } = req.params;
+  const transaction = await walletService.cancelDeposit(
+    req.user.id,
+    transactionId,
+  );
+  res.json({ message: "Đã hủy yêu cầu nạp tiền", transaction });
 });
 
 export const withdraw = asyncHandler(async (req, res) => {

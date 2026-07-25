@@ -4,6 +4,7 @@ import {
   profile,
   searchCustomerForStaff,
   updateProfile,
+  submitContactForm,
 } from "../controllers/user.controller.js";
 import {
   getAdminUsers,
@@ -25,6 +26,7 @@ function adminOnly(req, res, next) {
   next();
 }
 
+userRoutes.post("/contact", submitContactForm);
 userRoutes.get("/profile", authMiddleware, profile);
 userRoutes.put("/profile", authMiddleware, updateProfile);
 userRoutes.get(

@@ -14,10 +14,36 @@ import { seatSelectionRoutes } from "./routes/seatSelection.routes.js";
 import { promotionRoutes } from "./routes/promotion.routes.js";
 import { staffRoutes } from "./routes/staff.routes.js";
 import { maintenanceRoutes } from "./routes/maintenance.routes.js";
+import { blogRoutes } from "./routes/blog.routes.js";
+
+import chatbotRoutes from "./routes/chatbot.routes.js";
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((url) => url.trim())
+  : [];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Cho phép các request không có origin (như Postman, curl, thiết bị di động)
+      if (!origin) return callback(null, true);
+
+      // Kiểm tra xem origin có nằm trong danh sách được phép, là localhost hoặc thuộc tên miền gotrainvn.io.vn
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith("gotrainvn.io.vn") ||
+        origin.startsWith("http://localhost:")
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(cookieParser());
 app.use(logger);
@@ -33,6 +59,10 @@ app.use("/api/v1/pricing", pricingRoutes);
 app.use("/api/v1", seatSelectionRoutes);
 app.use("/api/v1/promotions", promotionRoutes);
 app.use("/api/v1/maintenance", maintenanceRoutes);
+
+app.use("/api/v1/blogs", blogRoutes);
+
+app.use("/api/v1/chatbot", chatbotRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

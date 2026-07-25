@@ -24,6 +24,7 @@ import {
   createSeatSocket,
   seatSelectionApi,
 } from "../../services/seatSelectionApi";
+import { useAuthStore } from "../../store/authStore";
 import "./seatBlueprint.css";
 
 const STATE_META = {
@@ -906,8 +907,18 @@ export function SeatSelectionPage({
   onBack,
   onSessionReady,
 }) {
+  const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && user.isActive === false) {
+      toast.error(
+        `Tài khoản của bạn đã bị khóa. Lý do: ${user.lockReason || "Không xác định"}. Bạn không thể thực hiện đặt vé.`,
+      );
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
   const outboundScheduleId =
     journeyOverride?.outbound?.scheduleId ||
     searchParams.get("outboundScheduleId");

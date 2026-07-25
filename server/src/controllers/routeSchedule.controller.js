@@ -5,6 +5,10 @@ import { searchJourneys } from "../services/scheduleSearch.service.js";
 import { notifyScheduleChange } from "../services/scheduleNotification.service.js";
 import { emitLiveTrackingUpdate } from "../realtime/seatRealtime.js";
 import {
+  getTrainTypeSpeedFactor,
+  getTrainTypePriceFactor,
+} from "../config/trainTypes.js";
+import {
   buildCarriageConfigs,
   createTrainInventory,
 } from "../utils/trainInventory.js";
@@ -455,6 +459,7 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     select: {
       id: true,
       trainCode: true,
+      trainType: true,
       status: true,
       carriages: {
         select: {
@@ -509,6 +514,7 @@ export const generateSchedules = asyncHandler(async (req, res) => {
     });
   }
 
+  const speedFactor = getTrainTypeSpeedFactor(train.trainType);
   const bufferMins = parseInt(bufferMinutes) || 60;
   const totalStopDurationMins = (route.stations || []).reduce(
     (sum, stop) => sum + (stop.stopDurationMinutes ?? 3),
@@ -1252,9 +1258,9 @@ export const createRouteTemplate = asyncHandler(async (req, res) => {
           for (const occTime of activeTpl.departureTimes) {
             const diff = getMinutesDifference(propTime, occTime);
             if (diff < 20) {
-              const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+              const safeTime = findNextSafeTime(propTime, occupiedTimes, 30);
               return res.status(400).json({
-                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
+                message: `Thời gian khởi hành ${propTime} quá gần với giờ chạy ${occTime} của tàu ${activeTpl.train?.trainCode || "khác"} trên cùng tuyến (giãn cách tối thiểu 20 phút, khuyến nghị khoảng đệm 30 - 60 phút dự phòng khi trễ). Gợi ý giờ chạy an toàn tiếp theo: ${safeTime}`,
               });
             }
           }
@@ -2064,6 +2070,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           startStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -2073,6 +2080,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           endStation: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -2086,6 +2094,7 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
           station: {
             select: {
               id: true,
+              stationCode: true,
               stationName: true,
               latitude: true,
               longitude: true,
@@ -2149,15 +2158,15 @@ export const getActiveSchedulesTracking = asyncHandler(async (req, res) => {
         trainId: s.trainId,
         speed: 55.0,
         temperature: 24.5,
-        passengerCount: realCount || 50,
+        passengerCount: realCount,
         latitude: defaultLat,
         longitude: defaultLong,
         currentStation: defaultStation,
         status: s.status === "DELAYED" ? "DELAYED" : "ON_TIME",
         lastUpdated: new Date(),
       };
-    } else if (!tr.passengerCount) {
-      tr.passengerCount = realCount || 50;
+    } else {
+      tr.passengerCount = realCount;
     }
 
     return {
@@ -2223,6 +2232,7 @@ export const createSchedule = asyncHandler(async (req, res) => {
     select: {
       id: true,
       trainCode: true,
+      trainType: true,
       carriages: {
         select: {
           id: true,
@@ -2261,6 +2271,7 @@ export const createSchedule = asyncHandler(async (req, res) => {
   }
 
   // --- Tính arrivalTime từ route.estimatedDuration + bufferMinutes ---
+  const speedFactor = getTrainTypeSpeedFactor(train.trainType);
   const bufferMins = parseInt(bufferMinutes) || 60;
   const totalStopDurationMins = (route.stations || []).reduce(
     (sum, stop) => sum + (stop.stopDurationMinutes ?? 3),

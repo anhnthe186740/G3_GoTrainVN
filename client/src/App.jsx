@@ -14,10 +14,13 @@ import { Profile } from "./pages/Profile";
 import { TicketLookup } from "./pages/TicketLookup";
 import { TicketExchange } from "./pages/TicketExchange";
 import { Promotions } from "./pages/Promotions";
+import { Regulations } from "./pages/Regulations";
 import { NotFound } from "./pages/NotFound";
 import { CustomerBooking } from "./components/booking/CustomerBooking";
 import { SeatSelectionPage } from "./components/booking/SeatSelectionPage";
 import { PassengerDetailsPage } from "./components/booking/PassengerDetailsPage";
+import { PrivacyPolicy } from "./pages/PrivacyPolicy";
+import { TermsOfService } from "./pages/TermsOfService";
 import { useAuthStore } from "./store/authStore";
 import { api } from "./services/api";
 
@@ -39,10 +42,22 @@ export default function App() {
         setAuth({
           user: {
             id: u.id,
+            fullName: u.fullName,
             name: u.fullName,
             email: u.email,
+            phoneNumber: u.phoneNumber,
+            nationalId: u.nationalId,
+            nationalIdType: u.nationalIdType,
+            address: u.address,
+            dateOfBirth: u.dateOfBirth,
+            gender: u.gender,
+            bankName: u.bankName,
+            bankAccount: u.bankAccount,
+            accountHolder: u.accountHolder,
             role: u.userType,
             loyaltyPoints: u.loyaltyPoints || 0,
+            isActive: u.isActive,
+            lockReason: u.lockReason,
           },
           token: "session",
         });
@@ -98,6 +113,10 @@ export default function App() {
         <Route path="tra-cuu-ve" element={<TicketLookup />} />
         <Route path="doi-ve" element={<TicketExchange />} />
         <Route path="promotions" element={<Promotions />} />
+
+        <Route path="quy-dinh" element={<Regulations />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
+        <Route path="terms" element={<TermsOfService />} />
 
         <Route
           path="dashboard"

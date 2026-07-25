@@ -334,7 +334,14 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                 const status = passengerStatus(passenger, booking);
                 const cancelled = status === "CANCELLED";
                 const boarded = !!passenger.boardingAt;
-                const locked = cancelled || boarded;
+                const departureTime = schedule?.departureTime
+                  ? new Date(schedule.departureTime)
+                  : null;
+                const isMissed =
+                  !boarded &&
+                  departureTime &&
+                  departureTime.getTime() < Date.now();
+                const locked = cancelled || boarded || isMissed;
                 const selected = selectedPassengerIds.includes(passenger.id);
                 return (
                   <label
@@ -358,18 +365,24 @@ export function StaffTicketDetailModal({ booking, onClose, onCancelled }) {
                           <p className="font-extrabold text-[#191c1e]">
                             {passenger.fullName}
                           </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                              cancelled
-                                ? "bg-rose-50 text-rose-700"
-                                : "bg-emerald-50 text-emerald-700"
-                            }`}
-                          >
-                            {cancelled ? "Đã hủy" : "Còn hiệu lực"}
-                          </span>
-                          {boarded && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                          {cancelled && (
+                            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+                              Đã hủy
+                            </span>
+                          )}
+                          {!cancelled && boarded && (
+                            <span className="rounded-full bg-[#cfe5ff] px-2 py-0.5 text-[11px] font-bold text-[#00629d] border border-[#cfe5ff]/50">
                               Đã lên tàu
+                            </span>
+                          )}
+                          {!cancelled && !boarded && isMissed && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                              Trễ tàu (Không check-in)
+                            </span>
+                          )}
+                          {!cancelled && !boarded && !isMissed && (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                              Còn hiệu lực
                             </span>
                           )}
                           <span className="rounded-full bg-[#f7f9fb] px-2 py-0.5 text-[11px] font-bold text-[#3f4852]">

@@ -60,11 +60,11 @@ export async function validateVoucher(voucherCode, subtotal, userId = null) {
     throw httpError(400, "Mã giảm giá hiện đang bị vô hiệu hóa.");
   }
 
-  if (voucher.validFrom > now) {
+  if (voucher.validFrom && voucher.validFrom > now) {
     throw httpError(400, "Mã giảm giá chưa đến thời gian áp dụng.");
   }
 
-  if (voucher.validTo < now) {
+  if (voucher.validTo && voucher.validTo < now) {
     throw httpError(400, "Mã giảm giá đã hết hạn sử dụng.");
   }
 
@@ -303,6 +303,12 @@ export async function getAdminVouchers({
  * Admin: Create Voucher
  */
 export async function createVoucher(data, adminContext) {
+  if (!data.validFrom || !data.validTo) {
+    throw httpError(
+      400,
+      "Thời gian bắt đầu và kết thúc áp dụng voucher là bắt buộc.",
+    );
+  }
   const existing = await prisma.voucher.findUnique({
     where: { voucherCode: data.voucherCode.trim().toUpperCase() },
   });
@@ -444,6 +450,12 @@ export async function deleteVoucher(id, adminContext) {
  * Admin: Create Promotion
  */
 export async function createPromotion(data, adminContext) {
+  if (!data.title || !String(data.title).trim()) {
+    throw httpError(
+      400,
+      "Tiêu đề chương trình khuyến mãi không được để trống.",
+    );
+  }
   const promotion = await prisma.promotion.create({
     data: {
       title: data.title.trim(),

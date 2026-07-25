@@ -93,10 +93,25 @@ const STATUS_BADGE_CLASS = {
   "Hủy bỏ": "bg-error/10 text-error border-error/20",
 };
 
-const TripPreview = ({ selectedRoute, departureTimes, bufferMinutes }) => {
+const TripPreview = ({
+  selectedRoute,
+  departureTimes,
+  bufferMinutes,
+  trainType = "SE",
+}) => {
   if (!selectedRoute || !departureTimes) return null;
 
-  const durationMins = selectedRoute.estimatedDuration || 0;
+  const SPEED_FACTORS = {
+    SE: 1.0,
+    TN: 1.3,
+    SP: 1.15,
+    QN: 1.1,
+  };
+  const speedFactor = SPEED_FACTORS[trainType] || 1.0;
+
+  const durationMins = Math.round(
+    (selectedRoute.estimatedDuration || 0) * speedFactor,
+  );
   if (durationMins <= 0) return null;
 
   const bufferMins = parseInt(bufferMinutes) || 0;
@@ -1983,7 +1998,7 @@ export function AdminSchedulePanel() {
                         const occupiedTimes = activeRouteTemplates.flatMap(
                           (t) => t.departureTimes,
                         );
-                        nextTime = findNextSafeTime("08:00", occupiedTimes, 20);
+                        nextTime = findNextSafeTime("08:00", occupiedTimes, 30);
                       }
                     }
                     setTemplateForm({
@@ -2077,10 +2092,17 @@ export function AdminSchedulePanel() {
                         ),
                       );
                       return (
-                        <p className="mt-1 text-[11px] text-[#3f4852]/60">
-                          Các giờ chạy đã có trên tuyến này:{" "}
-                          {allTimes.join(", ")}
-                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-[11px] text-[#3f4852]/70">
+                            Các giờ chạy đã có trên tuyến này:{" "}
+                            {allTimes.join(", ")}
+                          </p>
+                          <p className="text-[11px] text-[#00629d] font-semibold flex items-center gap-1">
+                            💡 Khuyến nghị:Nên đặt các chuyến tàu cùng chiều
+                            cách nhau tối thiểu 30 - 60 phút để tạo khoảng đệm
+                            an toàn khi chậm chuyến.
+                          </p>
+                        </div>
                       );
                     }
                     return null;
@@ -2446,6 +2468,10 @@ export function AdminSchedulePanel() {
                         ?.slice(0, 5) || ""
                     }
                     bufferMinutes={singleSchedForm.bufferMinutes}
+                    trainType={
+                      trains.find((t) => t.id === singleSchedForm.trainId)
+                        ?.trainType
+                    }
                   />
                 </div>
               )}

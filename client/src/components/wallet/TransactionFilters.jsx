@@ -1,26 +1,40 @@
 import { Search, SlidersHorizontal } from "lucide-react";
-
-const TYPE_OPTIONS = [
-  { value: "", label: "Tất cả loại" },
-  { value: "DEPOSIT", label: "Nạp tiền" },
-  { value: "PAYMENT", label: "Thanh toán" },
-  { value: "REFUND", label: "Hoàn tiền" },
-  { value: "WITHDRAWAL", label: "Rút tiền" },
-];
-
-const STATUS_OPTIONS = [
-  { value: "", label: "Tất cả trạng thái" },
-  { value: "COMPLETED", label: "Hoàn thành" },
-  { value: "PENDING", label: "Chờ xử lý" },
-  { value: "FAILED", label: "Thất bại" },
-];
+import { useLanguage } from "../../context/LanguageContext";
 
 export function TransactionFilters({ filters, onChange }) {
+  const { language } = useLanguage();
+
+  const TYPE_OPTIONS = [
+    { value: "", label: language === "vi" ? "Tất cả loại" : "All Types" },
+    { value: "DEPOSIT", label: language === "vi" ? "Nạp tiền" : "Deposit" },
+    { value: "PAYMENT", label: language === "vi" ? "Thanh toán" : "Payment" },
+    { value: "REFUND", label: language === "vi" ? "Hoàn tiền" : "Refund" },
+    {
+      value: "WITHDRAWAL",
+      label: language === "vi" ? "Rút tiền" : "Withdrawal",
+    },
+  ];
+
+  const STATUS_OPTIONS = [
+    {
+      value: "",
+      label: language === "vi" ? "Tất cả trạng thái" : "All Statuses",
+    },
+    {
+      value: "COMPLETED",
+      label: language === "vi" ? "Hoàn thành" : "Completed",
+    },
+    { value: "PENDING", label: language === "vi" ? "Chờ xử lý" : "Pending" },
+    { value: "FAILED", label: language === "vi" ? "Thất bại" : "Failed" },
+  ];
+
   return (
     <div className="flex flex-wrap gap-3 items-center">
       <div className="flex items-center gap-2 text-on-surface-variant">
         <SlidersHorizontal className="w-4 h-4" />
-        <span className="text-sm font-semibold">Lọc:</span>
+        <span className="text-sm font-semibold">
+          {language === "vi" ? "Lọc:" : "Filter:"}
+        </span>
       </div>
 
       <select
@@ -54,9 +68,9 @@ export function TransactionFilters({ filters, onChange }) {
       {(filters.type || filters.status) && (
         <button
           onClick={() => onChange({ type: "", status: "", page: 1 })}
-          className="text-xs text-primary font-semibold hover:underline"
+          className="text-xs text-primary font-semibold hover:underline border-none bg-transparent cursor-pointer"
         >
-          Xoá lọc
+          {language === "vi" ? "Xoá lọc" : "Clear filters"}
         </button>
       )}
     </div>

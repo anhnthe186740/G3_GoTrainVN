@@ -5,22 +5,13 @@ import { getTrains } from "../../services/referenceDataApi";
 
 const TRAIN_TYPES = {
   SE: {
-    name: "Tàu Thống Nhất (SE)",
+    name: "Tàu Thống Nhất Tốc Hành (SE)",
     badge: "bg-primary-fixed text-on-primary-fixed",
   },
   TN: {
-    name: "Tàu Thường (TN)",
+    name: "Tàu Thường Thống Nhất (TN)",
     badge: "bg-surface-container-highest text-on-surface-variant",
   },
-  HD: {
-    name: "Hải Dương - HN (HD)",
-    badge: "bg-secondary-container text-on-secondary-container",
-  },
-  SP: {
-    name: "Tàu Du Lịch Sapa (SP)",
-    badge: "bg-tertiary-fixed text-on-tertiary-fixed",
-  },
-  QN: { name: "Tàu Quy Nhơn (QN)", badge: "bg-amber-100 text-amber-800" },
 };
 
 const CARRIAGE_TYPES = {

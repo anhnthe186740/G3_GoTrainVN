@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Clock,
   User,
-  Thermometer,
   Navigation,
   MapPin,
 } from "lucide-react";
@@ -26,8 +25,8 @@ const STATION_COORDS = {
   DHI: { x: 180, y: 290, label: "Đồng Hới" },
   HUE: { x: 220, y: 340, label: "Huế" },
   DAN: { x: 250, y: 370, label: "Đà Nẵng" },
-  QNH: { x: 290, y: 490, label: "Quy Nhơn" },
-  NTR: { x: 290, y: 570, label: "Nha Trang" },
+  QNH: { x: 250, y: 490, label: "Quy Nhơn", align: "left" },
+  NTR: { x: 240, y: 570, label: "Nha Trang", align: "left" },
   SGN: { x: 180, y: 640, label: "Sài Gòn" },
 };
 
@@ -48,18 +47,40 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
   const depTime = new Date(schedule.departureTime);
   const arrTime = new Date(schedule.arrivalTime);
 
+  // Helper map coordinates fallback
+  const mapX = (longitude) => {
+    if (!longitude) return 140;
+    return ((longitude - 103.0) / 7.0) * 260 + 30;
+  };
+  const mapY = (latitude) => {
+    if (!latitude) return 100;
+    return ((23.0 - latitude) / 13.0) * 600 + 40;
+  };
+
+  const startCode = schedule.route.startStation.stationCode;
   const startLat = schedule.route.startStation.latitude || 21.0245;
   const startLng = schedule.route.startStation.longitude || 105.8412;
   const startName = schedule.route.startStation.stationName;
+  const startCoords = (startCode && STATION_COORDS[startCode]) || {
+    x: mapX(startLng),
+    y: mapY(startLat),
+  };
 
+  const endCode = schedule.route.endStation.stationCode;
   const endLat = schedule.route.endStation.latitude || 10.7769;
   const endLng = schedule.route.endStation.longitude || 106.6952;
   const endName = schedule.route.endStation.stationName;
+  const endCoords = (endCode && STATION_COORDS[endCode]) || {
+    x: mapX(endLng),
+    y: mapY(endLat),
+  };
 
   // 1. Not yet departed
   if (currentTime < depTime) {
     return {
       ...tracking,
+      x: startCoords.x,
+      y: startCoords.y,
       latitude: startLat,
       longitude: startLng,
       currentStation: startName,
@@ -72,6 +93,8 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
   if (currentTime > arrTime) {
     return {
       ...tracking,
+      x: endCoords.x,
+      y: endCoords.y,
       latitude: endLat,
       longitude: endLng,
       currentStation: endName,
@@ -81,10 +104,13 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
   }
 
   // 3. Train is running! Compile route nodes
-  const nodes = [];
-  nodes.push({
+  const rawNodes = [];
+  rawNodes.push({
+    code: startCode,
     lat: startLat,
     lng: startLng,
+    x: startCoords.x,
+    y: startCoords.y,
     name: startName,
     time: depTime,
     type: "START",
@@ -95,13 +121,23 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
       (a, b) => a.stopOrder - b.stopOrder,
     );
     for (const stop of sortedStops) {
+      const stopCode = stop.station.stationCode;
+      const stopLat = stop.station.latitude || 16.0;
+      const stopLng = stop.station.longitude || 108.0;
+      const stopCoords = (stopCode && STATION_COORDS[stopCode]) || {
+        x: mapX(stopLng),
+        y: mapY(stopLat),
+      };
       const stopArr = new Date(stop.arrivalTime);
       const stopDep = stop.departureTime
         ? new Date(stop.departureTime)
         : stopArr;
-      nodes.push({
-        lat: stop.station.latitude || 16.0,
-        lng: stop.station.longitude || 108.0,
+      rawNodes.push({
+        code: stopCode,
+        lat: stopLat,
+        lng: stopLng,
+        x: stopCoords.x,
+        y: stopCoords.y,
         name: stop.station.stationName,
         time: stopArr,
         depTime: stopDep,
@@ -110,13 +146,65 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
     }
   }
 
-  nodes.push({
+  rawNodes.push({
+    code: endCode,
     lat: endLat,
     lng: endLng,
+    x: endCoords.x,
+    y: endCoords.y,
     name: endName,
     time: arrTime,
     type: "END",
   });
+
+  // Inject HAN node visually if moving between branch stations (HPH, LCA) and southern stations without going through HAN
+  const nodes = [];
+  for (let i = 0; i < rawNodes.length; i++) {
+    const current = rawNodes[i];
+    nodes.push(current);
+
+    if (i < rawNodes.length - 1) {
+      const next = rawNodes[i + 1];
+      const isBranchToMain =
+        (current.code === "HPH" || current.code === "LCA") &&
+        next.code !== "HAN";
+      const isMainToBranch =
+        current.code !== "HAN" && (next.code === "HPH" || next.code === "LCA");
+
+      if (isBranchToMain || isMainToBranch) {
+        const hanCoords = STATION_COORDS.HAN;
+        const currentDepTime =
+          current.type === "STOP" ? current.depTime : current.time;
+        const d1 = Math.sqrt(
+          Math.pow(current.x - hanCoords.x, 2) +
+            Math.pow(current.y - hanCoords.y, 2),
+        );
+        const d2 = Math.sqrt(
+          Math.pow(hanCoords.x - next.x, 2) + Math.pow(hanCoords.y - next.y, 2),
+        );
+        const totalD = d1 + d2;
+        const ratio = totalD > 0 ? d1 / totalD : 0.5;
+
+        const currentTimeVal = currentDepTime.getTime();
+        const nextTimeVal = next.time.getTime();
+        const hanTimeVal =
+          currentTimeVal + (nextTimeVal - currentTimeVal) * ratio;
+        const hanTime = new Date(hanTimeVal);
+
+        nodes.push({
+          code: "HAN",
+          lat: 21.0245,
+          lng: 105.8412,
+          x: hanCoords.x,
+          y: hanCoords.y,
+          name: "Ga Hà Nội",
+          time: hanTime,
+          depTime: hanTime,
+          type: "STOP",
+        });
+      }
+    }
+  }
 
   // Interpolate current segment
   for (let i = 0; i < nodes.length - 1; i++) {
@@ -134,6 +222,8 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
     ) {
       return {
         ...tracking,
+        x: current.x,
+        y: current.y,
         latitude: current.lat,
         longitude: current.lng,
         currentStation: current.name,
@@ -148,11 +238,16 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
       const elapsed = currentTime.getTime() - currentDep.getTime();
       const progress = segmentDuration > 0 ? elapsed / segmentDuration : 0;
 
+      const x = current.x + (next.x - current.x) * progress;
+      const y = current.y + (next.y - current.y) * progress;
+
       const lat = current.lat + (next.lat - current.lat) * progress;
       const lng = current.lng + (next.lng - current.lng) * progress;
 
       return {
         ...tracking,
+        x,
+        y,
         latitude: lat,
         longitude: lng,
         currentStation: `Giữa ${current.name.replace("Ga ", "")} & ${next.name.replace("Ga ", "")}`,
@@ -322,9 +417,13 @@ export function AdminLiveTrackingPanel() {
     let delayed = 0;
 
     processedTrackings.forEach(({ schedule, tracking }) => {
-      const status = tracking?.status || schedule?.status;
-      if (status === "DELAYED") {
-        disabled: delayed++;
+      const isDelayed =
+        schedule?.status === "DELAYED" ||
+        Boolean(schedule?.delayMinutes && schedule.delayMinutes > 0) ||
+        tracking?.status === "DELAYED";
+
+      if (isDelayed) {
+        delayed++;
       } else {
         onTime++;
       }
@@ -461,7 +560,7 @@ export function AdminLiveTrackingPanel() {
         </div>
 
         {/* Sensor details */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800 text-xs">
           <div>
             <p className="text-slate-400">Vị trí hiện tại</p>
             <p className="font-bold text-slate-200 mt-1">
@@ -473,15 +572,6 @@ export function AdminLiveTrackingPanel() {
             <p className="font-bold text-emerald-400 mt-1 flex items-center gap-1">
               <Compass className="h-3.5 w-3.5" />
               {tracking.speed ? `${Math.round(tracking.speed)} km/h` : "0 km/h"}
-            </p>
-          </div>
-          <div>
-            <p className="text-slate-400">Nhiệt độ điều hòa</p>
-            <p className="font-bold text-blue-400 mt-1 flex items-center gap-1">
-              <Thermometer className="h-3.5 w-3.5" />
-              {tracking.temperature
-                ? `${tracking.temperature.toFixed(1)}°C`
-                : "25°C"}
             </p>
           </div>
           <div>
@@ -656,49 +746,60 @@ export function AdminLiveTrackingPanel() {
             />
 
             {/* Stations Pins */}
-            {Object.entries(STATION_COORDS).map(([code, data]) => (
-              <g key={code} className="group cursor-pointer">
-                {/* Station circle */}
-                <circle
-                  cx={data.x}
-                  cy={data.y}
-                  r={5}
-                  fill="#020617"
-                  stroke="#cbd5e1"
-                  strokeWidth={2}
-                />
-                <circle cx={data.x} cy={data.y} r={2} fill="#64748b" />
-                {/* Station Name text */}
-                <text
-                  x={data.x + 9}
-                  y={data.y + 4}
-                  fill="#94a3b8"
-                  fontSize="10"
-                  fontWeight="bold"
-                  className="select-none font-sans group-hover:fill-white transition-colors"
-                >
-                  {data.label}
-                </text>
-              </g>
-            ))}
+            {Object.entries(STATION_COORDS).map(([code, data]) => {
+              const isLeft = data.align === "left";
+              return (
+                <g key={code} className="group cursor-pointer">
+                  {/* Station circle */}
+                  <circle
+                    cx={data.x}
+                    cy={data.y}
+                    r={5}
+                    fill="#020617"
+                    stroke="#cbd5e1"
+                    strokeWidth={2}
+                  />
+                  <circle cx={data.x} cy={data.y} r={2} fill="#64748b" />
+                  {/* Station Name text */}
+                  <text
+                    x={isLeft ? data.x - 9 : data.x + 9}
+                    y={data.y + 4}
+                    textAnchor={isLeft ? "end" : "start"}
+                    fill="#94a3b8"
+                    fontSize="10"
+                    fontWeight="bold"
+                    className="select-none font-sans group-hover:fill-white transition-colors"
+                  >
+                    {data.label}
+                  </text>
+                </g>
+              );
+            })}
 
             {/* Active Trains (Real-time pins) */}
             {processedTrackings.map((item) => {
               const { schedule, tracking } = item;
-              const status = tracking?.status || schedule?.status;
-              const isDelayed = status === "DELAYED";
+              const isDelayed =
+                schedule?.status === "DELAYED" ||
+                Boolean(schedule?.delayMinutes && schedule.delayMinutes > 0) ||
+                tracking?.status === "DELAYED";
 
-              // Resolve coordinates: GPS -> SVG or fallback to station
+              // Resolve coordinates: SVG x, y -> GPS -> station label fallback
               let trainX = STATION_COORDS.HAN.x;
               let trainY = STATION_COORDS.HAN.y;
 
-              if (tracking?.latitude && tracking?.longitude) {
+              if (tracking?.x !== undefined && tracking?.y !== undefined) {
+                trainX = tracking.x;
+                trainY = tracking.y;
+              } else if (tracking?.latitude && tracking?.longitude) {
                 trainX = mapX(tracking.longitude);
                 trainY = mapY(tracking.latitude);
               } else if (tracking?.currentStation) {
                 // Find matching coordinates for named station
                 const matched = Object.values(STATION_COORDS).find(
-                  (val) => val.label === tracking.currentStation,
+                  (val) =>
+                    val.label === tracking.currentStation ||
+                    `Ga ${val.label}` === tracking.currentStation,
                 );
                 if (matched) {
                   trainX = matched.x;
@@ -787,8 +888,12 @@ export function AdminLiveTrackingPanel() {
               <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[300px] overflow-y-auto pr-1">
                 {processedTrackings.map((item) => {
                   const { schedule, tracking } = item;
-                  const status = tracking?.status || schedule?.status;
-                  const isDelayed = status === "DELAYED";
+                  const isDelayed =
+                    schedule?.status === "DELAYED" ||
+                    Boolean(
+                      schedule?.delayMinutes && schedule.delayMinutes > 0,
+                    ) ||
+                    tracking?.status === "DELAYED";
                   const isSelected = selectedTrainId === schedule.id;
 
                   return (
@@ -847,7 +952,7 @@ export function AdminLiveTrackingPanel() {
             <div className="bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 text-xs font-semibold">
               <Compass className="mx-auto h-8 w-8 opacity-40 mb-2" />
               Chọn một đoàn tàu trên bản đồ hoặc danh sách để xem chi tiết tốc
-              độ, nhiệt độ toa xe và lộ trình các ga.
+              độ, số lượng hành khách và lộ trình các ga.
             </div>
           )}
         </div>

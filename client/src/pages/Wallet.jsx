@@ -16,6 +16,7 @@ import { TransactionTable } from "../components/wallet/TransactionTable.jsx";
 import { TransactionFilters } from "../components/wallet/TransactionFilters.jsx";
 import { DepositModal } from "../components/wallet/DepositModal.jsx";
 import { WithdrawModal } from "../components/wallet/WithdrawModal.jsx";
+import { useLanguage } from "../context/LanguageContext";
 
 const LIMIT = 7;
 
@@ -23,8 +24,8 @@ const fmt = (n) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(
     n ?? 0,
   );
-
 export function Wallet() {
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -72,21 +73,25 @@ export function Wallet() {
           LEFT PANEL — Balance & Info (fixed width)
       ═══════════════════════════════════════════════ */}
         <aside className="w-[320px] shrink-0 flex flex-col bg-white border-r border-[#bec7d4]/20 overflow-y-auto">
-          <div className="flex flex-col gap-5 p-6">
+          <div className="flex flex-col gap-5 p-6 text-left">
             {/* Back link */}
             <Link
               to="/"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-primary transition-colors w-fit"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-primary transition-colors w-fit text-decoration-none"
             >
               <ChevronLeft className="w-4 h-4" />
-              Trang chủ
+              {language === "vi" ? "Trang chủ" : "Home"}
             </Link>
 
             {/* Page title */}
             <div>
-              <h1 className="text-xl font-bold text-on-surface">Ví Của Tôi</h1>
+              <h1 className="text-xl font-bold text-on-surface">
+                {language === "vi" ? "Ví Của Tôi" : "My Wallet"}
+              </h1>
               <p className="text-sm text-on-surface-variant mt-0.5">
-                Quản lý số dư và lịch sử giao dịch
+                {language === "vi"
+                  ? "Quản lý số dư và lịch sử giao dịch"
+                  : "Manage your balance & transaction logs"}
               </p>
             </div>
 
@@ -104,8 +109,12 @@ export function Wallet() {
             <div className="space-y-3">
               <InfoCard
                 Icon={Clock}
-                title="Rút tiền"
-                desc="Yêu cầu rút tiền được admin xét duyệt trong 1–3 ngày làm việc."
+                title={language === "vi" ? "Rút tiền" : "Withdrawal"}
+                desc={
+                  language === "vi"
+                    ? "Yêu cầu rút tiền được admin xét duyệt trong 1–3 ngày làm việc."
+                    : "Withdrawal requests are processed by admins within 1–3 business days."
+                }
                 color="amber"
               />
             </div>
@@ -115,7 +124,7 @@ export function Wallet() {
         {/* ═══════════════════════════════════════════════
           RIGHT PANEL — Transaction history
       ═══════════════════════════════════════════════ */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden text-left">
           {/* ── Panel header ── */}
           <div className="shrink-0 bg-white border-b border-[#bec7d4]/20 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -123,22 +132,26 @@ export function Wallet() {
                 <History className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-on-surface leading-none">
-                  Lịch Sử Giao Dịch
+                <h2 className="text-base font-bold text-on-surface leading-none text-left">
+                  {language === "vi"
+                    ? "Lịch Sử Giao Dịch"
+                    : "Transaction History"}
                 </h2>
                 {!txnLoading && total > 0 && (
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    {total} giao dịch · trang {page}/{totalPages}
+                  <p className="text-xs text-on-surface-variant mt-0.5 text-left">
+                    {language === "vi"
+                      ? `${total} giao dịch · trang ${page}/${totalPages}`
+                      : `${total} transactions · page ${page}/${totalPages}`}
                   </p>
                 )}
               </div>
             </div>
             <button
               onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-all border-none bg-transparent cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              Làm mới
+              {language === "vi" ? "Làm mới" : "Refresh"}
             </button>
           </div>
 
@@ -168,8 +181,12 @@ export function Wallet() {
           <div className="shrink-0 bg-white border-t border-[#bec7d4]/20 px-6 py-3 flex items-center justify-between">
             <span className="text-sm text-on-surface-variant">
               {txnLoading || total === 0 ? (
-                "Không có giao dịch"
-              ) : (
+                language === "vi" ? (
+                  "Không có giao dịch"
+                ) : (
+                  "No transactions"
+                )
+              ) : language === "vi" ? (
                 <>
                   Hiển thị{" "}
                   <span className="font-semibold text-on-surface">
@@ -178,6 +195,16 @@ export function Wallet() {
                   trong{" "}
                   <span className="font-semibold text-on-surface">{total}</span>{" "}
                   giao dịch
+                </>
+              ) : (
+                <>
+                  Showing{" "}
+                  <span className="font-semibold text-on-surface">
+                    {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold text-on-surface">{total}</span>{" "}
+                  transactions
                 </>
               )}
             </span>

@@ -775,18 +775,28 @@ export async function setPolicyActive(policyCode, active, adminContext) {
   return getPolicy(policyCode);
 }
 
-export function calculateFare(rule, distance, taxPercentage = 0) {
+export function calculateFare(
+  rule,
+  distance,
+  taxPercentage = 0,
+  priceFactor = 1.0,
+) {
+  const effectiveFactor = rule.scopeType === "SCHEDULE" ? 1.0 : priceFactor;
+
   const kilometers = finiteNumber(distance, "Cự ly", { min: 1 });
   const base =
-    finiteNumber(rule.basePrice, "Giá mở cửa") +
-    finiteNumber(rule.pricePerKm, "Đơn giá theo km") * kilometers +
-    finiteNumber(rule.classSurcharge, "Phụ thu loại chỗ");
+    (finiteNumber(rule.basePrice, "Giá mở cửa") +
+      finiteNumber(rule.pricePerKm, "Đơn giá theo km") * kilometers +
+      finiteNumber(rule.classSurcharge, "Phụ thu loại chỗ")) *
+    effectiveFactor;
   const withFloor =
-    rule.minPrice == null ? base : Math.max(base, Number(rule.minPrice));
+    rule.minPrice == null
+      ? base
+      : Math.max(base, Number(rule.minPrice) * effectiveFactor);
   const bounded =
     rule.maxPrice == null
       ? withFloor
-      : Math.min(withFloor, Number(rule.maxPrice));
+      : Math.min(withFloor, Number(rule.maxPrice) * effectiveFactor);
   const afterDiscount =
     bounded * (1 - Number(rule.discountPercentage || 0) / 100);
   const finalPrice = afterDiscount * (1 + Number(taxPercentage || 0) / 100);
