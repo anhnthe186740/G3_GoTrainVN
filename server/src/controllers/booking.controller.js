@@ -108,6 +108,13 @@ export const lookupBooking = asyncHandler(async (req, res) => {
       fromStation: stationSelect,
       toStation: stationSelect,
       cancellationRequest: true,
+      passengers: {
+        include: {
+          seat: {
+            include: { carriage: true },
+          },
+        },
+      },
     },
   };
 

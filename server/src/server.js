@@ -12,6 +12,7 @@ import { cleanupExpiredHolds } from "./services/seatSelection.service.js";
 import { cleanupExpiredBookings } from "./services/bookingCheckout.service.js";
 import { cleanupExpiredDeposits } from "./services/wallet.service.js";
 import { startAutoScheduleCron } from "./services/autoSchedule.service.js";
+import { checkAndSendCheckInReminders } from "./services/scheduleNotification.service.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -50,6 +51,15 @@ async function startServer() {
     }
   }, 60_000);
   bookingExpiryTimer.unref();
+
+  const checkInReminderTimer = setInterval(async () => {
+    try {
+      await checkAndSendCheckInReminders();
+    } catch (error) {
+      console.error("Failed to check and send check-in reminders", error);
+    }
+  }, 60_000);
+  checkInReminderTimer.unref();
 
   httpServer.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
