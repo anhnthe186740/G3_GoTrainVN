@@ -127,7 +127,10 @@ export function TicketExchange() {
     (item) => item.id === selectedScheduleId,
   );
 
+  const exchangeMode = location.state?.exchangeMode || "single";
+
   const activePassengerCount = useMemo(() => {
+    if (exchangeMode === "single") return 1;
     if (!booking?.passengers?.length) return booking?.totalPassengers || 1;
     const hasDetails = booking.passengers[0]?.bookingDetails !== undefined;
     if (hasDetails) {
@@ -137,9 +140,13 @@ export function TicketExchange() {
       return count || 1;
     }
     return booking.passengers.length || booking.totalPassengers || 1;
-  }, [booking]);
+  }, [booking, exchangeMode]);
 
-  const paidAmount = booking?.totalAmount || 0;
+  const paidAmount =
+    exchangeMode === "single" && booking?.totalPassengers > 1
+      ? Math.round((booking?.totalAmount || 0) / booking.totalPassengers)
+      : booking?.totalAmount || 0;
+
   const newFare = selectedSchedule ? minFare(selectedSchedule) : 0;
   const fixedFee = selectedSchedule ? 20000 * activePassengerCount : 0;
   const percentFee = selectedSchedule ? Math.round(paidAmount * 0.1) : 0;

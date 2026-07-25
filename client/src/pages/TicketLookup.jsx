@@ -56,6 +56,7 @@ export function TicketLookup() {
     "Thay đổi lịch trình cá nhân",
   );
   const [refundLoading, setRefundLoading] = useState(false);
+  const [refundMode, setRefundMode] = useState("single");
 
   // Load recent searches and pre-fill logged-in user info
   useEffect(() => {
@@ -457,14 +458,17 @@ export function TicketLookup() {
   };
 
   // Calculate refund policy parameters
-  const calculateRefundPolicy = (ticket) => {
+  const calculateRefundPolicy = (ticket, mode = "single") => {
     if (!ticket || !ticket.booking || !ticket.booking.schedule) return null;
     const departureTime = new Date(ticket.booking.schedule.departureTime);
     const now = new Date();
     const diffMs = departureTime.getTime() - now.getTime();
     const diffHours = diffMs / (1000 * 60 * 60);
 
-    const price = ticket.booking.totalAmount || 0;
+    let price = ticket.booking.totalAmount || 0;
+    if (mode === "single" && ticket.booking.totalPassengers > 1) {
+      price = price / ticket.booking.totalPassengers;
+    }
 
     if (diffHours < 0) {
       return {
@@ -578,19 +582,30 @@ export function TicketLookup() {
     activeTicket?.booking?.status === "CONFIRMED" &&
     activeJourneyState === "UPCOMING";
 
+  const passengersInSameBooking = useMemo(() => {
+    if (!activeTicket || !listTickets.length) return [];
+    return listTickets.filter(
+      (t) =>
+        t.booking?.id === activeTicket.booking?.id &&
+        getTicketCategory(t) === "UPCOMING",
+    );
+  }, [activeTicket, listTickets]);
+
+  const refundInfo = calculateRefundPolicy(activeTicket, refundMode);
+
   // Print ticket boarding pass handler
   const handlePrint = () => {
     window.print();
   };
 
-  const handleExchangeTicket = () => {
+  const handleExchangeTicket = (mode = "single") => {
     if (!activeTicket?.booking) return;
 
     navigate(
       `/doi-ve?bookingCode=${encodeURIComponent(
         activeTicket.booking.bookingCode || activeTicket.ticketCode || "",
       )}`,
-      { state: { ticket: activeTicket } },
+      { state: { ticket: activeTicket, exchangeMode: mode } },
     );
   };
 
@@ -600,10 +615,15 @@ export function TicketLookup() {
     if (!activeTicket || !activeTicket.booking) return;
     setRefundLoading(true);
     try {
+      const pIds =
+        refundMode === "all"
+          ? passengersInSameBooking.map((t) => t.id)
+          : [activeTicket.id];
+
       const response = await api.post(
         `/bookings/${activeTicket.booking.id}/cancel`,
         {
-          passengerIds: [activeTicket.id],
+          passengerIds: pIds,
           ticketCode:
             activeTicket.ticketCode ||
             activeTicket.booking.bookingCode ||
@@ -1240,23 +1260,52 @@ export function TicketLookup() {
                 {canRequestRefund && (
                   <button
                     onClick={() => {
-                      if (refundInfo.allowed) {
+                      setRefundMode("single");
+                      const info = calculateRefundPolicy(
+                        activeTicket,
+                        "single",
+                      );
+                      if (info?.allowed) {
                         setIsPolicyModalOpen(true);
                       } else {
-                        toast.error(refundInfo.message);
+                        toast.error(info?.message || "Không thể hoàn vé");
                       }
                     }}
                     className={`flex items-center gap-2 font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border ${
-                      refundInfo.allowed
+                      calculateRefundPolicy(activeTicket, "single")?.allowed
                         ? "bg-white hover:bg-red-50 text-red-600 border-red-200"
                         : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
                     }`}
                   >
                     <AlertTriangle className="h-4.5 w-4.5" />
                     <span>
+                      {language === "vi" ? "Hủy vé này" : "Cancel this ticket"}
+                    </span>
+                  </button>
+                )}
+
+                {canRequestRefund && passengersInSameBooking.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setRefundMode("all");
+                      const info = calculateRefundPolicy(activeTicket, "all");
+                      if (info?.allowed) {
+                        setIsPolicyModalOpen(true);
+                      } else {
+                        toast.error(info?.message || "Không thể hoàn vé");
+                      }
+                    }}
+                    className={`flex items-center gap-2 font-bold px-5 py-3 rounded-2xl shadow-md transition-all hover:-translate-y-0.5 cursor-pointer text-sm border ${
+                      calculateRefundPolicy(activeTicket, "all")?.allowed
+                        ? "bg-red-50 hover:bg-red-100 text-red-700 border-red-300"
+                        : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                    }`}
+                  >
+                    <AlertTriangle className="h-4.5 w-4.5" />
+                    <span>
                       {language === "vi"
-                        ? "Hủy vé & Hoàn tiền"
-                        : "Cancel & Refund"}
+                        ? `Hủy toàn bộ vé (${passengersInSameBooking.length})`
+                        : `Cancel all tickets (${passengersInSameBooking.length})`}
                     </span>
                   </button>
                 )}
@@ -1273,12 +1322,28 @@ export function TicketLookup() {
 
                 {canExchangeTicket && (
                   <button
-                    onClick={handleExchangeTicket}
+                    onClick={() => handleExchangeTicket("single")}
                     className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-primary/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
                   >
                     <Repeat2 className="h-4.5 w-4.5" />
                     <span>
-                      {language === "vi" ? "Đổi vé" : "Exchange ticket"}
+                      {language === "vi"
+                        ? "Đổi vé này"
+                        : "Exchange this ticket"}
+                    </span>
+                  </button>
+                )}
+
+                {canExchangeTicket && passengersInSameBooking.length > 1 && (
+                  <button
+                    onClick={() => handleExchangeTicket("all")}
+                    className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-bold px-5 py-3 rounded-2xl shadow-md shadow-sky-600/20 transition-all hover:-translate-y-0.5 cursor-pointer text-sm border-none"
+                  >
+                    <Repeat2 className="h-4.5 w-4.5" />
+                    <span>
+                      {language === "vi"
+                        ? `Đổi toàn bộ vé (${passengersInSameBooking.length})`
+                        : `Exchange all tickets (${passengersInSameBooking.length})`}
                     </span>
                   </button>
                 )}
@@ -1527,7 +1592,14 @@ export function TicketLookup() {
                       : "Original ticket price:"}
                   </span>
                   <span className="text-slate-800 font-bold">
-                    {(activeTicket.booking?.totalAmount || 0).toLocaleString(
+                    {(refundMode === "single" &&
+                    activeTicket.booking?.totalPassengers > 1
+                      ? Math.round(
+                          (activeTicket.booking?.totalAmount || 0) /
+                            activeTicket.booking.totalPassengers,
+                        )
+                      : activeTicket.booking?.totalAmount || 0
+                    ).toLocaleString(
                       language === "vi" ? "vi-VN" : "en-US",
                     )}{" "}
                     VND
@@ -1540,7 +1612,7 @@ export function TicketLookup() {
                       : "Applicable refund rate:"}
                   </span>
                   <span className="text-slate-800 font-bold">
-                    {refundInfo.rate}%
+                    {refundInfo?.rate || 0}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
@@ -1550,7 +1622,7 @@ export function TicketLookup() {
                       : "Actual refund amount:"}
                   </span>
                   <span className="text-red-600 font-black text-sm">
-                    {refundInfo.refund.toLocaleString(
+                    {(refundInfo?.refund || 0).toLocaleString(
                       language === "vi" ? "vi-VN" : "en-US",
                     )}{" "}
                     VND
