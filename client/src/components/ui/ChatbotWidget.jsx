@@ -22,28 +22,35 @@ const QUICK_PROMPTS = [
 export function ChatbotWidget() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState(() => {
-    // Khôi phục lịch sử chat trong session hiện tại để có trải nghiệm liền mạch
-    const saved = sessionStorage.getItem("gotrain_chat_history");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const chatHistoryKey = user
+    ? `gotrain_chat_history_${user.id || user.email || user.username}`
+    : "gotrain_chat_history_guest";
+
+  // Khôi phục lịch sử chat cho người dùng tương ứng
+  useEffect(() => {
+    const saved = sessionStorage.getItem(chatHistoryKey);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        setMessages(JSON.parse(saved));
+        return;
       } catch (e) {
         console.error("Lỗi parse chat history:", e);
       }
     }
-    return [
+    setMessages([
       {
         id: "welcome",
         sender: "bot",
         text: `Xin chào${user ? ` ${user.fullName || user.username}` : ""}! Tôi là Trợ lý ảo AI của GoTrain VN. Tôi có thể giúp gì cho bạn hôm nay?`,
         createdAt: new Date().toISOString(),
       },
-    ];
-  });
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+    ]);
+  }, [chatHistoryKey, user]);
 
   // VỊ TRÍ VÀ KÉO RÊ BONG BÓNG CHAT (DRAGGABLE)
   const [position, setPosition] = useState(() => {
@@ -162,14 +169,15 @@ export function ChatbotWidget() {
     return () => window.removeEventListener("open-chatbot", handleOpenChatbot);
   }, []);
 
-  // Cuộn xuống tin nhắn mới nhất
+  // Cuộn xuống tin nhắn mới nhất và lưu lịch sử chat vào sessionStorage
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    // Lưu lịch sử vào sessionStorage
-    sessionStorage.setItem("gotrain_chat_history", JSON.stringify(messages));
-  }, [messages, isOpen]);
+    if (messages.length > 0) {
+      sessionStorage.setItem(chatHistoryKey, JSON.stringify(messages));
+    }
+  }, [messages, isOpen, chatHistoryKey]);
 
   const handleSend = async (textToSend) => {
     const query = textToSend || input;
@@ -232,10 +240,7 @@ export function ChatbotWidget() {
         },
       ];
       setMessages(defaultWelcome);
-      sessionStorage.setItem(
-        "gotrain_chat_history",
-        JSON.stringify(defaultWelcome),
-      );
+      sessionStorage.setItem(chatHistoryKey, JSON.stringify(defaultWelcome));
       toast.success("Đã làm sạch lịch sử trò chuyện.");
     }
   };
