@@ -1,7 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useLanguage } from "../context/LanguageContext";
 
 export function NotFound() {
   const navigate = useNavigate();
+  const { language } = useLanguage();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f7f9fb] to-[#e8f4ff] flex items-center justify-center px-6">
@@ -21,41 +23,44 @@ export function NotFound() {
         </div>
 
         <h1 className="text-2xl font-extrabold text-[#191c1e] mb-3">
-          Chuyến tàu này không tồn tại!
+          {language === "vi"
+            ? "Chuyến tàu này không tồn tại!"
+            : "This train does not exist!"}
         </h1>
         <p className="text-[#6f7883] text-base leading-relaxed mb-8">
-          Trang bạn đang tìm không tồn tại hoặc đã bị xóa. Có thể chuyến tàu đã
-          rời ga rồi! 🚂
+          {language === "vi"
+            ? "Trang bạn đang tìm không tồn tại hoặc đã bị xóa. Có thể chuyến tàu đã rời ga rồi! 🚂"
+            : "The page you are looking for does not exist or has been removed. Perhaps the train has already departed! 🚂"}
         </p>
 
         {/* Quick links */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <Link
             to="/"
-            className="flex items-center justify-center gap-2 bg-[#00629d] hover:bg-[#00629d]/90 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg"
+            className="flex items-center justify-center gap-2 bg-[#00629d] hover:bg-[#00629d]/90 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg text-decoration-none"
           >
             <span className="material-symbols-outlined text-[20px]">home</span>
-            Trang Chủ
+            {language === "vi" ? "Trang Chủ" : "Home"}
           </Link>
           <Link
             to="/tra-cuu-ve"
-            className="flex items-center justify-center gap-2 bg-white border border-[#bec7d4]/40 hover:border-[#00629d]/40 text-[#00629d] font-bold py-3 rounded-2xl transition-all shadow-sm hover:shadow-md"
+            className="flex items-center justify-center gap-2 bg-white border border-[#bec7d4]/40 hover:border-[#00629d]/40 text-[#00629d] font-bold py-3 rounded-2xl transition-all shadow-sm hover:shadow-md text-decoration-none"
           >
             <span className="material-symbols-outlined text-[20px]">
               qr_code_2
             </span>
-            Tra Cứu Vé
+            {language === "vi" ? "Tra Cứu Vé" : "Ticket Lookup"}
           </Link>
         </div>
 
         <button
           onClick={() => navigate(-1)}
-          className="text-sm text-[#6f7883] hover:text-[#00629d] font-semibold transition-colors flex items-center gap-1.5 mx-auto"
+          className="text-sm text-[#6f7883] hover:text-[#00629d] font-semibold transition-colors flex items-center gap-1.5 mx-auto border-none bg-transparent cursor-pointer"
         >
           <span className="material-symbols-outlined text-[16px]">
             arrow_back
           </span>
-          Quay lại trang trước
+          {language === "vi" ? "Quay lại trang trước" : "Go back"}
         </button>
       </div>
     </div>

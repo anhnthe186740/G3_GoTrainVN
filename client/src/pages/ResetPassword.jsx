@@ -4,8 +4,10 @@ import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Lock, Eye, EyeOff, Loader2, Train, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
+import { useLanguage } from "../context/LanguageContext";
 
 export function ResetPassword() {
+  const { language } = useLanguage();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const navigate = useNavigate();
@@ -31,18 +33,31 @@ export function ResetPassword() {
 
   const onSubmit = async (data) => {
     if (!token) {
-      toast.error("Mã khôi phục mật khẩu không tìm thấy trong đường dẫn!");
+      toast.error(
+        language === "vi"
+          ? "Mã khôi phục mật khẩu không tìm thấy trong đường dẫn!"
+          : "Password reset token not found in URL!",
+      );
       return;
     }
 
     setLoading(true);
-    const toastId = toast.loading("Đang cập nhật mật khẩu mới...");
+    const toastId = toast.loading(
+      language === "vi"
+        ? "Đang cập nhật mật khẩu mới..."
+        : "Updating your new password...",
+    );
     try {
       await api.post("/auth/reset-password", {
         token,
         password: data.password,
       });
-      toast.success("Đặt lại mật khẩu thành công!", { id: toastId });
+      toast.success(
+        language === "vi"
+          ? "Đặt lại mật khẩu thành công!"
+          : "Password reset successfully!",
+        { id: toastId },
+      );
       setSuccess(true);
       setTimeout(() => {
         navigate("/login");
@@ -50,7 +65,9 @@ export function ResetPassword() {
     } catch (error) {
       const errorMsg =
         error.response?.data?.message ||
-        "Cập nhật mật khẩu thất bại. Mã khôi phục có thể đã hết hạn hoặc không hợp lệ!";
+        (language === "vi"
+          ? "Cập nhật mật khẩu thất bại. Mã khôi phục có thể đã hết hạn hoặc không hợp lệ!"
+          : "Failed to update password. Reset token may have expired or is invalid!");
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -58,7 +75,7 @@ export function ResetPassword() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50">
+    <div className="flex min-h-screen w-full bg-slate-50 text-left">
       {/* Decorative Brand presentation banner on desktop */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-slate-900 p-12 text-white lg:flex">
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-slate-900 to-emerald-950 opacity-90" />
@@ -75,17 +92,20 @@ export function ResetPassword() {
 
         <div className="relative z-10 my-auto max-w-lg space-y-6">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-            Tạo mật khẩu mới
+            {language === "vi" ? "Tạo mật khẩu mới" : "Create New Password"}
           </h1>
           <p className="text-lg text-slate-300">
-            Đặt mật khẩu mới mạnh hơn để đảm bảo tính an toàn và bảo mật cao
-            nhất cho tài khoản của bạn.
+            {language === "vi"
+              ? "Đặt mật khẩu mới mạnh hơn để đảm bảo tính an toàn và bảo mật cao nhất cho tài khoản của bạn."
+              : "Set a stronger new password to ensure maximum security for your account."}
           </p>
         </div>
 
         <div className="relative z-10 text-sm text-slate-400">
-          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI
-          Redesign.
+          © {new Date().getFullYear()} GoTrain VN.{" "}
+          {language === "vi"
+            ? "Thiết kế giao diện Modern UI Redesign."
+            : "Modern UI Redesign interface."}
         </div>
       </div>
 
@@ -103,30 +123,35 @@ export function ResetPassword() {
 
           <div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              Đặt lại mật khẩu
+              {language === "vi" ? "Đặt lại mật khẩu" : "Reset Password"}
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Nhập mật khẩu mới cho tài khoản của bạn.
+              {language === "vi"
+                ? "Nhập mật khẩu mới cho tài khoản của bạn."
+                : "Enter a new password for your account."}
             </p>
           </div>
 
           {!token ? (
             <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center space-y-4">
-              <span className="material-symbols-outlined text-red-600 text-[32px]">
+              <span className="material-symbols-outlined text-red-600 text-[32px] block">
                 warning
               </span>
               <h3 className="text-lg font-bold text-red-900">
-                Đường dẫn không hợp lệ
+                {language === "vi" ? "Đường dẫn không hợp lệ" : "Invalid link"}
               </h3>
               <p className="text-sm text-red-700">
-                Đường dẫn khôi phục mật khẩu thiếu mã Token hợp lệ. Vui lòng
-                kiểm tra lại email hoặc thực hiện gửi lại yêu cầu.
+                {language === "vi"
+                  ? "Đường dẫn khôi phục mật khẩu thiếu mã Token hợp lệ. Vui lòng kiểm tra lại email hoặc thực hiện gửi lại yêu cầu."
+                  : "Password reset link lacks a valid token. Please check your email or resubmit a request."}
               </p>
               <Link
                 to="/forgot-password"
-                className="inline-block px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition"
+                className="inline-block px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition text-decoration-none"
               >
-                Gửi lại yêu cầu khôi phục
+                {language === "vi"
+                  ? "Gửi lại yêu cầu khôi phục"
+                  : "Resubmit reset request"}
               </Link>
             </div>
           ) : !success ? (
@@ -134,7 +159,7 @@ export function ResetPassword() {
               {/* Password Input */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">
-                  Mật khẩu mới
+                  {language === "vi" ? "Mật khẩu mới" : "New Password"}
                 </label>
                 <div className="relative rounded-xl shadow-sm">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -144,10 +169,16 @@ export function ResetPassword() {
                     type={showPassword ? "text" : "password"}
                     disabled={loading}
                     {...register("password", {
-                      required: "Mật khẩu là bắt buộc",
+                      required:
+                        language === "vi"
+                          ? "Mật khẩu là bắt buộc"
+                          : "Password is required",
                       minLength: {
                         value: 8,
-                        message: "Mật khẩu phải dài tối thiểu 8 ký tự",
+                        message:
+                          language === "vi"
+                            ? "Mật khẩu phải dài tối thiểu 8 ký tự"
+                            : "Password must be at least 8 characters long",
                       },
                     })}
                     placeholder="••••••••"
@@ -160,7 +191,7 @@ export function ResetPassword() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
                   >
                     {showPassword ? (
                       <EyeOff className="h-5 w-5" />
@@ -170,7 +201,7 @@ export function ResetPassword() {
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-xs font-medium text-red-600">
+                  <p className="text-xs font-medium text-red-600 mt-1">
                     {errors.password.message}
                   </p>
                 )}
@@ -179,7 +210,9 @@ export function ResetPassword() {
               {/* Confirm Password Input */}
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">
-                  Xác nhận mật khẩu mới
+                  {language === "vi"
+                    ? "Xác nhận mật khẩu mới"
+                    : "Confirm New Password"}
                 </label>
                 <div className="relative rounded-xl shadow-sm">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -189,10 +222,15 @@ export function ResetPassword() {
                     type={showConfirmPassword ? "text" : "password"}
                     disabled={loading}
                     {...register("confirmPassword", {
-                      required: "Xác nhận mật khẩu là bắt buộc",
+                      required:
+                        language === "vi"
+                          ? "Xác nhận mật khẩu là bắt buộc"
+                          : "Confirm password is required",
                       validate: (val) => {
                         if (val !== newPassword) {
-                          return "Mật khẩu nhập lại không trùng khớp";
+                          return language === "vi"
+                            ? "Mật khẩu nhập lại không trùng khớp"
+                            : "Passwords do not match";
                         }
                       },
                     })}
@@ -206,7 +244,7 @@ export function ResetPassword() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="h-5 w-5" />
@@ -216,7 +254,7 @@ export function ResetPassword() {
                   </button>
                 </div>
                 {errors.confirmPassword && (
-                  <p className="text-xs font-medium text-red-600">
+                  <p className="text-xs font-medium text-red-600 mt-1">
                     {errors.confirmPassword.message}
                   </p>
                 )}
@@ -226,29 +264,32 @@ export function ResetPassword() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer border-none"
               >
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    Đang thiết lập...
+                    {language === "vi" ? "Đang thiết lập..." : "Setting up..."}
                   </>
-                ) : (
+                ) : language === "vi" ? (
                   "Cập nhật mật khẩu"
+                ) : (
+                  "Update Password"
                 )}
               </button>
             </form>
           ) : (
             <div className="rounded-xl border border-slate-200 bg-emerald-50 p-6 text-center space-y-4">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-                <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+                <CheckCircle2 className="h-7 w-7 text-emerald-600 animate-pulse" />
               </div>
               <h3 className="text-lg font-bold text-emerald-900">
-                Thành công!
+                {language === "vi" ? "Thành công!" : "Success!"}
               </h3>
               <p className="text-sm text-emerald-700 leading-relaxed">
-                Mật khẩu của bạn đã được cập nhật thành công. Hệ thống đang
-                chuyển hướng bạn về trang đăng nhập...
+                {language === "vi"
+                  ? "Mật khẩu của bạn đã được cập nhật thành công. Hệ thống đang chuyển hướng bạn về trang đăng nhập..."
+                  : "Your password has been successfully updated. Redirecting you to login page..."}
               </p>
             </div>
           )}
@@ -256,9 +297,9 @@ export function ResetPassword() {
           <div className="text-center">
             <Link
               to="/login"
-              className="text-sm font-semibold text-blue-600 hover:text-blue-500 transition"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
             >
-              Quay lại đăng nhập
+              {language === "vi" ? "Quay lại đăng nhập" : "Back to login"}
             </Link>
           </div>
         </div>

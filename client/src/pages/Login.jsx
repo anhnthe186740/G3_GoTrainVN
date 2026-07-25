@@ -9,13 +9,14 @@ import {
   Train,
   ArrowRight,
   Loader2,
-  Chrome,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import { useLanguage } from "../context/LanguageContext";
 
 export function Login() {
+  const { language } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -51,11 +52,15 @@ export function Login() {
     if (window.google) {
       initializeGoogle();
     }
-  }, []);
+  }, [language]);
 
   const handleGoogleLogin = async (response) => {
     setLoading(true);
-    const toastId = toast.loading("Đang đăng nhập bằng tài khoản Google...");
+    const toastId = toast.loading(
+      language === "vi"
+        ? "Đang đăng nhập bằng tài khoản Google..."
+        : "Logging in with Google...",
+    );
     try {
       const res = await api.post("/auth/google-login", {
         credential: response.credential,
@@ -64,12 +69,19 @@ export function Login() {
 
       setAuth({ user, token });
 
-      toast.success(`Chào mừng trở lại, ${user.name}!`, { id: toastId });
+      toast.success(
+        language === "vi"
+          ? `Chào mừng trở lại, ${user.name}!`
+          : `Welcome back, ${user.name}!`,
+        { id: toastId },
+      );
       navigate(location.state?.from || "/dashboard", { replace: true });
     } catch (error) {
       const errorMsg =
         error.response?.data?.message ||
-        "Đăng nhập bằng Google thất bại. Vui lòng thử lại!";
+        (language === "vi"
+          ? "Đăng nhập bằng Google thất bại. Vui lòng thử lại!"
+          : "Google login failed. Please try again!");
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -89,7 +101,11 @@ export function Login() {
 
   const onSubmit = async (data) => {
     setLoading(true);
-    const toastId = toast.loading("Đang xác thực thông tin đăng nhập...");
+    const toastId = toast.loading(
+      language === "vi"
+        ? "Đang xác thực thông tin đăng nhập..."
+        : "Authenticating login details...",
+    );
     try {
       const response = await api.post("/auth/login", data);
       const { user, token } = response.data;
@@ -97,12 +113,19 @@ export function Login() {
       // Save to Zustand auth store
       setAuth({ user, token });
 
-      toast.success(`Chào mừng trở lại, ${user.name}!`, { id: toastId });
+      toast.success(
+        language === "vi"
+          ? `Chào mừng trở lại, ${user.name}!`
+          : `Welcome back, ${user.name}!`,
+        { id: toastId },
+      );
       navigate(location.state?.from || "/dashboard", { replace: true });
     } catch (error) {
       const errorMsg =
         error.response?.data?.message ||
-        "Đăng nhập thất bại. Vui lòng kiểm tra lại!";
+        (language === "vi"
+          ? "Đăng nhập thất bại. Vui lòng kiểm tra lại!"
+          : "Login failed. Please verify your credentials!");
       toast.error(errorMsg, { id: toastId });
     } finally {
       setLoading(false);
@@ -110,7 +133,7 @@ export function Login() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50">
+    <div className="flex min-h-screen w-full bg-slate-50 text-left">
       {/* Brand presentation banner on desktop */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-slate-900 p-12 text-white lg:flex">
         {/* Decorative background gradients */}
@@ -129,41 +152,52 @@ export function Login() {
 
         <div className="relative z-10 my-auto max-w-lg space-y-6">
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-            Hệ thống đặt vé tàu trực tuyến{" "}
+            {language === "vi"
+              ? "Hệ thống đặt vé tàu trực tuyến "
+              : "Online Train Booking System "}
             <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
               GoTrain VN
             </span>
           </h1>
           <p className="text-lg text-slate-300">
-            Trải nghiệm dịch vụ đặt vé thế hệ mới với giao diện trực quan, sơ đồ
-            toa tàu thời gian thực và phương thức ví điện tử tiện lợi.
+            {language === "vi"
+              ? "Trải nghiệm dịch vụ đặt vé thế hệ mới với giao diện trực quan, sơ đồ toa tàu thời gian thực và phương thức ví điện tử tiện lợi."
+              : "Experience a new era of train booking with our intuitive interface, real-time cabin maps, and smooth wallet payments."}
           </p>
 
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
               <span className="text-sm font-medium text-slate-200">
-                Đồng bộ sơ đồ ghế thời gian thực bằng Socket.io
+                {language === "vi"
+                  ? "Đồng bộ sơ đồ ghế thời gian thực bằng Socket.io"
+                  : "Real-time seat layout synced via Socket.io"}
               </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
               <span className="text-sm font-medium text-slate-200">
-                Tích hợp ví điện tử, nạp rút nhanh chóng
+                {language === "vi"
+                  ? "Tích hợp ví điện tử, nạp rút nhanh chóng"
+                  : "E-wallet integration with fast deposits & withdrawals"}
               </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 rounded-full bg-blue-400" />
               <span className="text-sm font-medium text-slate-200">
-                Định vị trực tiếp lộ trình chạy tàu giả lập
+                {language === "vi"
+                  ? "Định vị trực tiếp lộ trình chạy tàu giả lập"
+                  : "Live positioning of simulated train routes"}
               </span>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 text-sm text-slate-400">
-          © {new Date().getFullYear()} GoTrain VN. Thiết kế giao diện Modern UI
-          Redesign.
+          © {new Date().getFullYear()} GoTrain VN.{" "}
+          {language === "vi"
+            ? "Thiết kế giao diện Modern UI Redesign."
+            : "Modern UI Redesign interface."}
         </div>
       </div>
 
@@ -182,10 +216,12 @@ export function Login() {
 
           <div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              Đăng nhập
+              {language === "vi" ? "Đăng nhập" : "Sign In"}
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Chào mừng bạn trở lại! Vui lòng nhập thông tin tài khoản.
+              {language === "vi"
+                ? "Chào mừng bạn trở lại! Vui lòng nhập thông tin tài khoản."
+                : "Welcome back! Please enter your account credentials."}
             </p>
           </div>
 
@@ -193,7 +229,7 @@ export function Login() {
             {/* Email Input */}
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">
-                Địa chỉ Email
+                {language === "vi" ? "Địa chỉ Email" : "Email Address"}
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -203,10 +239,16 @@ export function Login() {
                   type="email"
                   disabled={loading}
                   {...register("email", {
-                    required: "Email là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Email là bắt buộc"
+                        : "Email is required",
                     pattern: {
                       value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: "Địa chỉ email không hợp lệ",
+                      message:
+                        language === "vi"
+                          ? "Địa chỉ email không hợp lệ"
+                          : "Invalid email address",
                     },
                   })}
                   placeholder="name@example.com"
@@ -218,7 +260,7 @@ export function Login() {
                 />
               </div>
               {errors.email && (
-                <p className="text-xs font-medium text-red-600">
+                <p className="text-xs font-medium text-red-600 mt-1">
                   {errors.email.message}
                 </p>
               )}
@@ -228,13 +270,13 @@ export function Login() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-slate-700">
-                  Mật khẩu
+                  {language === "vi" ? "Mật khẩu" : "Password"}
                 </label>
                 <Link
                   to="/forgot-password"
-                  className="text-sm font-semibold text-blue-600 hover:text-blue-500 transition"
+                  className="text-sm font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
                 >
-                  Quên mật khẩu?
+                  {language === "vi" ? "Quên mật khẩu?" : "Forgot password?"}
                 </Link>
               </div>
               <div className="relative rounded-xl shadow-sm">
@@ -245,7 +287,10 @@ export function Login() {
                   type={showPassword ? "text" : "password"}
                   disabled={loading}
                   {...register("password", {
-                    required: "Mật khẩu là bắt buộc",
+                    required:
+                      language === "vi"
+                        ? "Mật khẩu là bắt buộc"
+                        : "Password is required",
                   })}
                   placeholder="••••••••"
                   className={`block w-full rounded-xl border ${
@@ -257,7 +302,7 @@ export function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -267,7 +312,7 @@ export function Login() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs font-medium text-red-600">
+                <p className="text-xs font-medium text-red-600 mt-1">
                   {errors.password.message}
                 </p>
               )}
@@ -279,13 +324,13 @@ export function Login() {
                 id="remember-me"
                 name="remember-me"
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
               <label
                 htmlFor="remember-me"
-                className="ml-2 block text-sm font-medium text-slate-700 select-none"
+                className="ml-2 block text-sm font-medium text-slate-700 select-none cursor-pointer"
               >
-                Ghi nhớ đăng nhập
+                {language === "vi" ? "Ghi nhớ đăng nhập" : "Remember me"}
               </label>
             </div>
 
@@ -293,16 +338,16 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 py-3.5 text-sm font-semibold text-white transition focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-75 shadow-md shadow-slate-900/10 cursor-pointer border-none"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Đang xử lý...
+                  {language === "vi" ? "Đang xử lý..." : "Processing..."}
                 </>
               ) : (
                 <>
-                  Đăng nhập
+                  {language === "vi" ? "Đăng nhập" : "Sign In"}
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -317,7 +362,9 @@ export function Login() {
               </div>
               <div className="relative flex justify-center text-sm font-medium">
                 <span className="bg-slate-50 px-3 text-slate-500">
-                  Hoặc tiếp tục bằng
+                  {language === "vi"
+                    ? "Hoặc tiếp tục bằng"
+                    : "Or continue with"}
                 </span>
               </div>
             </div>
@@ -334,12 +381,14 @@ export function Login() {
           </div>
 
           <p className="text-center text-sm font-medium text-slate-600">
-            Chưa có tài khoản?{" "}
+            {language === "vi"
+              ? "Chưa có tài khoản? "
+              : "Don't have an account? "}
             <Link
               to="/register"
-              className="font-semibold text-blue-600 hover:text-blue-500 transition"
+              className="font-semibold text-blue-600 hover:text-blue-500 transition text-decoration-none"
             >
-              Đăng ký ngay
+              {language === "vi" ? "Đăng ký ngay" : "Register now"}
             </Link>
           </p>
         </div>

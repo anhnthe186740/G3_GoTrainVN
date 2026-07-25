@@ -3,9 +3,11 @@ import { Mail, Phone, X, Send, User, MessageSquare } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { api } from "../../services/api";
 import { toast } from "sonner";
+import { useLanguage } from "../../context/LanguageContext";
 
 export function ContactModal({ isOpen, onClose }) {
   const { user } = useAuthStore();
+  const { t, language } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -32,7 +34,11 @@ export function ContactModal({ isOpen, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !message.trim()) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc.");
+      toast.error(
+        language === "vi"
+          ? "Vui lòng điền đầy đủ thông tin bắt buộc."
+          : "Please fill in all required fields.",
+      );
       return;
     }
 
@@ -47,17 +53,26 @@ export function ContactModal({ isOpen, onClose }) {
 
       if (data.success) {
         toast.success(
-          "Gửi yêu cầu hỗ trợ thành công! Vui lòng kiểm tra hộp thư email của bạn.",
+          language === "vi"
+            ? "Gửi yêu cầu hỗ trợ thành công! Vui lòng kiểm tra hộp thư email của bạn."
+            : "Support request sent successfully! Please check your email inbox.",
         );
         onClose();
       } else {
-        toast.error(data.message || "Gửi yêu cầu thất bại.");
+        toast.error(
+          data.message ||
+            (language === "vi"
+              ? "Gửi yêu cầu thất bại."
+              : "Submission failed."),
+        );
       }
     } catch (err) {
       console.error("Error submitting contact form:", err);
       toast.error(
         err.response?.data?.message ||
-          "Không thể gửi tin nhắn. Vui lòng thử lại sau.",
+          (language === "vi"
+            ? "Không thể gửi tin nhắn. Vui lòng thử lại sau."
+            : "Could not send message. Please try again later."),
       );
     } finally {
       setLoading(false);
@@ -71,7 +86,7 @@ export function ContactModal({ isOpen, onClose }) {
         <div className="relative bg-gradient-to-r from-[#004c7a] to-[#00629d] px-6 py-6 text-white">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-xl transition-all"
+            className="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-1.5 rounded-xl transition-all border-none cursor-pointer"
             aria-label="Đóng"
           >
             <X className="w-5 h-5" />
@@ -79,15 +94,12 @@ export function ContactModal({ isOpen, onClose }) {
           <div className="space-y-1 text-left">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 border border-white/20 text-[#b3d4f0] uppercase tracking-wider">
               <Mail className="w-3 h-3" />
-              Hỗ trợ trực tuyến
+              {language === "vi" ? "Hỗ trợ trực tuyến" : "Online Support"}
             </span>
             <h3 className="text-xl font-extrabold tracking-tight">
-              Liên Hệ GoTrain VN
+              {t("contact_header")}
             </h3>
-            <p className="text-xs text-[#b3d4f0]/90">
-              Gửi tin nhắn cho chúng tôi. Đội ngũ chăm sóc khách hàng sẽ phản
-              hồi qua email của bạn sớm nhất.
-            </p>
+            <p className="text-xs text-[#b3d4f0]/90">{t("contact_sub")}</p>
           </div>
         </div>
 
@@ -99,15 +111,17 @@ export function ContactModal({ isOpen, onClose }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Name input */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1 text-left justify-start">
                 <User className="w-3.5 h-3.5 text-slate-400" />
-                Họ và Tên <span className="text-red-500">*</span>
+                {t("contact_name")} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 disabled={loading}
-                placeholder="Nguyễn Văn A"
+                placeholder={
+                  language === "vi" ? "Nguyễn Văn A" : "E.g. John Doe"
+                }
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500"
@@ -116,9 +130,9 @@ export function ContactModal({ isOpen, onClose }) {
 
             {/* Email input */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1 text-left justify-start">
                 <Mail className="w-3.5 h-3.5 text-slate-400" />
-                Email nhận phản hồi <span className="text-red-500">*</span>
+                {t("contact_email")} <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
@@ -133,15 +147,15 @@ export function ContactModal({ isOpen, onClose }) {
           </div>
 
           {/* Subject input */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+          <div className="space-y-1 text-left">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1 text-left justify-start">
               <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-              Chủ đề yêu cầu
+              {t("contact_subject")}
             </label>
             <input
               type="text"
               disabled={loading}
-              placeholder="Ví dụ: Hỏi về chính sách đổi vé tàu chạy trễ..."
+              placeholder={t("contact_subject_placeholder")}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
@@ -149,14 +163,14 @@ export function ContactModal({ isOpen, onClose }) {
           </div>
 
           {/* Message textarea */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700">
-              Nội dung chi tiết <span className="text-red-500">*</span>
+          <div className="space-y-1 text-left">
+            <label className="text-xs font-bold text-slate-700 text-left justify-start block">
+              {t("contact_message")} <span className="text-red-500">*</span>
             </label>
             <textarea
               required
               disabled={loading}
-              placeholder="Nhập câu hỏi hoặc nội dung bạn cần hỗ trợ..."
+              placeholder={t("contact_message_placeholder")}
               rows={4}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -172,9 +186,11 @@ export function ContactModal({ isOpen, onClose }) {
               </span>
               <div>
                 <p className="text-xs font-extrabold text-slate-800">
-                  Hotline hỗ trợ nhanh
+                  {t("contact_hotline_box")}
                 </p>
-                <p className="text-[10px] text-slate-500">Gọi trực tiếp 24/7</p>
+                <p className="text-[10px] text-slate-500">
+                  {t("contact_hotline_sub")}
+                </p>
               </div>
             </div>
             <a
@@ -191,21 +207,21 @@ export function ContactModal({ isOpen, onClose }) {
               type="button"
               disabled={loading}
               onClick={onClose}
-              className="border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-xs transition-all"
+              className="border border-slate-200 hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer bg-white"
             >
-              Hủy bỏ
+              {t("contact_cancel")}
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-1.5 bg-[#00629d] hover:bg-[#00527f] text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-[#00629d] hover:bg-[#00527f] text-white px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm disabled:opacity-50 cursor-pointer border-none"
             >
               {loading ? (
                 <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <Send className="w-3.5 h-3.5" />
               )}
-              Gửi yêu cầu
+              {loading ? t("contact_sending") : t("contact_submit")}
             </button>
           </div>
         </form>

@@ -1,9 +1,11 @@
 import { Wallet, ArrowDownLeft, ArrowUpRight, RefreshCw } from "lucide-react";
+import { useLanguage } from "../../context/LanguageContext";
 
-const fmt = (n) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(
-    n ?? 0,
-  );
+const fmt = (n, language = "vi") =>
+  new Intl.NumberFormat(language === "vi" ? "vi-VN" : "en-US", {
+    style: "currency",
+    currency: "VND",
+  }).format(n ?? 0);
 
 export function WalletBalanceCard({
   balance,
@@ -14,6 +16,8 @@ export function WalletBalanceCard({
   onRefresh,
   isLoading,
 }) {
+  const { language } = useLanguage();
+
   if (isLoading) {
     return (
       <div className="rounded-3xl p-8 animate-pulse bg-gradient-to-br from-[#003d66] via-[#00629d] to-[#0086cc] h-52" />
@@ -22,7 +26,7 @@ export function WalletBalanceCard({
 
   return (
     <div
-      className="relative rounded-3xl p-6 overflow-hidden"
+      className="relative rounded-3xl p-6 overflow-hidden text-left"
       style={{
         background:
           "linear-gradient(135deg, #003d66 0%, #00629d 50%, #0086cc 100%)",
@@ -41,18 +45,21 @@ export function WalletBalanceCard({
             <Wallet className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-white/70 text-xs font-semibold tracking-widest uppercase">
-              Ví GoTrain VN
+            <p className="text-white/70 text-xs font-semibold tracking-widest uppercase mb-0">
+              {language === "vi" ? "Ví GoTrain VN" : "GoTrain VN Wallet"}
             </p>
-            <p className="text-white/50 text-[11px]">
-              Cập nhật:{" "}
+            <p className="text-white/50 text-[11px] mb-0">
+              {language === "vi" ? "Cập nhật: " : "Updated: "}
               {updatedAt
-                ? new Date(updatedAt).toLocaleString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    day: "2-digit",
-                    month: "2-digit",
-                  })
+                ? new Date(updatedAt).toLocaleString(
+                    language === "vi" ? "vi-VN" : "en-US",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                    },
+                  )
                 : "—"}
             </p>
           </div>
@@ -60,12 +67,14 @@ export function WalletBalanceCard({
 
         {/* Balance */}
         <div className="mb-6">
-          <p className="text-white/60 text-sm mb-1">Số dư hiện tại</p>
+          <p className="text-white/60 text-sm mb-1">
+            {language === "vi" ? "Số dư hiện tại" : "Current balance"}
+          </p>
           <p
-            className="text-white font-bold tracking-tight"
+            className="text-white font-bold tracking-tight mb-0"
             style={{ fontSize: "2rem", lineHeight: 1.15 }}
           >
-            {fmt(balance)}
+            {fmt(balance, language)}
           </p>
         </div>
 
@@ -73,23 +82,23 @@ export function WalletBalanceCard({
         <div className="flex items-center gap-2">
           <button
             onClick={onDeposit}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 border-none cursor-pointer"
             style={{ background: "white", color: "#00629d" }}
           >
             <ArrowDownLeft className="w-3.5 h-3.5" />
-            Nạp tiền
+            {language === "vi" ? "Nạp tiền" : "Deposit"}
           </button>
           <button
             onClick={onWithdraw}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm border-2 border-white/70 text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm border-2 border-white/70 text-white hover:bg-white/10 transition-all duration-200 hover:scale-105 active:scale-95 bg-transparent cursor-pointer"
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
-            Rút tiền
+            {language === "vi" ? "Rút tiền" : "Withdraw"}
           </button>
           <button
             onClick={onRefresh}
-            className="ml-auto w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 transition-all active:scale-95"
-            title="Làm mới"
+            className="ml-auto w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 transition-all active:scale-95 cursor-pointer"
+            title={language === "vi" ? "Làm mới" : "Refresh"}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
