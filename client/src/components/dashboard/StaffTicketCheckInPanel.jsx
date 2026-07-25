@@ -276,8 +276,10 @@ export function StaffTicketCheckInPanel() {
     if (!result?.success || !result.data?.ticketCode) return;
     setUndoing(true);
     try {
-      await staffSearchApi.undoCheckIn(result.data.ticketCode);
-      toast.warning("Đã hủy soát vé do thông tin hành khách không khớp.");
+      await staffSearchApi.reportMismatch(result.data.ticketCode);
+      toast.warning(
+        "Đã từ chối soát vé và ghi nhận sai lệch thông tin thành công.",
+      );
       setSessionLogs((prev) => [
         {
           id: Date.now(),
