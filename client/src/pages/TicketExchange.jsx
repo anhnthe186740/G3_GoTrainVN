@@ -132,7 +132,7 @@ export function TicketExchange() {
   const activePassengerCount = useMemo(() => {
     if (exchangeMode === "single") return 1;
     if (!booking?.passengers?.length) return booking?.totalPassengers || 1;
-    
+
     const seatedPassengers = booking.passengers.filter(
       (p) =>
         Boolean(p.seat || p.seatId) &&
@@ -309,11 +309,16 @@ export function TicketExchange() {
       return;
     }
 
-    const exchangePIds = exchangeMode === "single" 
-      ? [ticket.id] 
-      : booking.passengers
-          .filter(p => p.bookingDetails?.every(d => d.status !== "CANCELLED") ?? true)
-          .map(p => p.id);
+    const exchangePIds =
+      exchangeMode === "single"
+        ? [ticket.id]
+        : booking.passengers
+            .filter(
+              (p) =>
+                p.bookingDetails?.every((d) => d.status !== "CANCELLED") ??
+                true,
+            )
+            .map((p) => p.id);
 
     const params = new URLSearchParams({
       outboundScheduleId: selectedSchedule.id,
