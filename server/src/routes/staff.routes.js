@@ -7,6 +7,10 @@ import { globalStaffSearch } from "../controllers/staffSearch.controller.js";
 import {
   checkInTicket,
   undoCheckInTicket,
+  reportMismatchTicket,
+  correctInfo,
+  invalidate,
+  exchangeType,
 } from "../controllers/staffCheckIn.controller.js";
 import { getStaffStats } from "../controllers/staffStats.controller.js";
 import { exchangeTicket } from "../controllers/staffExchange.controller.js";
@@ -22,4 +26,8 @@ staffRoutes.post("/cancellations/quote", quoteCancellation);
 staffRoutes.post("/cancellations/confirm", confirmCancellation);
 staffRoutes.post("/check-in", checkInTicket);
 staffRoutes.post("/check-in/undo", undoCheckInTicket);
+staffRoutes.post("/check-in/mismatch", reportMismatchTicket);
+staffRoutes.post("/check-in/correct-info", correctInfo);
+staffRoutes.post("/check-in/invalidate", invalidate);
+staffRoutes.post("/check-in/exchange-type", exchangeType);
 staffRoutes.post("/exchange", exchangeTicket);
