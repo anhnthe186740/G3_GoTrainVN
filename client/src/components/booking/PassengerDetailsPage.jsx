@@ -772,9 +772,10 @@ export function PassengerDetailsPage({
         if (isAnyExchangeMode && exchangeBookingCode && searchParams.get("exchangePassengerIds")) {
           api.get("/bookings/lookup", { params: { ticketCode: exchangeBookingCode } })
             .then(({ data }) => {
-              if (data.passengers) {
+              const tickets = data.tickets || data.passengers;
+              if (tickets) {
                 const idsToExchange = searchParams.get("exchangePassengerIds").split(",");
-                const oldPassengers = data.passengers.filter(p => idsToExchange.includes(p.id));
+                const oldPassengers = tickets.filter(p => idsToExchange.includes(p.id));
                 if (oldPassengers.length > 0) {
                   const prefills = oldPassengers.map(oldP => ({
                     fullName: oldP.fullName || "",
