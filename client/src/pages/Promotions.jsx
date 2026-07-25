@@ -3,18 +3,23 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import { useLanguage } from "../context/LanguageContext";
 
-function formatDate(dateStr) {
+function formatDate(dateStr, language = "vi") {
   if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return new Date(dateStr).toLocaleDateString(
+    language === "vi" ? "vi-VN" : "en-US",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  );
 }
 
 export function Promotions() {
   const { user } = useAuthStore();
+  const { language, t } = useLanguage();
   const [promotionsList, setPromotionsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(null);
@@ -36,10 +41,15 @@ export function Promotions() {
           return {
             id: `voucher-${v.id || index}`,
             code: v.voucherCode,
-            title: `Mã giảm giá ${v.voucherCode}`,
+            title:
+              language === "vi"
+                ? `Mã giảm giá ${v.voucherCode}`
+                : `Discount code ${v.voucherCode}`,
             description:
               v.description ||
-              `Giảm ngay ${v.discountValue.toLocaleString("vi-VN")} ${v.discountType === "PERCENTAGE" ? "%" : "VND"} cho đơn hàng của bạn.`,
+              (language === "vi"
+                ? `Giảm ngay ${v.discountValue.toLocaleString("vi-VN")} ${v.discountType === "PERCENTAGE" ? "%" : "VND"} cho đơn hàng của bạn.`
+                : `Instantly save ${v.discountValue.toLocaleString("en-US")} ${v.discountType === "PERCENTAGE" ? "%" : "VND"} on your booking.`),
             discount: discountStr,
             type: v.discountType, // PERCENTAGE, FIXED_AMOUNT
             color:
@@ -52,8 +62,10 @@ export function Promotions() {
                 : "account_balance_wallet",
             validTo: v.validTo,
             minOrder: v.minBookingAmount
-              ? `${v.minBookingAmount.toLocaleString("vi-VN")}đ`
-              : "Không giới hạn",
+              ? `${v.minBookingAmount.toLocaleString(language === "vi" ? "vi-VN" : "en-US")}${language === "vi" ? "đ" : " VND"}`
+              : language === "vi"
+                ? "Không giới hạn"
+                : "No limit",
             badge: "Voucher",
             badgeColor: "bg-green-500",
             isVoucher: true,
@@ -66,7 +78,9 @@ export function Promotions() {
             p.discountType === "PERCENTAGE"
               ? `${p.discountValue}%`
               : p.discountType === "FREE_UPGRADE"
-                ? "Nâng hạng"
+                ? language === "vi"
+                  ? "Nâng hạng"
+                  : "Upgrade"
                 : `${p.discountValue / 1000}k`;
 
           return {
@@ -75,14 +89,19 @@ export function Promotions() {
             title: p.title,
             description:
               p.description ||
-              "Ưu đãi tự động áp dụng trực tiếp cho các chặng/chuyến tàu đủ điều kiện.",
+              (language === "vi"
+                ? "Ưu đãi tự động áp dụng trực tiếp cho các chặng/chuyến tàu đủ điều kiện."
+                : "Offer is automatically applied directly to eligible train routes."),
             discount: discountStr,
             type: p.discountType, // PERCENTAGE, FIXED_AMOUNT, FREE_UPGRADE
             color: "from-[#d97706] to-[#f59e0b]",
             icon: "stars",
             validTo: p.validTo,
-            minOrder: "Chuyến tàu quy định",
-            badge: "Khuyến mãi",
+            minOrder:
+              language === "vi"
+                ? "Chuyến tàu quy định"
+                : "Specified train routes",
+            badge: language === "vi" ? "Khuyến mãi" : "Promotion",
             badgeColor: "bg-orange-500",
             isVoucher: false,
           };
@@ -91,20 +110,26 @@ export function Promotions() {
         setPromotionsList([...mappedVouchers, ...mappedPromotions]);
       } catch (err) {
         console.error("Lỗi khi tải khuyến mãi:", err);
-        toast.error("Không thể tải danh sách khuyến mãi.");
+        toast.error(
+          language === "vi"
+            ? "Không thể tải danh sách khuyến mãi."
+            : "Failed to load promotions list.",
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchPromotions();
-  }, []);
+  }, [language]);
 
   const handleCopy = (code) => {
     if (code === "Tự động áp dụng") return;
     navigator.clipboard.writeText(code).then(() => {
       setCopiedCode(code);
-      toast.success(`Đã sao chép mã: ${code}`);
+      toast.success(
+        language === "vi" ? `Đã sao chép mã: ${code}` : `Copied code: ${code}`,
+      );
       setTimeout(() => setCopiedCode(null), 2000);
     });
   };
@@ -127,30 +152,44 @@ export function Promotions() {
             <span className="material-symbols-outlined text-[16px]">
               local_offer
             </span>
-            Khuyến Mãi Độc Quyền
+            {language === "vi"
+              ? "Khuyến Mãi Độc Quyền"
+              : "Exclusive Promotions"}
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4 leading-tight">
-            Tiết Kiệm Hơn Mỗi Chuyến Đi
+            {language === "vi"
+              ? "Tiết Kiệm Hơn Mỗi Chuyến Đi"
+              : "Save More on Every Trip"}
           </h1>
           <p className="text-[#b3d4f0] text-lg">
-            Khám phá các ưu đãi hấp dẫn từ GoTrain VN. Sao chép mã voucher và
-            nhập ở bước thanh toán để nhận ngay giảm giá.
+            {language === "vi"
+              ? "Khám phá các ưu đãi hấp dẫn từ GoTrain VN. Sao chép mã voucher và nhập ở bước thanh toán để nhận ngay giảm giá."
+              : "Discover exciting offers from GoTrain VN. Copy voucher codes and apply them at checkout to save instantly."}
           </p>
 
           {/* Filter tabs */}
           <div className="flex flex-wrap justify-center gap-2 mt-8">
             {[
-              { key: "ALL", label: "Tất cả" },
-              { key: "PERCENTAGE", label: "Giảm %" },
-              { key: "FIXED", label: "Giảm tiền" },
-              { key: "AUTO", label: "Tự động áp dụng" },
+              { key: "ALL", label: language === "vi" ? "Tất cả" : "All" },
+              {
+                key: "PERCENTAGE",
+                label: language === "vi" ? "Giảm %" : "Discount %",
+              },
+              {
+                key: "FIXED",
+                label: language === "vi" ? "Giảm tiền" : "Fixed Discount",
+              },
+              {
+                key: "AUTO",
+                label: language === "vi" ? "Tự động áp dụng" : "Auto Applied",
+              },
             ].map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setFilter(key)}
                 className={`px-5 py-2 rounded-full font-semibold text-sm transition-all cursor-pointer ${
                   filter === key
-                    ? "bg-white text-[#00629d] shadow-lg"
+                    ? "bg-white text-[#00629d] shadow-lg border-none"
                     : "bg-white/15 text-white hover:bg-white/25 border border-white/20"
                 }`}
               >
@@ -164,10 +203,12 @@ export function Promotions() {
       {/* Promotions Grid */}
       <div className="max-w-6xl mx-auto px-6 py-12">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24">
+          <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
             <p className="text-slate-500 font-bold text-sm">
-              Đang tải danh sách khuyến mãi...
+              {language === "vi"
+                ? "Đang tải danh sách khuyến mãi..."
+                : "Loading promotions list..."}
             </p>
           </div>
         ) : filtered.length === 0 ? (
@@ -176,10 +217,14 @@ export function Promotions() {
               local_offer
             </span>
             <h3 className="font-bold text-[#191c1e] text-lg">
-              Không có ưu đãi nào phù hợp
+              {language === "vi"
+                ? "Không có ưu đãi nào phù hợp"
+                : "No promotions match your selection"}
             </h3>
             <p className="text-sm text-[#6f7883]">
-              Hiện không có khuyến mãi nào đang hoạt động cho danh mục này.
+              {language === "vi"
+                ? "Hiện không có khuyến mãi nào đang hoạt động cho danh mục này."
+                : "There are currently no active promotions for this category."}
             </p>
           </div>
         ) : (
@@ -205,12 +250,18 @@ export function Promotions() {
                       {promo.badge}
                     </span>
                   </div>
-                  <div className="mt-4">
+                  <div className="mt-4 text-left">
                     <p className="text-5xl font-extrabold text-white">
                       {promo.discount}
                     </p>
                     <p className="text-white/80 text-sm mt-1">
-                      {promo.isVoucher ? "Mã ưu đãi" : "Khuyến mãi hệ thống"}
+                      {promo.isVoucher
+                        ? language === "vi"
+                          ? "Mã ưu đãi"
+                          : "Voucher Code"
+                        : language === "vi"
+                          ? "Khuyến mãi hệ thống"
+                          : "System Promo"}
                     </p>
                   </div>
                   {/* Decorative circle */}
@@ -220,7 +271,7 @@ export function Promotions() {
 
                 {/* Card Body */}
                 <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
+                  <div className="text-left">
                     <h3 className="font-bold text-[#191c1e] text-base mb-2">
                       {promo.title}
                     </h3>
@@ -231,15 +282,19 @@ export function Promotions() {
                     {/* Details */}
                     <div className="space-y-2 border-t border-slate-50 pt-3">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[#6f7883]">Đơn tối thiểu</span>
+                        <span className="text-[#6f7883]">
+                          {language === "vi" ? "Đơn tối thiểu" : "Min Booking"}
+                        </span>
                         <span className="font-semibold text-[#191c1e]">
                           {promo.minOrder}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[#6f7883]">Hạn sử dụng</span>
+                        <span className="text-[#6f7883]">
+                          {language === "vi" ? "Hạn sử dụng" : "Expires On"}
+                        </span>
                         <span className="font-semibold text-[#191c1e]">
-                          {formatDate(promo.validTo)}
+                          {formatDate(promo.validTo, language)}
                         </span>
                       </div>
                     </div>
@@ -250,24 +305,28 @@ export function Promotions() {
                     <div className="flex items-center gap-2 mb-3">
                       <div className="flex-1 bg-[#f7f9fb] border border-dashed border-[#bec7d4] rounded-xl px-3 py-2.5 flex items-center justify-between">
                         <span className="font-mono font-bold text-[#00629d] text-sm tracking-wider">
-                          {promo.code}
+                          {promo.code === "Tự động áp dụng"
+                            ? language === "vi"
+                              ? "Tự động áp dụng"
+                              : "Auto-applied"
+                            : promo.code}
                         </span>
                       </div>
                       {promo.isVoucher && (
                         <button
                           onClick={() => handleCopy(promo.code)}
-                          className={`px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+                          className={`px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer border-none ${
                             copiedCode === promo.code
                               ? "bg-green-500 text-white"
                               : "bg-[#00629d] hover:bg-[#00629d]/90 text-white"
                           }`}
                         >
                           {copiedCode === promo.code ? (
-                            <span className="material-symbols-outlined text-[18px]">
+                            <span className="material-symbols-outlined text-[18px] block">
                               check
                             </span>
                           ) : (
-                            <span className="material-symbols-outlined text-[18px]">
+                            <span className="material-symbols-outlined text-[18px] block">
                               content_copy
                             </span>
                           )}
@@ -282,7 +341,7 @@ export function Promotions() {
                       <span className="material-symbols-outlined text-[16px]">
                         train
                       </span>
-                      Đặt vé ngay
+                      {language === "vi" ? "Đặt vé ngay" : "Book ticket now"}
                     </Link>
                   </div>
                 </div>
@@ -295,13 +354,21 @@ export function Promotions() {
         <div className="mt-12 bg-gradient-to-r from-[#00629d] to-[#00a3ff] rounded-3xl p-8 text-white text-center">
           <h2 className="text-2xl font-extrabold mb-2">
             {user
-              ? `Chào mừng, ${user.fullName || user.email}!`
-              : "Nhận ưu đãi độc quyền"}
+              ? language === "vi"
+                ? `Chào mừng, ${user.fullName || user.email}!`
+                : `Welcome, ${user.fullName || user.email}!`
+              : language === "vi"
+                ? "Nhận ưu đãi độc quyền"
+                : "Get Exclusive Offers"}
           </h2>
           <p className="text-[#b3d4f0] mb-6">
             {user
-              ? "Cảm ơn bạn đã đồng hành cùng GoTrain VN. Khám phá các ưu đãi và lên kế hoạch cho chuyến đi tiếp theo!"
-              : "Đăng ký thành viên và nhận ngay mã giảm giá cho chuyến đi đầu tiên của bạn!"}
+              ? language === "vi"
+                ? "Cảm ơn bạn đã đồng hành cùng GoTrain VN. Khám phá các ưu đãi và lên kế hoạch cho chuyến đi tiếp theo!"
+                : "Thank you for riding with GoTrain VN. Explore active deals and plan your next journey!"
+              : language === "vi"
+                ? "Đăng ký thành viên và nhận ngay mã giảm giá cho chuyến đi đầu tiên của bạn!"
+                : "Register now and get instant voucher codes for your first train trip!"}
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             {user ? (
@@ -309,7 +376,7 @@ export function Promotions() {
                 to="/"
                 className="bg-white text-[#00629d] font-bold px-8 py-3 rounded-xl hover:bg-[#f7f9fb] transition-all shadow-lg"
               >
-                Đặt vé ngay
+                {language === "vi" ? "Đặt vé ngay" : "Book ticket now"}
               </Link>
             ) : (
               <>
@@ -317,13 +384,13 @@ export function Promotions() {
                   to="/register"
                   className="bg-white text-[#00629d] font-bold px-8 py-3 rounded-xl hover:bg-[#f7f9fb] transition-all shadow-lg"
                 >
-                  Đăng ký miễn phí
+                  {language === "vi" ? "Đăng ký miễn phí" : "Register Free"}
                 </Link>
                 <Link
                   to="/"
                   className="bg-white/15 border border-white/30 text-white font-bold px-8 py-3 rounded-xl hover:bg-white/25 transition-all"
                 >
-                  Đặt vé ngay
+                  {language === "vi" ? "Đặt vé ngay" : "Book ticket now"}
                 </Link>
               </>
             )}

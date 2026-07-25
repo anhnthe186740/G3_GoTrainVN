@@ -2,41 +2,45 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Train, LogOut, User, Wallet } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { toast } from "sonner";
+import { useLanguage } from "../../context/LanguageContext";
 
 export function Navbar() {
   const { user, clearAuth } = useAuth();
   const navigate = useNavigate();
+  const { language, changeLanguage, t } = useLanguage();
 
   const loyaltyPoints = user?.loyaltyPoints || 0;
   const membershipRank = (() => {
-    if (user?.role === "ADMIN") return "Quản trị viên";
-    if (user?.role === "STAFF") return "Nhân viên ga";
-    if (loyaltyPoints >= 2000) return "Thành viên Kim Cương";
-    if (loyaltyPoints >= 500) return "Thành viên Vàng";
-    if (loyaltyPoints >= 100) return "Thành viên Bạc";
-    return "Thành viên Đồng";
+    if (user?.role === "ADMIN") return t("member_admin");
+    if (user?.role === "STAFF") return t("member_staff");
+    if (loyaltyPoints >= 2000) return t("member_diamond");
+    if (loyaltyPoints >= 500) return t("member_gold");
+    if (loyaltyPoints >= 100) return t("member_silver");
+    return t("member_bronze");
   })();
 
   const handleLogout = () => {
     clearAuth();
-    toast.success("Đăng xuất thành công!");
+    toast.success(
+      language === "vi" ? "Đăng xuất thành công!" : "Logged out successfully!",
+    );
     navigate("/");
   };
 
   const navLinks = [
-    { to: "/", label: "Trang Chủ" },
-    { to: "/tra-cuu-ve", label: "Tra Cứu Vé" },
-    { to: "/promotions", label: "Khuyến Mãi" },
-    { to: "/quy-dinh", label: "Các Quy Định" },
+    { to: "/", label: t("nav_home") },
+    { to: "/tra-cuu-ve", label: t("nav_lookup") },
+    { to: "/promotions", label: t("nav_promotions") },
+    { to: "/quy-dinh", label: t("nav_regulations") },
   ];
 
   const userNavLinks = user
     ? [
         {
           to: "/dashboard",
-          label: user.role === "ADMIN" ? "Quản Trị" : "Của Tôi",
+          label: user.role === "ADMIN" ? t("nav_admin") : t("nav_my_tickets"),
         },
-        { to: "/wallet", label: "Ví" },
+        { to: "/wallet", label: t("nav_wallet") },
       ]
     : [];
 
@@ -88,6 +92,42 @@ export function Navbar() {
 
         {/* Auth profile / actions */}
         <div className="flex items-center gap-md">
+          {/* Language Switcher */}
+          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 shadow-sm">
+            <button
+              onClick={() => {
+                if (language !== "vi") {
+                  changeLanguage("vi");
+                  toast.success("Đã chuyển sang Tiếng Việt!");
+                }
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 ${
+                language === "vi"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 bg-transparent"
+              }`}
+            >
+              <span className="text-[14px]">🇻🇳</span>
+              <span>VN</span>
+            </button>
+            <button
+              onClick={() => {
+                if (language !== "en") {
+                  changeLanguage("en");
+                  toast.success("Switched to English!");
+                }
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border-none flex items-center gap-1 ${
+                language === "en"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 bg-transparent"
+              }`}
+            >
+              <span className="text-[14px]">🇬🇧</span>
+              <span>EN</span>
+            </button>
+          </div>
+
           {user ? (
             <>
               <Link
@@ -99,7 +139,7 @@ export function Navbar() {
                 </div>
                 <div className="hidden sm:flex flex-col text-left">
                   <span className="font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
-                    {user.fullName || user.name || "Khách"}
+                    {user.fullName || user.name || t("guest")}
                   </span>
                   <span className="text-[10px] text-primary uppercase font-bold tracking-tighter">
                     {membershipRank}
@@ -108,10 +148,10 @@ export function Navbar() {
               </Link>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-xs text-on-surface-variant hover:text-red-600 transition-colors duration-300 font-semibold text-sm cursor-pointer"
+                className="flex items-center gap-xs text-on-surface-variant hover:text-red-600 transition-colors duration-300 font-semibold text-sm cursor-pointer border-none bg-transparent"
               >
                 <LogOut className="h-5 w-5" />
-                <span className="hidden md:inline">Đăng xuất</span>
+                <span className="hidden md:inline">{t("nav_logout")}</span>
               </button>
             </>
           ) : (
@@ -120,13 +160,13 @@ export function Navbar() {
                 to="/login"
                 className="text-sm font-semibold text-slate-700 hover:text-slate-900 px-3 py-2"
               >
-                Đăng nhập
+                {t("nav_login")}
               </Link>
               <Link
                 to="/register"
                 className="rounded-xl bg-primary hover:bg-primary-container px-4 py-2 text-sm font-semibold text-white transition shadow-sm"
               >
-                Đăng ký
+                {t("nav_register")}
               </Link>
             </div>
           )}
