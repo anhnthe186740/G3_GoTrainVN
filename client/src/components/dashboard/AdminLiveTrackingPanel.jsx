@@ -207,6 +207,124 @@ function MapFlyTo({ selectedItem }) {
   return null;
 }
 
+// Helper distance calculation (Euclidean in degrees for GIS snapping)
+function getDistanceDeg(lat1, lng1, lat2, lng2) {
+  const dLat = lat2 - lat1;
+  const dLng = lng2 - lng1;
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+// Find closest vertex index on a polyline path to a given coordinate
+function findClosestPathVertexIndex(path, lat, lng) {
+  let minDistance = Infinity;
+  let closestIndex = 0;
+  for (let i = 0; i < path.length; i++) {
+    const dist = getDistanceDeg(lat, lng, path[i][0], path[i][1]);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestIndex = i;
+    }
+  }
+  return { index: closestIndex, distance: minDistance };
+}
+
+// Interpolate train position along railway polyline paths so train stays 100% on railway tracks
+function interpolateAlongRailwayLine(
+  startLat,
+  startLng,
+  endLat,
+  endLng,
+  progress,
+) {
+  const clampedProgress = Math.max(0, Math.min(1, progress));
+  const ALL_PATHS = [
+    NORTH_SOUTH_RAILWAY_PATH,
+    LAO_CAI_BRANCH_PATH,
+    HAI_PHONG_BRANCH_PATH,
+  ];
+
+  let bestPath = null;
+  let idx1 = 0;
+  let idx2 = 0;
+  let minCombinedDist = Infinity;
+
+  for (const path of ALL_PATHS) {
+    const startMatch = findClosestPathVertexIndex(path, startLat, startLng);
+    const endMatch = findClosestPathVertexIndex(path, endLat, endLng);
+    const combinedDist = startMatch.distance + endMatch.distance;
+
+    if (combinedDist < minCombinedDist) {
+      minCombinedDist = combinedDist;
+      bestPath = path;
+      idx1 = startMatch.index;
+      idx2 = endMatch.index;
+    }
+  }
+
+  // Fallback to direct linear interpolation if distance to path is large or start/end are adjacent/same
+  if (!bestPath || minCombinedDist > 1.5 || idx1 === idx2) {
+    return {
+      lat: startLat + (endLat - startLat) * clampedProgress,
+      lng: startLng + (endLng - startLng) * clampedProgress,
+    };
+  }
+
+  // Build subPath from idx1 to idx2
+  const subPath = [];
+  subPath.push([startLat, startLng]);
+
+  const step = idx1 < idx2 ? 1 : -1;
+  let currentIdx = idx1;
+  while (currentIdx !== idx2) {
+    currentIdx += step;
+    subPath.push([bestPath[currentIdx][0], bestPath[currentIdx][1]]);
+  }
+  subPath[subPath.length - 1] = [endLat, endLng];
+
+  // Calculate cumulative segment distances along subPath
+  const segmentDistances = [];
+  let totalDist = 0;
+  for (let i = 0; i < subPath.length - 1; i++) {
+    const dist = getDistanceDeg(
+      subPath[i][0],
+      subPath[i][1],
+      subPath[i + 1][0],
+      subPath[i + 1][1],
+    );
+    segmentDistances.push(dist);
+    totalDist += dist;
+  }
+
+  if (totalDist <= 0) {
+    return { lat: startLat, lng: startLng };
+  }
+
+  const targetDist = clampedProgress * totalDist;
+  let accumulated = 0;
+
+  for (let i = 0; i < segmentDistances.length; i++) {
+    const segDist = segmentDistances[i];
+    if (
+      accumulated + segDist >= targetDist ||
+      i === segmentDistances.length - 1
+    ) {
+      const segProgress =
+        segDist > 0 ? (targetDist - accumulated) / segDist : 0;
+      const clampedSegProgress = Math.max(0, Math.min(1, segProgress));
+      const p1 = subPath[i];
+      const p2 = subPath[i + 1];
+
+      return {
+        lat: p1[0] + (p2[0] - p1[0]) * clampedSegProgress,
+        lng: p1[1] + (p2[1] - p1[1]) * clampedSegProgress,
+      };
+    }
+    accumulated += segDist;
+  }
+
+  return { lat: endLat, lng: endLng };
+}
+
 // Interpolate GPS coordinates and status of the train based on time
 function getInterpolatedTracking(item, currentTime = new Date()) {
   const { schedule, tracking } = item;
@@ -291,7 +409,7 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
     type: "END",
   });
 
-  // Interpolate segment
+  // Interpolate segment along railway polyline
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
     const next = nodes[i + 1];
@@ -318,13 +436,18 @@ function getInterpolatedTracking(item, currentTime = new Date()) {
       const elapsed = currentTime.getTime() - currentDep.getTime();
       const progress = segmentDuration > 0 ? elapsed / segmentDuration : 0;
 
-      const lat = current.lat + (next.lat - current.lat) * progress;
-      const lng = current.lng + (next.lng - current.lng) * progress;
+      const point = interpolateAlongRailwayLine(
+        current.lat,
+        current.lng,
+        next.lat,
+        next.lng,
+        progress,
+      );
 
       return {
         ...tracking,
-        latitude: lat,
-        longitude: lng,
+        latitude: point.lat,
+        longitude: point.lng,
         currentStation: `Giữa ${current.name.replace("Ga ", "")} & ${next.name.replace("Ga ", "")}`,
         speed: 55.0,
         status: "ĐANG CHẠY",
