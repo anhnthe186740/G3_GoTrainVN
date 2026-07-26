@@ -98,6 +98,10 @@ const TripPreview = ({
   departureTimes,
   bufferMinutes,
   trainType = "SE",
+  selectedTrain = null,
+  startDate = "",
+  endDate = "",
+  schedules = [],
 }) => {
   if (!selectedRoute || !departureTimes) return null;
 
@@ -115,8 +119,14 @@ const TripPreview = ({
   if (durationMins <= 0) return null;
 
   const bufferMins = parseInt(bufferMinutes) || 0;
-  const numStops = selectedRoute.stations ? selectedRoute.stations.length : 0;
-  const totalDurationMins = durationMins + numStops * bufferMins;
+  const totalStopDurationMins =
+    selectedRoute.stations && selectedRoute.stations.length > 0
+      ? selectedRoute.stations.reduce(
+          (sum, s) => sum + (parseInt(s.stopDurationMinutes) || 3),
+          0,
+        )
+      : (selectedRoute.stations?.length || 0) * 3;
+  const totalDurationMins = durationMins + totalStopDurationMins;
 
   const times = departureTimes
     .split(",")
@@ -133,71 +143,175 @@ const TripPreview = ({
   if (durMins > 0) displayDuration.push(`${durMins} phút`);
   const durationText = displayDuration.join(" ") || "0 phút";
 
-  return (
-    <div className="mt-3 p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
-      <p className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
-        <span className="material-symbols-outlined text-[16px]">info</span>
-        Thời gian hành trình dự kiến ({durationText}):
-      </p>
-      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-        {times.map((t) => {
+  // ── Real-Time Conflict Detection ──
+  const realTimeConflicts = [];
+  if (
+    selectedTrain &&
+    startDate &&
+    endDate &&
+    schedules &&
+    schedules.length > 0
+  ) {
+    const startD = new Date(startDate);
+    startD.setHours(0, 0, 0, 0);
+    const endD = new Date(endDate);
+    endD.setHours(0, 0, 0, 0);
+
+    if (!isNaN(startD.getTime()) && !isNaN(endD.getTime()) && startD <= endD) {
+      const trainSchedules = schedules.filter(
+        (s) =>
+          s.trainId === selectedTrain.id &&
+          s.status !== "CANCELLED" &&
+          s.status !== "Hủy bỏ",
+      );
+
+      const bufferMs = bufferMins * 60 * 1000;
+      const currD = new Date(startD);
+
+      while (currD <= endD) {
+        for (const t of times) {
           const [h, m] = t.split(":").map(Number);
-          const totalMins = h * 60 + m + totalDurationMins;
-          const availableMins = totalMins + bufferMins;
+          const proposedDep = new Date(currD);
+          proposedDep.setHours(h, m, 0, 0);
+          const proposedDepMs = proposedDep.getTime();
+          const proposedArrMs = proposedDepMs + totalDurationMins * 60 * 1000;
 
-          const arrDay = Math.floor(totalMins / (24 * 60)) + 1;
-          const arrHour = Math.floor((totalMins % (24 * 60)) / 60);
-          const arrMin = totalMins % 60;
+          const propWindowStart = proposedDepMs - bufferMs;
+          const propWindowEnd = proposedArrMs + bufferMs;
 
-          const avDay = Math.floor(availableMins / (24 * 60)) + 1;
-          const avHour = Math.floor((availableMins % (24 * 60)) / 60);
-          const avMin = availableMins % 60;
+          for (const ex of trainSchedules) {
+            const exDepMs = new Date(ex.departureTime).getTime();
+            const exArrMs = ex.arrivalTime
+              ? new Date(ex.arrivalTime).getTime()
+              : exDepMs + (ex.duration || 300) * 60 * 1000;
 
-          const arrTimeStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
-          const avTimeStr = `${String(avHour).padStart(2, "0")}:${String(avMin).padStart(2, "0")}`;
+            if (propWindowStart < exArrMs && propWindowEnd > exDepMs) {
+              const exArrStr = new Date(exArrMs).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              });
+              const exDateStr = new Date(exDepMs).toLocaleDateString("vi-VN");
+              const safeAfterArr = new Date(
+                exArrMs + bufferMs,
+              ).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              });
 
-          const dayLabel = arrDay > 1 ? `Ngày thứ ${arrDay}` : "Cùng ngày";
-          const avDayLabel = avDay > 1 ? `Ngày thứ ${avDay}` : "Cùng ngày";
+              realTimeConflicts.push({
+                time: t,
+                dateStr: proposedDep.toLocaleDateString("vi-VN"),
+                conflictingTrain: selectedTrain.trainCode,
+                routeName: ex.route?.routeName || "hành trình khác",
+                exDepStr: new Date(exDepMs).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                exArrStr,
+                exDateStr,
+                safeAfterArr,
+                message: `Tàu ${selectedTrain.trainCode} đã có chuyến ${ex.route?.routeName || ""} (kết thúc lúc ${exArrStr} ngày ${exDateStr}). Cần nghỉ tối thiểu ${bufferMins}p (khả dụng từ ${safeAfterArr}). Giờ ${t} ngày ${proposedDep.toLocaleDateString("vi-VN")} bị vi phạm thời gian quay đầu!`,
+              });
+            }
+          }
+        }
+        currD.setDate(currD.getDate() + 1);
+      }
+    }
+  }
 
-          return (
-            <div
-              key={t}
-              className="text-xs flex flex-col gap-1 border-b border-violet-100/30 pb-2 last:border-none last:pb-0"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-[#191c1e] bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
-                    {t}
-                  </span>
-                  <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
-                    arrow_forward
-                  </span>
-                  <span className="font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
-                    {arrTimeStr}
-                  </span>
-                </div>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${arrDay > 1 ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}
-                >
-                  Đến: {dayLabel}
-                </span>
+  return (
+    <div className="space-y-3 mt-3">
+      {realTimeConflicts.length > 0 && (
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-red-700">
+            <span className="material-symbols-outlined text-[18px]">error</span>
+            <span>
+              Phát hiện xung đột thời gian nghỉ/quay đầu (
+              {realTimeConflicts.length} cảnh báo):
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+            {realTimeConflicts.map((c, idx) => (
+              <div
+                key={idx}
+                className="bg-white p-2 rounded-lg border border-red-100 text-red-800 text-[11px] font-medium leading-relaxed shadow-sm"
+              >
+                ⚠️ {c.message}
               </div>
-              {bufferMins > 0 && (
-                <div className="flex items-center justify-between text-[10px] text-violet-700 bg-violet-100/40 px-2 py-0.5 rounded border border-violet-100/70">
-                  <span className="flex items-center gap-0.5">
-                    <span className="material-symbols-outlined text-[11px]">
-                      schedule
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="p-3.5 bg-violet-50/50 border border-violet-100 rounded-xl space-y-2">
+        <p className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px]">info</span>
+          Thời gian hành trình dự kiến ({durationText}):
+        </p>
+        <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+          {times.map((t) => {
+            const [h, m] = t.split(":").map(Number);
+            const totalMins = h * 60 + m + totalDurationMins;
+            const availableMins = totalMins + bufferMins;
+
+            const arrDay = Math.floor(totalMins / (24 * 60)) + 1;
+            const arrHour = Math.floor((totalMins % (24 * 60)) / 60);
+            const arrMin = totalMins % 60;
+
+            const avDay = Math.floor(availableMins / (24 * 60)) + 1;
+            const avHour = Math.floor((availableMins % (24 * 60)) / 60);
+            const avMin = availableMins % 60;
+
+            const arrTimeStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
+            const avTimeStr = `${String(avHour).padStart(2, "0")}:${String(avMin).padStart(2, "0")}`;
+
+            const dayLabel = arrDay > 1 ? `Ngày thứ ${arrDay}` : "Cùng ngày";
+            const avDayLabel = avDay > 1 ? `Ngày thứ ${avDay}` : "Cùng ngày";
+
+            return (
+              <div
+                key={t}
+                className="text-xs flex flex-col gap-1 border-b border-violet-100/30 pb-2 last:border-none last:pb-0"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-[#191c1e] bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                      {t}
                     </span>
-                    Khả dụng từ (sau nghỉ ga cuối): <strong>{avTimeStr}</strong>
-                  </span>
-                  <span>
-                    {avDayLabel} (+{bufferMins}p)
+                    <span className="material-symbols-outlined text-[14px] text-[#6f7883] opacity-50">
+                      arrow_forward
+                    </span>
+                    <span className="font-bold text-violet-700 bg-white px-1.5 py-0.5 rounded border border-[#bec7d4]/30">
+                      {arrTimeStr}
+                    </span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${arrDay > 1 ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"}`}
+                  >
+                    Đến: {dayLabel}
                   </span>
                 </div>
-              )}
-            </div>
-          );
-        })}
+                {bufferMins > 0 && (
+                  <div className="flex items-center justify-between text-[10px] text-violet-700 bg-violet-100/40 px-2 py-0.5 rounded border border-violet-100/70">
+                    <span className="flex items-center gap-0.5">
+                      <span className="material-symbols-outlined text-[11px]">
+                        schedule
+                      </span>
+                      Khả dụng từ (sau nghỉ ga cuối):{" "}
+                      <strong>{avTimeStr}</strong>
+                    </span>
+                    <span>
+                      {avDayLabel} (+{bufferMins}p)
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1856,6 +1970,14 @@ export function AdminSchedulePanel() {
                   selectedRoute={routes.find((r) => r.id === schedForm.routeId)}
                   departureTimes={schedForm.departureTimes}
                   bufferMinutes={schedForm.bufferMinutes}
+                  trainType={
+                    trains.find((t) => t.id === schedForm.trainId)?.trainType ||
+                    "SE"
+                  }
+                  selectedTrain={trains.find((t) => t.id === schedForm.trainId)}
+                  startDate={schedForm.startDate}
+                  endDate={schedForm.endDate}
+                  schedules={schedules}
                 />
               </div>
 
