@@ -41,10 +41,14 @@ test("validateSameDirectionGap - UTCID01: hai tàu cùng tuyến cách nhau 10 p
   assert.equal(result.conflict.type, "SAME_DIRECTION_GAP");
   assert.equal(result.conflict.conflictingScheduleId, "sched-existing-1");
   assert.equal(result.conflict.gapMinutes, 10);
-  assert.equal(result.conflict.requiredGapMinutes, 20);
+  assert.equal(result.valid, false);
+  assert.equal(result.conflict.type, "SAME_DIRECTION_GAP");
+  assert.equal(result.conflict.conflictingScheduleId, "sched-existing-1");
+  assert.equal(result.conflict.gapMinutes, 10);
+  assert.equal(result.conflict.requiredGapMinutes, 30);
 });
 
-test("validateSameDirectionGap - UTCID02: hai tàu cùng tuyến cách nhau 45 phút (>= 20 phút) thì hợp lệ", async (t) => {
+test("validateSameDirectionGap - UTCID02: hai tàu cùng tuyến cách nhau 45 phút (>= 30 phút) thì hợp lệ", async (t) => {
   const existing = {
     id: "sched-existing-2",
     departureTime: new Date("2026-07-10T00:45:00.000Z"),
@@ -69,11 +73,11 @@ test("validateSameDirectionGap - UTCID02: hai tàu cùng tuyến cách nhau 45 p
   assert.equal(result.valid, true);
 });
 
-test("validateSameDirectionGap - UTCID03: khoảng cách đúng bằng 20 phút (biên hợp lệ) thì không báo lỗi", async (t) => {
+test("validateSameDirectionGap - UTCID03: khoảng cách đúng bằng 30 phút (biên hợp lệ) thì không báo lỗi", async (t) => {
   const existing = {
     id: "sched-existing-3",
-    departureTime: new Date("2026-07-10T00:20:00.000Z"),
-    arrivalTime: new Date("2026-07-10T04:20:00.000Z"),
+    departureTime: new Date("2026-07-10T00:30:00.000Z"),
+    arrivalTime: new Date("2026-07-10T04:30:00.000Z"),
     train: { trainCode: "SE3" },
   };
   t.mock.module("../src/config/database.js", {
@@ -94,11 +98,11 @@ test("validateSameDirectionGap - UTCID03: khoảng cách đúng bằng 20 phút 
   assert.equal(result.valid, true);
 });
 
-test("validateSameDirectionGap - UTCID04: khoảng cách 19 phút (ngay dưới biên tối thiểu) thì báo lỗi", async (t) => {
+test("validateSameDirectionGap - UTCID04: khoảng cách 29 phút (ngay dưới biên tối thiểu 30 phút) thì báo lỗi", async (t) => {
   const existing = {
     id: "sched-existing-4",
-    departureTime: new Date("2026-07-10T00:19:00.000Z"),
-    arrivalTime: new Date("2026-07-10T04:19:00.000Z"),
+    departureTime: new Date("2026-07-10T00:29:00.000Z"),
+    arrivalTime: new Date("2026-07-10T04:29:00.000Z"),
     train: { trainCode: "SE4" },
   };
   t.mock.module("../src/config/database.js", {
@@ -117,7 +121,7 @@ test("validateSameDirectionGap - UTCID04: khoảng cách 19 phút (ngay dưới 
   });
 
   assert.equal(result.valid, false);
-  assert.equal(result.conflict.gapMinutes, 19);
+  assert.equal(result.conflict.gapMinutes, 29);
 });
 
 test("validateSameDirectionGap - UTCID05: gapMinutes tùy chỉnh = 0 (biên dưới) thì mọi khoảng cách kể cả trùng giờ đều hợp lệ", async (t) => {
