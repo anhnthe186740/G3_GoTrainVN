@@ -96,30 +96,34 @@ const VIETNAM_ARCHIPELAGOS = [
 
 // Railway Lines Polylines
 const NORTH_SOUTH_RAILWAY_PATH = [
-  [21.0245, 105.8412], // Hà Nội
-  [20.4285, 106.1683], // Nam Định
-  [19.8067, 105.7852], // Thanh Hóa
-  [18.6796, 105.6813], // Vinh
-  [17.4697, 106.6022], // Đồng Hới
-  [16.4637, 107.5909], // Huế
-  [16.0717, 108.2144], // Đà Nẵng
-  [15.1202, 108.7923], // Quảng Ngãi
-  [13.783, 109.1558], // Quy Nhơn
-  [13.0882, 109.3087], // Tuy Hòa
-  [12.2492, 109.1867], // Nha Trang
-  [10.9333, 108.1], // Phan Thiết
-  [10.7828, 106.6789], // Sài Gòn
+  [21.0245, 105.8412], // Ga Hà Nội
+  [20.4285, 106.1683], // Ga Nam Định
+  [19.8067, 105.7852], // Ga Thanh Hóa
+  [18.6796, 105.6813], // Ga Vinh
+  [17.4697, 106.6022], // Ga Đồng Hới
+  [16.4637, 107.5909], // Ga Huế
+  [16.0717, 108.2144], // Ga Đà Nẵng
+  [15.1202, 108.7923], // Ga Quảng Ngãi
+  [13.783, 109.1558], // Ga Quy Nhơn (Diêu Trì)
+  [13.0882, 109.3087], // Ga Tuy Hòa
+  [12.2492, 109.1867], // Ga Nha Trang
+  [10.9333, 108.1], // Ga Phan Thiết
+  [10.7828, 106.6789], // Ga Sài Gòn
 ];
 
 const LAO_CAI_BRANCH_PATH = [
-  [22.4842, 103.9782], // Lào Cai
-  [21.0245, 105.8412], // Hà Nội
+  [22.4842, 103.9782], // Ga Lào Cai
+  [21.705, 104.875], // Ga Yên Bái
+  [21.0245, 105.8412], // Ga Hà Nội
 ];
 
 const HAI_PHONG_BRANCH_PATH = [
-  [21.0245, 105.8412], // Hà Nội
-  [20.8558, 106.6881], // Hải Phòng
+  [21.0245, 105.8412], // Ga Hà Nội
+  [20.9381, 106.3152], // Ga Hải Dương
+  [20.8558, 106.6881], // Ga Hải Phòng
 ];
+
+const HANOI_HUB = [21.0245, 105.8412];
 
 // Official Google Maps Tile Providers (Clean Vietnam Boundaries)
 const MAP_TILES = {
@@ -228,6 +232,91 @@ function findClosestPathVertexIndex(path, lat, lng) {
   return { index: closestIndex, distance: minDistance };
 }
 
+// Extract sub-path along a single polyline
+function getSubPathAlongSinglePolyline(path, lat1, lng1, lat2, lng2) {
+  const m1 = findClosestPathVertexIndex(path, lat1, lng1);
+  const m2 = findClosestPathVertexIndex(path, lat2, lng2);
+  const idx1 = m1.index;
+  const idx2 = m2.index;
+
+  const result = [];
+  result.push([lat1, lng1]);
+
+  if (idx1 !== idx2) {
+    const step = idx1 < idx2 ? 1 : -1;
+    let curr = idx1;
+    while (curr !== idx2) {
+      curr += step;
+      result.push([path[curr][0], path[curr][1]]);
+    }
+  }
+
+  result[result.length - 1] = [lat2, lng2];
+  return result;
+}
+
+// Determine which railway branch line a coordinate belongs to
+function getBranchOfCoord(lat, lng) {
+  const dNS = findClosestPathVertexIndex(
+    NORTH_SOUTH_RAILWAY_PATH,
+    lat,
+    lng,
+  ).distance;
+  const dLC = findClosestPathVertexIndex(
+    LAO_CAI_BRANCH_PATH,
+    lat,
+    lng,
+  ).distance;
+  const dHP = findClosestPathVertexIndex(
+    HAI_PHONG_BRANCH_PATH,
+    lat,
+    lng,
+  ).distance;
+
+  if (dHP < 0.35 && dHP < dNS && dHP < dLC)
+    return { type: "HP", path: HAI_PHONG_BRANCH_PATH };
+  if (dLC < 0.35 && dLC < dNS && dLC < dHP)
+    return { type: "LC", path: LAO_CAI_BRANCH_PATH };
+  return { type: "NS", path: NORTH_SOUTH_RAILWAY_PATH };
+}
+
+// Master Network Routing: Calculates exact detailed railway polyline between ANY two stations in Vietnam
+function getDetailedRailwayPath(startLat, startLng, endLat, endLng) {
+  const b1 = getBranchOfCoord(startLat, startLng);
+  const b2 = getBranchOfCoord(endLat, endLng);
+
+  if (b1.type === b2.type) {
+    return getSubPathAlongSinglePolyline(
+      b1.path,
+      startLat,
+      startLng,
+      endLat,
+      endLng,
+    );
+  }
+
+  const leg1 = getSubPathAlongSinglePolyline(
+    b1.path,
+    startLat,
+    startLng,
+    HANOI_HUB[0],
+    HANOI_HUB[1],
+  );
+  const leg2 = getSubPathAlongSinglePolyline(
+    b2.path,
+    HANOI_HUB[0],
+    HANOI_HUB[1],
+    endLat,
+    endLng,
+  );
+
+  const combined = [...leg1];
+  for (let i = 1; i < leg2.length; i++) {
+    combined.push(leg2[i]);
+  }
+  return combined;
+}
+
 // Interpolate train position along railway polyline paths so train stays 100% on railway tracks
 function interpolateAlongRailwayLine(
   startLat,
@@ -237,59 +326,28 @@ function interpolateAlongRailwayLine(
   progress,
 ) {
   const clampedProgress = Math.max(0, Math.min(1, progress));
-  const ALL_PATHS = [
-    NORTH_SOUTH_RAILWAY_PATH,
-    LAO_CAI_BRANCH_PATH,
-    HAI_PHONG_BRANCH_PATH,
-  ];
+  const detailedPath = getDetailedRailwayPath(
+    startLat,
+    startLng,
+    endLat,
+    endLng,
+  );
 
-  let bestPath = null;
-  let idx1 = 0;
-  let idx2 = 0;
-  let minCombinedDist = Infinity;
-
-  for (const path of ALL_PATHS) {
-    const startMatch = findClosestPathVertexIndex(path, startLat, startLng);
-    const endMatch = findClosestPathVertexIndex(path, endLat, endLng);
-    const combinedDist = startMatch.distance + endMatch.distance;
-
-    if (combinedDist < minCombinedDist) {
-      minCombinedDist = combinedDist;
-      bestPath = path;
-      idx1 = startMatch.index;
-      idx2 = endMatch.index;
-    }
-  }
-
-  // Fallback to direct linear interpolation if distance to path is large or start/end are adjacent/same
-  if (!bestPath || minCombinedDist > 1.5 || idx1 === idx2) {
+  if (!detailedPath || detailedPath.length < 2) {
     return {
       lat: startLat + (endLat - startLat) * clampedProgress,
       lng: startLng + (endLng - startLng) * clampedProgress,
     };
   }
 
-  // Build subPath from idx1 to idx2
-  const subPath = [];
-  subPath.push([startLat, startLng]);
-
-  const step = idx1 < idx2 ? 1 : -1;
-  let currentIdx = idx1;
-  while (currentIdx !== idx2) {
-    currentIdx += step;
-    subPath.push([bestPath[currentIdx][0], bestPath[currentIdx][1]]);
-  }
-  subPath[subPath.length - 1] = [endLat, endLng];
-
-  // Calculate cumulative segment distances along subPath
   const segmentDistances = [];
   let totalDist = 0;
-  for (let i = 0; i < subPath.length - 1; i++) {
+  for (let i = 0; i < detailedPath.length - 1; i++) {
     const dist = getDistanceDeg(
-      subPath[i][0],
-      subPath[i][1],
-      subPath[i + 1][0],
-      subPath[i + 1][1],
+      detailedPath[i][0],
+      detailedPath[i][1],
+      detailedPath[i + 1][0],
+      detailedPath[i + 1][1],
     );
     segmentDistances.push(dist);
     totalDist += dist;
@@ -311,8 +369,8 @@ function interpolateAlongRailwayLine(
       const segProgress =
         segDist > 0 ? (targetDist - accumulated) / segDist : 0;
       const clampedSegProgress = Math.max(0, Math.min(1, segProgress));
-      const p1 = subPath[i];
-      const p2 = subPath[i + 1];
+      const p1 = detailedPath[i];
+      const p2 = detailedPath[i + 1];
 
       return {
         lat: p1[0] + (p2[0] - p1[0]) * clampedSegProgress,
@@ -616,32 +674,49 @@ export function AdminLiveTrackingPanel() {
   const selectedRoutePath = useMemo(() => {
     if (!selectedItem) return null;
     const { schedule } = selectedItem;
-    const points = [];
+    const rawStops = [];
 
     if (
       schedule.route.startStation.latitude &&
       schedule.route.startStation.longitude
     ) {
-      points.push([
+      rawStops.push([
         schedule.route.startStation.latitude,
         schedule.route.startStation.longitude,
       ]);
     }
     (schedule.scheduleStops || []).forEach((st) => {
       if (st.station.latitude && st.station.longitude) {
-        points.push([st.station.latitude, st.station.longitude]);
+        rawStops.push([st.station.latitude, st.station.longitude]);
       }
     });
     if (
       schedule.route.endStation.latitude &&
       schedule.route.endStation.longitude
     ) {
-      points.push([
+      rawStops.push([
         schedule.route.endStation.latitude,
         schedule.route.endStation.longitude,
       ]);
     }
-    return points.length >= 2 ? points : null;
+
+    if (rawStops.length < 2) return null;
+
+    const fullPath = [];
+    for (let i = 0; i < rawStops.length - 1; i++) {
+      const segPath = getDetailedRailwayPath(
+        rawStops[i][0],
+        rawStops[i][1],
+        rawStops[i + 1][0],
+        rawStops[i + 1][1],
+      );
+      const startIdx = i === 0 ? 0 : 1;
+      for (let j = startIdx; j < segPath.length; j++) {
+        fullPath.push(segPath[j]);
+      }
+    }
+
+    return fullPath.length >= 2 ? fullPath : null;
   }, [selectedItem]);
 
   // Render Horizontal Timeline
