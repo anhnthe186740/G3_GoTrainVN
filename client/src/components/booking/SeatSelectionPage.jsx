@@ -1340,6 +1340,9 @@ export function SeatSelectionPage({
         exchangeBookingId,
         exchangeBookingCode: exchangeBookingCode || "",
         exchangePaidAmount: exchangePaidAmount || "0",
+        exchangePassengerIds: searchParams.get("exchangePassengerIds") || "",
+        exchangePassengerCount:
+          searchParams.get("exchangePassengerCount") || "1",
       });
       navigate(`/booking/passengers?${params.toString()}`);
       return;

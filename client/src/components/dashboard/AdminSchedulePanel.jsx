@@ -32,7 +32,7 @@ const getMinutesDifference = (t1, t2) => {
   return Math.min(diff, 1440 - diff);
 };
 
-const findNextSafeTime = (proposedTime, occupiedTimesStr, gap = 20) => {
+const findNextSafeTime = (proposedTime, occupiedTimesStr, gap = 30) => {
   const occupiedMins = occupiedTimesStr.map(timeToMinutes);
   let currentMins = timeToMinutes(proposedTime);
   let attempts = 0;
@@ -719,8 +719,8 @@ export function AdminSchedulePanel() {
       for (const tpl of activeRouteTemplates) {
         for (const occTime of tpl.departureTimes) {
           const diff = getMinutesDifference(propTime, occTime);
-          if (diff < 20) {
-            const safeTime = findNextSafeTime(propTime, occupiedTimes, 20);
+          if (diff < 30) {
+            const safeTime = findNextSafeTime(propTime, occupiedTimes, 30);
             conflicts.push({
               proposedTime: propTime,
               conflictingTime: occTime,

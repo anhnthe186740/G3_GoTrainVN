@@ -272,23 +272,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       },
     });
 
-    if (user) {
-      if (!user.isActive) {
-        await prisma.securityLog.create({
-          data: {
-            userId: user.id,
-            eventType: "LOGIN_FAILED",
-            description: `Đăng nhập Google thất bại do tài khoản bị khóa. Lý do: ${user.lockReason || "Không rõ lý do"}`,
-            ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
-            userAgent: req.headers["user-agent"] || "",
-            status: "FAILURE",
-          },
-        });
-        return res.status(403).json({
-          message: `Tài khoản đã bị khóa. Lý do: ${user.lockReason || "Không rõ lý do"}`,
-        });
-      }
-    } else {
+    if (!user) {
       const randomPassword = crypto.randomBytes(16).toString("hex");
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
 

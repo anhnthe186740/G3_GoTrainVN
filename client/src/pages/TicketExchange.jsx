@@ -127,19 +127,34 @@ export function TicketExchange() {
     (item) => item.id === selectedScheduleId,
   );
 
+  const exchangeMode = location.state?.exchangeMode || "single";
+
   const activePassengerCount = useMemo(() => {
+    if (exchangeMode === "single") return 1;
     if (!booking?.passengers?.length) return booking?.totalPassengers || 1;
+
+    const seatedPassengers = booking.passengers.filter(
+      (p) =>
+        Boolean(p.seat || p.seatId) &&
+        p.seatRequired !== false &&
+        p.passengerType !== "CHILD_UNDER_6",
+    );
+
     const hasDetails = booking.passengers[0]?.bookingDetails !== undefined;
     if (hasDetails) {
-      const count = booking.passengers.filter((p) =>
+      const count = seatedPassengers.filter((p) =>
         (p.bookingDetails || []).some((d) => d.status !== "CANCELLED"),
       ).length;
       return count || 1;
     }
-    return booking.passengers.length || booking.totalPassengers || 1;
-  }, [booking]);
+    return seatedPassengers.length || booking.totalPassengers || 1;
+  }, [booking, exchangeMode]);
 
-  const paidAmount = booking?.totalAmount || 0;
+  const paidAmount =
+    exchangeMode === "single" && booking?.totalPassengers > 1
+      ? Math.round((booking?.totalAmount || 0) / booking.totalPassengers)
+      : booking?.totalAmount || 0;
+
   const newFare = selectedSchedule ? minFare(selectedSchedule) : 0;
   const fixedFee = selectedSchedule ? 20000 * activePassengerCount : 0;
   const percentFee = selectedSchedule ? Math.round(paidAmount * 0.1) : 0;
@@ -294,6 +309,17 @@ export function TicketExchange() {
       return;
     }
 
+    const exchangePIds =
+      exchangeMode === "single"
+        ? [ticket.id]
+        : booking.passengers
+            .filter(
+              (p) =>
+                p.bookingDetails?.every((d) => d.status !== "CANCELLED") ??
+                true,
+            )
+            .map((p) => p.id);
+
     const params = new URLSearchParams({
       outboundScheduleId: selectedSchedule.id,
       outboundFromStationId: fromStationId,
@@ -303,6 +329,7 @@ export function TicketExchange() {
       exchangeBookingCode: booking.bookingCode || ticket.ticketCode || "",
       exchangePassengerCount: String(activePassengerCount),
       exchangePaidAmount: String(paidAmount),
+      exchangePassengerIds: exchangePIds.join(","),
     });
 
     navigate(`/booking/seats?${params.toString()}`);

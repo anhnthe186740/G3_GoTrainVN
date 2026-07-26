@@ -2,7 +2,7 @@
  * singleTrackValidator.js
  * Bộ quy tắc kiểm chứng vận hành đường đơn (Single-track Railway)
  * ─────────────────────────────────────────────────────────────────
- * Rule 1: Giãn cách cùng chiều ≥ MIN_GAP_MINUTES (mặc định 20 phút)
+ * Rule 1: Giãn cách cùng chiều ≥ MIN_GAP_MINUTES (mặc định 30 phút)
  * Rule 2: Không có 2 tàu ngược chiều cùng chiếm một phân đoạn ray
  * Rule 3: Thứ tự thời gian tuần tự tại các ga dừng
  */
@@ -10,7 +10,7 @@
 import { prisma } from "../config/database.js";
 
 /** Khoảng giãn cách tối thiểu (phút) giữa 2 tàu cùng chiều trên cùng tuyến */
-const MIN_GAP_MINUTES = 20;
+const MIN_GAP_MINUTES = 30;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rule 1: Validate giãn cách cùng chiều

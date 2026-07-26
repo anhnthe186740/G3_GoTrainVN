@@ -361,19 +361,28 @@ export function validatePassengerBusinessRules(passengers) {
       "Mỗi giao dịch chỉ được đặt tối đa 4 hành khách có ghế.",
     );
   }
-  const hasChild = passengers.some(
-    (passenger) =>
-      passenger.ageAtDeparture != null && passenger.ageAtDeparture < 10,
-  );
-  const hasCompanion = passengers.some(
-    (passenger) =>
-      passenger.seatRequired !== false &&
-      !(passenger.ageAtDeparture != null && passenger.ageAtDeparture < 10),
-  );
+  const isChildPassenger = (passenger) => {
+    const age = passenger.ageAtDeparture;
+    const type = String(passenger.passengerType || "").toUpperCase();
+    if (age != null) return age < 10;
+    return ["CHILD", "CHILD_UNDER_6"].includes(type);
+  };
+
+  const isCompanionPassenger = (passenger) => {
+    if (passenger.seatRequired === false) return false;
+    const age = passenger.ageAtDeparture;
+    const type = String(passenger.passengerType || "").toUpperCase();
+    if (age != null) return age >= 10;
+    return !["CHILD", "CHILD_UNDER_6"].includes(type);
+  };
+
+  const hasChild = passengers.some(isChildPassenger);
+  const hasCompanion = passengers.some(isCompanionPassenger);
+
   if (hasChild && !hasCompanion) {
     throw httpError(
       400,
-      "Trẻ em dưới 10 tuổi phải đi cùng ít nhất một hành khách ADULT, STUDENT hoặc SENIOR.",
+      "Trẻ em dưới 10 tuổi bắt buộc phải đi cùng ít nhất một hành khách Người lớn, Sinh viên hoặc Người cao tuổi.",
     );
   }
 
@@ -631,6 +640,7 @@ export async function quoteBooking(
   ) {
     throw httpError(400, "Danh sách loại hành khách chưa hợp lệ.");
   }
+  validatePassengerBusinessRules(quotePassengers);
 
   const [outboundPricing, returnPricing] = await Promise.all([
     fareRulesForLeg(session, "outbound"),
@@ -1140,9 +1150,14 @@ export async function checkoutBooking(identity, payload) {
         returnFromStationId: quote.session.returnFromStationId ?? null,
         returnToStationId: quote.session.returnToStationId ?? null,
         bookingType: quote.session.bookingType,
-        voucherId: quote.voucher?.id,
-        totalPassengers: passengers.length,
         subtotal: quote.subtotal,
+        totalPassengers:
+          passengers.filter(
+            (p) =>
+              p &&
+              p.seatRequired !== false &&
+              p.passengerType !== "CHILD_UNDER_6",
+          ).length || 1,
         discountAmount:
           quote.passengerDiscount +
           quote.promotionDiscount +
@@ -1171,7 +1186,11 @@ export async function checkoutBooking(identity, payload) {
 
     const createdPassengers = [];
     for (const [index, passenger] of passengers.entries()) {
-      const primaryLeg = quote.items[index].legs[0];
+      const primaryLeg = quote.items[index]?.legs?.[0];
+      const isLapChild =
+        passenger.seatRequired === false ||
+        passenger.passengerType === "CHILD_UNDER_6" ||
+        !primaryLeg?.seatId;
       const { discountReason } = passenger;
       const passengerData = { ...passenger };
       delete passengerData.seatRequired;
@@ -1179,41 +1198,47 @@ export async function checkoutBooking(identity, payload) {
       delete passengerData.discountReason;
       delete passengerData.discountType;
       delete passengerData.discountValue;
+
       const created = await tx.passenger.create({
         data: {
           bookingId: booking.id,
           userId: passengerUserIds[index],
           ...passengerData,
-          ticketCode: ticketCode(),
-          seatId: primaryLeg?.seatId ?? null,
-          carriageNumber: primaryLeg?.carriageNumber ?? null,
+          ticketCode: isLapChild ? null : ticketCode(),
+          seatId: isLapChild ? null : (primaryLeg?.seatId ?? null),
+          carriageNumber: isLapChild
+            ? null
+            : (primaryLeg?.carriageNumber ?? null),
           discountPercentage:
             primaryLeg?.basePrice > 0
               ? Math.round(
                   (primaryLeg.discountAmount / primaryLeg.basePrice) * 100,
                 )
-              : quote.items[index].discountPercentage,
+              : quote.items[index]?.discountPercentage || 0,
           discountReason,
         },
       });
       createdPassengers.push(created);
 
-      for (const leg of quote.items[index].legs) {
-        await tx.bookingDetail.create({
-          data: {
-            bookingId: booking.id,
-            passengerId: created.id,
-            seatId: leg.seatId,
-            scheduleId: leg.scheduleId,
-            carriageType: leg.carriageType,
-            basePrice: leg.basePrice,
-            discountAmount: leg.discountAmount,
-            finalPrice: leg.finalPrice,
-            status: immediatePayment ? "CONFIRMED" : "PENDING",
-            fromStopOrder: leg.fromStopOrder, // P1
-            toStopOrder: leg.toStopOrder, // P1
-          },
-        });
+      if (!isLapChild && quote.items[index]?.legs) {
+        for (const leg of quote.items[index].legs) {
+          if (!leg.seatId) continue;
+          await tx.bookingDetail.create({
+            data: {
+              bookingId: booking.id,
+              passengerId: created.id,
+              seatId: leg.seatId,
+              scheduleId: leg.scheduleId,
+              carriageType: leg.carriageType,
+              basePrice: leg.basePrice,
+              discountAmount: leg.discountAmount,
+              finalPrice: leg.finalPrice,
+              status: immediatePayment ? "CONFIRMED" : "PENDING",
+              fromStopOrder: leg.fromStopOrder,
+              toStopOrder: leg.toStopOrder,
+            },
+          });
+        }
       }
     }
 
